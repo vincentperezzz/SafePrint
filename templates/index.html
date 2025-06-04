@@ -2,15 +2,28 @@
 {% load static %}
 
 {% block title %}
-SafePrint - Home
+SafePrint
 {% endblock %}
 
 {% block content %}
-<section class="home">
-    <div class="container">
-        <h1>Welcome to SafePrint</h1>
-        <p>Your trusted solution for secure printing.</p>
-        <a href="#learn-more" class="btn btn-primary">Learn More</a>
+<div class="file-upload">
+    <div class="file-upload-title">File Upload</div>
+    <div class="file-upload-subtitle">Add your documents here.</div>
+    <div class="upload-area">
+        <div class="drag-area">
+            <img src="{% static 'assets/upload_icon.svg' %}" alt="Upload Icon">
+            <p>Drag your file(s)</p>
+            <p>Upload in PDF format</p>
+        </div>
+        <div class="or-divider">
+            <span class="line"></span>
+            <span>OR</span>
+            <span class="line"></span>
+        </div>
+        <div class="browse-area">
+            <span class="browse-text">Upload from Files</span>
+            <button class="browse-btn">Browse Files</button>
+        </div>
     </div>
-</section>
+</div>
 {% endblock %}
