@@ -27,24 +27,86 @@ SafePrint is a Django web application designed to provide a secure and efficient
    Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
    ```
 
-4. Create a virtual environment:
+4. Install MySQL:
+   Use the Windows Package Manager (`winget`) to install MySQL:
    ```
-   python -m venv venv
+   winget install --id Oracle.MySQL
+   ```
+   Alternatively, download and install MySQL manually from [MySQL Downloads](https://dev.mysql.com/downloads/installer/).
+
+5. Configure the `.env` file:
+   Create a `.env` file inside the `venv` folder with the following content:
+   ```
+   DJANGO_SECRET_KEY=your-secret-key
+   DB_NAME=your_database_name
+   DB_USER=your_database_user
+   DB_PASSWORD=your_database_password
+   DB_HOST=localhost
+   DB_PORT=3306
    ```
 
-5. Activate the virtual environment:
-   - On Windows:
-     ```
-     venv\Scripts\activate
-     ```
-   - On macOS/Linux:
-     ```
-     source venv/bin/activate
-     ```
-
-6. Install the required packages:
+6. Install dependencies:
+   Activate the virtual environment and install the required Python packages:
    ```
+   venv\Scripts\activate
    pip install -r requirements.txt
+   ```
+
+7. Apply migrations:
+   Run the following commands to set up the database schema:
+   ```
+   python manage.py makemigrations
+   python manage.py migrate
+   ```
+
+8. Start the development server:
+   ```
+   python manage.py runserver
+   ```
+
+9. Access the application:
+   Open your browser and navigate to `http://127.0.0.1:8000/`.
+
+## Database Setup
+
+1. **Install MySQL Workbench**:
+   Download and install MySQL Workbench from [MySQL Workbench Downloads](https://dev.mysql.com/downloads/workbench/).
+
+2. **Create the Database**:
+   - Open MySQL Workbench and connect to your MySQL server.
+   - Create the database and tables:
+     
+3. **Configure the `.env` File**:
+   Add the database credentials to the `.env` file:
+   ```
+   DJANGO_SECRET_KEY=your-secret-key
+   DB_NAME=SAFEPRINT_DB
+   DB_USER=SAFEPRINT_ADMIN
+   DB_PASSWORD=MYsQL^db0DGPcp
+   DB_HOST=localhost
+   DB_PORT=3306
+   ```
+
+4. **Apply Migrations**:
+   Run the following commands to apply migrations:
+   ```
+   python manage.py makemigrations
+   python manage.py migrate
+   ```
+
+This ensures users can set up the database using MySQL Workbench and configure the Django project accordingly. Let me know if you need further adjustments!## Database Setup
+
+1. **Install MySQL Workbench**:
+   Download and install MySQL Workbench from [MySQL Workbench Downloads](https://dev.mysql.com/downloads/workbench/).
+
+2. **Create the Database**:
+   - Open MySQL Workbench and connect to your MySQL server.
+   - Create the database and tables.
+
+This ensures users can set up the database using MySQL Workbench and configure the Django project accordingly. Let me know if you need further adjustments!
+## Notes
+- Ensure MySQL is running before starting the Django server.
+- The `.env` file is excluded from version control for security purposes.
    ```
 
 ## Usage
