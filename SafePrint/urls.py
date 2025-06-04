@@ -1,9 +1,9 @@
 from django.contrib import admin
 from django.urls import path
-from main.views import base_view 
+from main.views import index_view 
 
 urlpatterns = [
-    path('', base_view, name='home'), 
+    path('', index_view, name='home'), 
     path('admin/', admin.site.urls),
-    path('base/', base_view, name='base'),
+    path('index/', index_view, name='index'),
 ]
