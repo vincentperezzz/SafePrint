@@ -28,7 +28,6 @@ body {
     padding: 10px 0;
     font-family: 'Space Grotesk', sans-serif;
     background: #ffffff;
-    box-shadow: 0 20px 30px rgba(0, 0, 0, 0.1);
     transition: all 0.3s ease;
 }
 
@@ -65,12 +64,12 @@ body {
     font-weight: bold;
     background-color: var(--primary-color);
     width: fit-content;
-    padding: 3px 5px;
+    padding: 3px 4px;
     border-radius: 7px;
 }
 
 .navbar .brand-subtitle {
-    font-size: 0.8rem;
+    font-size: 0.65rem;
     background-color: var(--light-gray-color);
     width: fit-content;
     padding: 3px 5px;
