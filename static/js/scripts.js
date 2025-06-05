@@ -1,4 +1,23 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Make the navbar sticky on top when scrolling
+    const navbar = document.querySelector(".navbar");
+    
+    const handleScroll = () => {
+        if (window.scrollY > 0) {
+            navbar.classList.add("scrolled");
+        } else {
+            navbar.classList.remove("scrolled");
+        }
+    };
+
+    // Add scroll event listener
+    document.addEventListener("scroll", handleScroll);
+
+    // Initial check in case the page is loaded with scroll
+    handleScroll();
+
+    
+    // Hamburger Menu Toggle (for mobile view)
     const hamburger = document.querySelector('.hamburger');
     const menu = document.querySelector('.menu');
 
@@ -7,6 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
         menu.classList.toggle('active');
     });
 
+
+    // FAQ Card Toggle Functionality
     const faqCards = document.querySelectorAll('.faq-card');
 
     faqCards.forEach(card => {
