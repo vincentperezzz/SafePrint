@@ -560,7 +560,7 @@ body {
 
 .aboutus-card {
     display: flex;
-    width: 1248px;
+    width: 1120px;
     height: 337px;
     padding: 40px 35px;
     justify-content: center;
@@ -591,6 +591,31 @@ body {
 .aboutus-image {
     width: 300px;
     height: auto;
+}
+
+/* Responsive styling for About Us Section */
+@media (max-width: 1302px) {
+    .aboutus-content {
+        display: flex;
+        flex-direction: column; 
+    }
+
+    .aboutus-card {
+        width: 100%; 
+        height: auto;
+        padding: 50px; 
+        gap: 20px; 
+    }
+
+    .aboutus-image {
+        width: 200px; 
+        height: auto; 
+    }
+
+    .aboutus-text {
+        font-size: 0.9rem; 
+        line-height: 1.4rem; 
+    }
 }
 
 
