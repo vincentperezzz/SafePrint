@@ -315,6 +315,8 @@ body {
     align-items: center;
     gap: 20px;
     margin: 100px 10%;
+    align-content: stretch;
+    flex-wrap: wrap;
 }
 
 .help-title {
@@ -374,13 +376,7 @@ body {
 /* Card title styling */
 .card-title {
     font-family: 'Montserrat', sans-serif;
-    font-weight: 800;
-    font-size: 1.5rem;
-    border-radius: 8px; 
-    background-color: var(--primary-color);  
-    width: fit-content;
-    padding: 3px 4px; 
-    color: #191A23; 
+    background-color: var(--primary-color);
     font-weight: 800;
     font-size: 1.5rem;
     border-radius: 8px;
@@ -427,6 +423,39 @@ body {
     }
 }
 
+/* FAQ Section Styling */
+.faq-section {
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+    margin: 100px 10%;
+    align-content: stretch;
+    flex-wrap: wrap;
+}
+
+.faq-title-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: left;
+}
+
+.faq-title {
+    background-color: var(--primary-color);
+    border-radius: 8px;
+    padding: 3px 4px;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: bold;
+    width: fit-content;
+    margin-bottom: 0;
+}
+
+.faq-text {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.9rem;
+    color: #000000; 
+    line-height: 1.5; 
+    margin: 0;
+}
 
 
 
