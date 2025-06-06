@@ -1277,21 +1277,33 @@ input::-webkit-inner-spin-button {
     }
 }
 
-.file.upload-completed, .uploading {
+.file.upload-completed, .uploading, .upload-error {
     border: 1px solid var(--strokeColor-lightGrey, #cccccc);
 }
 
-.delete-icon, .pause-icon {
-    width: 28px;
+.delete-icon, .pause-icon{
+    width: 25px;
     margin: 5px;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.delete-icon:hover, .pause-icon:hover{
+.trash-icon, .repeat-icon{
+    width: 22px;
+    margin: 10px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.trash-icon{
+    width: 18px;
+    margin: 5px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.delete-icon:hover, .pause-icon:hover, .trash-icon:hover, .repeat-icon:hover {
     transform: scale(1.1); 
 }
 
-.delete-icon:active, .pause-icon:active{
+.delete-icon:active, .pause-icon:active, .trash-icon:active, .repeat-icon:active {
     transform: scale(0.95) translateY(2px); 
 }
 
@@ -1347,4 +1359,9 @@ input::-webkit-inner-spin-button {
     color: #A0A0A0; 
     cursor: not-allowed; 
     box-shadow: none; 
+    transform: none;
+}
+
+.file.upload-error.file-size{
+    color: var(--red-color);
 }
