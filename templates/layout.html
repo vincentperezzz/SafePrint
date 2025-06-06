@@ -30,12 +30,12 @@
                     <span class="bar"></span>
                 </div>
                 <ul class="menu">
-                    <li><a href="#help" class="menu-btn">Help</a></li>
-                    <li><a href="#faqs" class="menu-btn">FAQs</a></li>
-                    <li><a href="#about-us" class="menu-btn">About Us</a></li>
+                    <li><a href="{% url 'index' %}#help" class="menu-btn">Help</a></li>
+                    <li><a href="{% url 'index' %}#faqs" class="menu-btn">FAQs</a></li>
+                    <li><a href="{% url 'index' %}#about-us" class="menu-btn">About Us</a></li>
                     <li><a href="#employee-login" class="menu-btn">Employee Login</a></li>
-                    <li><a href="#feedback" class="menu-btn">Feedback</a></li>
-                    <li><a href="#contact-us" class="menu-btn">Contact Us</a></li>
+                    <li><a href="{% url 'index' %}#feedback" class="menu-btn">Feedback</a></li>
+                    <li><a href="{% url 'index' %}#contact-us" class="menu-btn">Contact Us</a></li>
                 </ul>
             </div>
         </nav>
