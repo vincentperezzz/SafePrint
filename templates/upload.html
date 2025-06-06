@@ -6,12 +6,41 @@ SafePrint
 {% endblock %}
 
 {% block content %}
-<div class="file-upload">
-    <div class="file-upload-title">Uploaded Documents Preview</div>
-    <div class="upload-area">
-        <div class="browse-area">
-            <span class="browse-text">Upload from Files</span>
-            <button class="browse-btn">Browse Files</button>
+<div class="uploaded">
+    <div class="file-uploaded-title">Uploaded Documents Preview</div>
+    <div class="browse-area">
+        <span class="browse-text">Upload more Files</span>
+        <button class="browse-btn">Browse Files</button>
+    </div>
+    <div class="uploaded-files">
+        <div class="file">
+            <div class="file-rows">
+                <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
+                <div class="file-title">
+                    <span class="file-name">Abstract</span>
+                    <span class="file-size">500KB</span>
+                </div> 
+                <img src="{% static 'assets/delete-icon.svg' %}" alt="Delete Icon" class="delete-icon">
+            </div>
+
+             <div class="file-rows">
+                <h5>Copies</h5>
+                <div class="quantity-selector">
+                    <button class="decrease-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="19" height="16" viewBox="0 0 19 16" fill="none">
+                            <path d="M4.50732 8H14.5372" stroke="#18191F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <input id="num_copies" type="number" class="quantity-input" value="1" min="1" max="500">
+                    <button class="increase-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="19" height="16" viewBox="0 0 19 16" fill="none">
+                            <path d="M9.52246 3.625V12.375" stroke="#18191F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M4.50732 8H14.5372" stroke="#18191F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+
+            </div>
         </div>
     </div>
 </div>

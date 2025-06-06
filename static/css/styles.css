@@ -209,10 +209,10 @@ html {
 
 
 /* Landing Page */
-.file-upload {
+.file-upload, .uploaded {
     border: 2px solid black;
-    border-radius: 8px;
-    padding: 40px;
+    border-radius: 12px;
+    padding: 20px;
     width: 80%;
     max-width: 700px;
     margin: auto;
@@ -237,7 +237,7 @@ html {
 
 .drag-area {
     border: 2px dashed #000;
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 20px;
     width: 100%;
     margin-bottom: 10px;
@@ -288,10 +288,10 @@ html {
     align-items: center; 
     justify-content: space-between; 
     border: 1px solid black; 
-    border-radius: 8px; 
+    border-radius: 12px; 
     padding: 10px; 
     font-family: 'Montserrat', sans-serif;
-    font-size: 19px;
+    font-size: 17px;
     font-style: normal;
     font-weight: 700;
     line-height: var(--lineHeights-xl, 24px); /* 126.316% */
@@ -345,7 +345,7 @@ html {
 
 .section-title {
     background-color: var(--primary-color);
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 3px 4px;
     font-family: 'Montserrat', sans-serif;
     font-weight: bold;
@@ -404,7 +404,7 @@ html {
     background-color: var(--primary-color);
     font-weight: 800;
     font-size: 1.5rem;
-    border-radius: 8px;
+    border-radius: 12px;
     width: fit-content;
     padding: 3px 4px;
     color: #191A23;
@@ -1017,4 +1017,97 @@ html {
         margin: 0; 
         width: 100%;
     }
+}
+
+/* UPLOAD.HTML */
+
+.uploaded {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.file-uploaded-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.file{
+    padding: 12px;
+    border: 1px solid #000;
+    border-radius: 12px;
+    display: flex;
+    padding: 16px;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.file-name {
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+}
+
+.file-size {
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.file-title{
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding-left: 5px;
+}
+
+.file-rows{
+    display: flex;
+    flex-direction: row; 
+    align-content: space-between;
+    justify-content: space-between;
+}
+
+.file-rows h5{
+    margin: 0;
+}
+
+.quantity-selector {
+    display: flex;
+    align-items: center;
+    border: 2px solid black;
+    border-radius: 25px;
+    overflow: hidden;
+    height: 30px;
+}
+
+.decrease-btn,
+.increase-btn {
+    background-color: white;
+    color: black;
+    border: none;
+    font-family: 'Arial', sans-serif; 
+    font-size: 16px; 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    font-weight: 500; 
+}
+
+/* Chrome, Safari, Edge, Opera */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.quantity-input {
+    background-color: var(--primary-color);
+    text-align: center;
+    width: 60px;
+    font-size: 16px;
+    color: black;
+    border: none; 
+    appearance: none; 
+    -moz-appearance: textfield; 
 }
