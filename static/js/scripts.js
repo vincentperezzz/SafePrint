@@ -72,3 +72,11 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         }
     });
 });
+
+document.addEventListener('DOMContentLoaded', () => {
+    const browseButton = document.querySelector('.browse-btn');
+    browseButton.addEventListener('click', () => {
+        const url = browseButton.getAttribute('data-url');
+        window.location.href = url;
+    });
+});
