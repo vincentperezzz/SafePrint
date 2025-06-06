@@ -56,6 +56,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    // Quantity Input Increment/Decrement
+    const quantitySelectors = document.querySelectorAll('.quantity-selector');
+
+    quantitySelectors.forEach(selector => {
+        const decreaseBtn = selector.querySelector('.decrease-btn');
+        const increaseBtn = selector.querySelector('.increase-btn');
+        const quantityInput = selector.querySelector('.quantity-input');
+
+        decreaseBtn.addEventListener('click', () => {
+            let currentValue = parseInt(quantityInput.value, 10);
+            const minValue = parseInt(quantityInput.min, 10);
+            if (currentValue > minValue) {
+                quantityInput.value = currentValue - 1;
+            }
+        });
+
+        increaseBtn.addEventListener('click', () => {
+            let currentValue = parseInt(quantityInput.value, 10);
+            const maxValue = parseInt(quantityInput.max, 10);
+            if (currentValue < maxValue) {
+                quantityInput.value = currentValue + 1;
+            }
+        });
+    });
 });
 
 // Smooth scroll for anchor links
@@ -73,6 +98,7 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     });
 });
 
+//TEMPORARILY BROWSE BUTTON FUNCTIONALITY TO LINK TO UPLOAD.HTML
 document.addEventListener('DOMContentLoaded', () => {
     const browseButton = document.querySelector('.browse-btn');
     browseButton.addEventListener('click', () => {
