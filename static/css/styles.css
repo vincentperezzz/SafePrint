@@ -652,7 +652,7 @@ body {
     justify-content: space-between;
     align-items: center;
     width: 1170px;
-    padding: 60px 100px 80px 100px;
+    padding: 5%;
     gap: 40px;
     flex-shrink: 0;
     border-radius: 45px;
@@ -739,6 +739,7 @@ body {
     transform: translateY(2px);
     box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.2);
 }
+
 @media (max-width: 1474px) {
     .feedback-container {
         flex-direction: column;
@@ -747,7 +748,7 @@ body {
 
     .form-container {
         width: 80%;
-        padding: 60px 46px;
+        padding: 5%;
     }
 
     .feedback-form {
