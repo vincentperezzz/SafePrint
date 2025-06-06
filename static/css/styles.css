@@ -21,7 +21,7 @@ body {
 }
 
 html {
-    scroll-padding-top: 160px; /* Adjust this value to match the height of your navbar */
+    scroll-padding-top: 160px; 
 }
 
 /* Navbar styling */
@@ -1169,17 +1169,17 @@ input::-webkit-inner-spin-button {
 
 .switch {
     position: relative;
-    width: 52px; /* Width of the switch */
-    height: 28px; /* Height of the switch */
-    border-radius: 52px; /* Rounded corners */
-    border: 2px solid var(--Colors-Black, #18191F); /* Border color */
-    background: var(--Contra-Blue-100, #E9E7FC); /* Background color */
+    width: 52px; 
+    height: 28px; 
+    border-radius: 52px; 
+    border: 2px solid var(--Colors-Black, #18191F); 
+    background: var(--Contra-Blue-100, #E9E7FC); 
     cursor: pointer;
     display: inline-block;
 }
 
 .switch-input {
-    display: none; /* Hide the default checkbox */
+    display: none; 
 }
 
 .switch-label {
@@ -1197,17 +1197,17 @@ input::-webkit-inner-spin-button {
     position: absolute;
     top: -6px;
     left: -6px;
-    width: 36px; /* Match SVG width */
-    height: 36px; /* Match SVG height */
+    width: 36px; 
+    height: 36px;
     transition: transform 0.3s ease;
 }
 
 .switch-input:checked + .switch-label {
-    background: var(--primary-color); /* Background color when checked */
+    background: var(--primary-color); 
 }
 
 .switch-input:checked + .switch-label .switch-circle {
-    transform: translateX(24px); /* Move the circle to the right */
+    transform: translateX(24px); 
 }
 
 .dropdown {
@@ -1238,68 +1238,31 @@ input::-webkit-inner-spin-button {
     pointer-events: none;
 }
 
-/* Toggle Switch Styles */
-.toggle-switch {
-    position: relative;
-    width: 360px;
-    height: 40px;
-    background-color: #f0f0f0;
-    border-radius: 20px;
+.file-rows.vertical-separator {
     display: flex;
-    align-items: center;
-    cursor: pointer;
-}
-
-.thinner-fixed-label, .thicker-fixed-label {
-    position: absolute;
-    font-size: 14px;
-    font-weight: bold;
-    color: #000;
-    z-index: 999;
-}
-
-.thinner-fixed-label {
-    top: 10px;
-    left: 25px;
-}
-
-.thicker-fixed-label {
-    top: 10px;
-    left: 212px;
-}
-
-.toggle-input {
-    display: none;
-}
-
-.toggle-label {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    display: flex;
+    flex-direction: row;
     align-items: center;
     justify-content: space-between;
-    border-radius: 20px;
-    background-color: #f0f0f0;
-    transition: background-color 0.3s ease;
-    border: 2px solid #000; 
+    gap: 10px;
 }
 
-.toggle-handle {
-    position: absolute;
-    width: 180px;
-    height: 36px;
-    background-color: #ffa500;
-    border-radius: 18px;
-    color: #fff;
-    font-size: 14px;
-    font-weight: bold;
-    text-align: center;
-    line-height: 36px;
-    transition: transform 0.3s ease, background-color 0.3s ease;
-    transform: translateX(0);
-}
+@media (max-width: 830px) {
+    .file-rows.vertical-separator {
+        flex-direction: column;
+        align-items: flex-start; 
+        gap: 10px; 
+    }
 
-.toggle-input:checked + .toggle-label .toggle-handle {
-    transform: translateX(175px);
+    .dropdown {
+        width: 100%; 
+    }
+
+    .page-input {
+        width: 100%;
+    }
+
+    .radio-group {
+        flex-direction: column;
+        align-items: flex-start; 
+    }
 }
