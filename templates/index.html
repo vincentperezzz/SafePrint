@@ -7,8 +7,10 @@ SafePrint
 
 {% block content %}
 <div class="file-upload">
-    <div class="file-upload-title">File Upload</div>
-    <div class="file-upload-subtitle">Add your documents here.</div>
+    <div class="upload-title-wrapper">
+        <div class="file-upload-title">File Upload</div>
+        <div class="file-upload-subtitle">Add your documents here.</div>
+    </div>
     <div class="upload-area">
         <div class="drag-area">
             <img src="{% static 'assets/upload_icon.svg' %}" alt="Upload Icon">
@@ -25,6 +27,30 @@ SafePrint
             <button class="browse-btn" data-url="{% url 'upload' %}">Browse Files</button>
         </div>
     </div>
+    <div class="file upload-completed">
+        <div class="file-rows">
+            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
+            <div class="file-title">
+                <span class="file-name">Abstract</span>
+                <span class="file-size">500KB</span>
+            </div> 
+            <img src="{% static 'assets/delete-icon.svg' %}" alt="Delete Icon" class="delete-icon">
+        </div>
+    </div>
+    <div class="file uploading">
+        <div class="file-rows">
+            <div class="file-title">
+                <span class="file-name">Uploading...</span>
+                <span class="file-size">24% • 30 seconds remaining</span>
+            </div> 
+            <img src="{% static 'assets/pause-icon.svg' %}" alt="Pause Icon" class="pause-icon">
+            <img src="{% static 'assets/delete-icon.svg' %}" alt="Delete Icon" class="delete-icon">
+        </div>
+        <div class="progress-bar">
+            <div class="progress" style="width: 24%;"></div>
+        </div>
+    </div>
+    <button class="proceed-btn" disabled>Proceed</button>
 </div>
 
 <div class="section-container" id="help">

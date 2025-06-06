@@ -209,13 +209,16 @@ html {
 
 
 /* Landing Page */
-.file-upload, .uploaded {
+.file-upload{
     border: 2px solid black;
     border-radius: 12px;
     padding: 20px;
     width: 80%;
     max-width: 700px;
     margin: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
 }
 
 .file-upload-title {
@@ -226,7 +229,6 @@ html {
 .file-upload-subtitle {
     font-size: 0.9rem;
     color: #666;
-    margin-bottom: 20px;
 }
 
 .upload-area {
@@ -296,6 +298,7 @@ html {
     font-weight: 700;
     line-height: var(--lineHeights-xl, 24px); /* 126.316% */
     letter-spacing: -0.2px;
+    background: var(--bgColor-placeholder, #FAFAFA);
 }
 
 .browse-btn {
@@ -1026,6 +1029,12 @@ html {
     flex-direction: column;
     gap: 10px;
     margin-bottom: 30px;
+    border: 2px solid black;
+    border-radius: 12px;
+    padding: 20px;
+    width: 80%;
+    max-width: 700px;
+    margin: auto;
 }
 
 .file-uploaded-title {
@@ -1266,4 +1275,76 @@ input::-webkit-inner-spin-button {
         flex-direction: column;
         align-items: flex-start; 
     }
+}
+
+.file.upload-completed, .uploading {
+    border: 1px solid var(--strokeColor-lightGrey, #cccccc);
+}
+
+.delete-icon, .pause-icon {
+    width: 28px;
+    margin: 5px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.delete-icon:hover, .pause-icon:hover{
+    transform: scale(1.1); 
+}
+
+.delete-icon:active, .pause-icon:active{
+    transform: scale(0.95) translateY(2px); 
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: #fafafa;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress {
+    height: 100%;
+    background-color: #1849d6; 
+    transition: width 0.3s ease;
+}
+
+
+.proceed-btn {
+    display: flex;
+    padding: 10px;
+    height: 50px;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    border-radius: 12px;
+    background: #FFFFFF;
+    border: 1px solid #000; 
+    color: black;
+    box-shadow: 0px 4px 0px 0px #18191F;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 800;
+    font-size: 1.3rem;
+    cursor: pointer;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    text-align: center;
+    width: 100%;
+    margin: 10px auto;
+}
+
+.proceed-btn:hover {
+    background-color: #F5F5F5; 
+    box-shadow: 0px 6px 0px 0px #18191F; 
+}
+
+.proceed-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0px 2px 0px 0px #18191F; 
+}
+
+.proceed-btn:disabled {
+    background-color: #E0E0E0; 
+    color: #A0A0A0; 
+    cursor: not-allowed; 
+    box-shadow: none; 
 }
