@@ -107,7 +107,6 @@ This ensures users can set up the database using MySQL Workbench and configure t
 ## Notes
 - Ensure MySQL is running before starting the Django server.
 - The `.env` file is excluded from version control for security purposes.
-   ```
 
 ## Usage
 
