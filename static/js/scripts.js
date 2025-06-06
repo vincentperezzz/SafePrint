@@ -81,6 +81,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    //Specific Pages Input Event
+    const specificPagesRadio = document.querySelector('input[value="specific-pages"]');
+    const allPagesRadio = document.querySelector('input[value="all"]');
+    const pageInput = document.querySelector('.page-input');
+
+    specificPagesRadio.addEventListener('change', () => {
+        if (specificPagesRadio.checked) {
+            pageInput.disabled = false; 
+            pageInput.focus();
+        }
+    });
+
+    allPagesRadio.addEventListener('change', () => {
+        if (allPagesRadio.checked) {
+            pageInput.disabled = true; 
+        }
+    });
 });
 
 // Smooth scroll for anchor links

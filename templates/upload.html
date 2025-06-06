@@ -39,7 +39,39 @@ SafePrint
                         </svg>
                     </button>
                 </div>
+            </div>
 
+            <div class="file-rows">
+                <h5>Pages to Print</h5>
+                <div class="radio-group">
+                    <label class="radio-option">
+                        <input type="radio" name="page-selection" value="all" checked>
+                        <span class="radio-circle"></span>
+                        <span class="radio-label">All Pages</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="page-selection" value="specific-pages">
+                        <span class="radio-circle"></span>
+                        <span class="radio-label">Specific Pages</span>
+                    </label>
+                </div>
+                <input type="text" id="page-input" class="page-input" placeholder="1-5" disabled>
+            </div>
+
+            <div class="file-rows">
+                <h5>Page Orientation</h5>
+                <div class="radio-group">
+                    <label class="radio-option">
+                        <input type="radio" name="page-orientation" value="portrait" checked>
+                        <span class="radio-circle"></span>
+                        <span class="radio-label">Portrait</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="page-orientation" value="landscape">
+                        <span class="radio-circle"></span>
+                        <span class="radio-label">Landscape</span>
+                    </label>
+                </div>
             </div>
         </div>
     </div>

@@ -1069,6 +1069,7 @@ html {
 
 .file-rows h5{
     margin: 0;
+    line-height: 32px;
 }
 
 .quantity-selector {
@@ -1077,7 +1078,7 @@ html {
     border: 2px solid black;
     border-radius: 25px;
     overflow: hidden;
-    height: 30px;
+    height: 40px;
 }
 
 .decrease-btn,
@@ -1107,7 +1108,61 @@ input::-webkit-inner-spin-button {
     width: 60px;
     font-size: 16px;
     color: black;
-    border: none; 
+    height: 40px;
     appearance: none; 
-    -moz-appearance: textfield; 
+    border: solid 2px black;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center; 
+}
+
+.radio-option input[type="radio"] {
+    border-radius: 29px;
+    border: 1px solid #000;
+    background: #FFF;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    appearance: none; 
+    display: inline-block;
+    position: relative;
+}
+
+.radio-option input[type="radio"]:checked::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 16px;
+    background: var(--primary-color);
+    border-radius: 50%;
+}
+
+.radio-label {
+    font-size: 16px;
+    font-family: "Space Grotesk", sans-serif;
+    color: black;
+    margin-left: 10px;
+}
+
+.page-input {
+    width: 150px;
+    height: 40px;
+    border: 2px solid black;
+    border-radius: 15px;
+    text-align: center;
+    font-size: 16px;
+    background-color: #f0f0ff;
+    color: black;
+    font-family: "Space Grotesk", sans-serif;
+}
+
+.radio-group {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
 }
