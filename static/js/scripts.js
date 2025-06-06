@@ -26,6 +26,14 @@ document.addEventListener('DOMContentLoaded', () => {
         menu.classList.toggle('active');
     });
 
+    // Close navbar when a link is clicked in mobile view
+    const menuLinks = menu.querySelectorAll('a');
+    menuLinks.forEach(link => {
+        link.addEventListener('click', () => {
+            hamburger.classList.remove('active');
+            menu.classList.remove('active');
+        });
+    });
 
     // FAQ Card Toggle Functionality
     const faqCards = document.querySelectorAll('.faq-card');
@@ -50,3 +58,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// Smooth scroll for anchor links
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function(e) {
+        e.preventDefault();
+        const targetId = this.getAttribute('href').substring(1);
+        const targetElement = document.getElementById(targetId);
+        
+        if (targetElement) {
+            targetElement.scrollIntoView({
+                behavior: 'smooth'
+            });
+        }
+    });
+});
