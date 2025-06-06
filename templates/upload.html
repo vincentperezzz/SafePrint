@@ -41,7 +41,7 @@ SafePrint
                 </div>
             </div>
 
-            <div class="file-rows">
+            <div class="file-rows vertical-separator">
                 <h5>Pages to Print</h5>
                 <div class="radio-group">
                     <label class="radio-option">
@@ -58,7 +58,7 @@ SafePrint
                 <input type="text" id="page-input" class="page-input" placeholder="1-5" disabled>
             </div>
 
-            <div class="file-rows">
+            <div class="file-rows vertical-separator">
                 <h5>Page Orientation</h5>
                 <div class="radio-group">
                     <label class="radio-option">
@@ -89,7 +89,7 @@ SafePrint
                 </div>
             </div>
 
-            <div class="file-rows">
+            <div class="file-rows vertical-separator">
                 <h5>Paper Size</h5>
                 <div class="dropdown">
                     <select class="dropdown-select">
@@ -106,20 +106,20 @@ SafePrint
                 </div>
             </div>
 
-            <div class="file-rows">
+            <div class="file-rows vertical-separator">
                 <h5>Quality of the Paper</h5>
-                <div class="toggle-switch">
-                    <span class="thinner-fixed-label">70 GSM (thinner)</span>
-                    <span class="thicker-fixed-label">80 GSM (thicker)</span>
-                    <input type="checkbox" id="paper-quality-toggle" class="toggle-input">
-                    <label for="paper-quality-toggle" class="toggle-label">
-                        <span class="toggle-handle"></span>
-                    </label>
+                <div class="dropdown">
+                    <select id="paper-quality-dropdown" class="dropdown-select">
+                        <option value="80gsm">80 GSM (thicker)</option>
+                        <option value="70gsm">70 GSM (thinner)</option>
+                    </select>
+                    <span class="dropdown-arrow">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                            <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span>
                 </div>
             </div>
-
-
-
 
         </div>
     </div>
