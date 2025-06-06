@@ -73,6 +73,54 @@ SafePrint
                     </label>
                 </div>
             </div>
+
+            <div class="file-rows">
+                <h5>Print in Grayscale</h5>
+                <div class="switch">
+                    <input type="checkbox" id="grayscale-toggle" class="switch-input">
+                    <label for="grayscale-toggle" class="switch-label">
+                        <span class="switch-circle">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none">
+                                <rect x="1" y="1" width="34" height="34" rx="17" fill="white" stroke="#18191F" stroke-width="2"/>
+                                <rect x="11" y="11" width="14" height="14" rx="7" stroke="#18191F" stroke-width="2"/>
+                            </svg>
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="file-rows">
+                <h5>Paper Size</h5>
+                <div class="dropdown">
+                    <select class="dropdown-select">
+                        <option value="auto">Auto (8.5x13in)</option>
+                        <option value="letter">Letter (8.5x11in)</option>
+                        <option value="legal">Legal (8.5x14in)</option>
+                        <option value="a4">A4 (8.3x11.7in)</option>
+                    </select>
+                    <span class="dropdown-arrow">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                            <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span>
+                </div>
+            </div>
+
+            <div class="file-rows">
+                <h5>Quality of the Paper</h5>
+                <div class="toggle-switch">
+                    <span class="thinner-fixed-label">70 GSM (thinner)</span>
+                    <span class="thicker-fixed-label">80 GSM (thicker)</span>
+                    <input type="checkbox" id="paper-quality-toggle" class="toggle-input">
+                    <label for="paper-quality-toggle" class="toggle-label">
+                        <span class="toggle-handle"></span>
+                    </label>
+                </div>
+            </div>
+
+
+
+
         </div>
     </div>
 </div>
