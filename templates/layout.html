@@ -17,7 +17,7 @@
     <header>
         <nav class="navbar">
             <div class="max-width">
-                <a class="navbar-brand" href="{% url 'index' %}">
+                <a class="navbar-brand" href="{% url 'home' %}">
                     <img src="{% static 'assets/nanoprint-logo.png' %}" alt="NanoPrint Logo" class="logo">
                     <div class="brand-text">
                         <span class="brand-title">NanoPrint</span>
@@ -30,12 +30,12 @@
                     <span class="bar"></span>
                 </div>
                 <ul class="menu">
-                    <li><a href="{% url 'index' %}#help" class="menu-btn">Help</a></li>
-                    <li><a href="{% url 'index' %}#faqs" class="menu-btn">FAQs</a></li>
-                    <li><a href="{% url 'index' %}#about-us" class="menu-btn">About Us</a></li>
+                    <li><a href="{% url 'home' %}#help" class="menu-btn">Help</a></li>
+                    <li><a href="{% url 'home' %}#faqs" class="menu-btn">FAQs</a></li>
+                    <li><a href="{% url 'home' %}#about-us" class="menu-btn">About Us</a></li>
                     <li><a href="#employee-login" class="menu-btn">Employee Login</a></li>
-                    <li><a href="{% url 'index' %}#feedback" class="menu-btn">Feedback</a></li>
-                    <li><a href="{% url 'index' %}#contact-us" class="menu-btn">Contact Us</a></li>
+                    <li><a href="{% url 'home' %}#feedback" class="menu-btn">Feedback</a></li>
+                    <li><a href="{% url 'home' %}#contact-us" class="menu-btn">Contact Us</a></li>
                 </ul>
             </div>
         </nav>
