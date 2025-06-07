@@ -1459,3 +1459,82 @@ input:focus::placeholder {
     font-weight: 800;
     line-height: 54px;
 }
+
+/* Documents Section */
+.documents {
+    background: var(--Light-Pink, #FFE6E6);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0px 5px 0px 0px #191A23;
+}
+
+.document-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.document-item img {
+    width: 40px;
+    height: 40px;
+    margin-right: 10px;
+}
+
+.document-info span {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* Amount Section */
+.amount {
+    background: var(--Yellow, #FFD700);
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0px 5px 0px 0px #191A23;
+}
+
+.amount h3 {
+    font-size: 24px;
+    font-weight: 800;
+}
+
+.amount span {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* Feedback Section */
+.feedback {
+    background: var(--Blue, #66CCFF);
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0px 5px 0px 0px #191A23;
+}
+
+.feedback h3 {
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.feedback p {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.stars {
+    font-size: 20px;
+    color: gold;
+    margin: 10px 0;
+}
+
+.feedback-btn {
+    background: black;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    cursor: pointer;
+}
