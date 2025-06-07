@@ -6,124 +6,17 @@ SafePrint
 {% endblock %}
 
 {% block content %}
-<div class="uploaded">
-    <div class="file-uploaded-title">This is Confirmation</div>
-    <div class="browse-area">
-        <span class="browse-text">Upload more Files</span>
-        <button class="browse-btn">Browse Files</button>
+<div class="confirmation">
+    <div class="confirmation-wrapper">
+        <div class="confirmation-title">Thank you! Please approach to our personnel for payment.</div>
+        <div class="confirmation-subtitle">Please provide your Customer ID to our personnel</div>
     </div>
-    <div class="uploaded-files">
-        <div class="file">
-            <div class="file-rows">
-                <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
-                <div class="file-title">
-                    <span class="file-name">Abstract</span>
-                    <span class="file-size">500KB</span>
-                </div> 
-                <img src="{% static 'assets/delete-icon.svg' %}" alt="Delete Icon" class="delete-icon">
-            </div>
 
-             <div class="file-rows">
-                <h5>Copies</h5>
-                <div class="quantity-selector">
-                    <button class="decrease-btn">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="19" height="16" viewBox="0 0 19 16" fill="none">
-                            <path d="M4.50732 8H14.5372" stroke="#18191F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                    <input id="num_copies" type="number" class="quantity-input" value="1" min="1" max="500">
-                    <button class="increase-btn">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="19" height="16" viewBox="0 0 19 16" fill="none">
-                            <path d="M9.52246 3.625V12.375" stroke="#18191F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M4.50732 8H14.5372" stroke="#18191F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
-            <div class="file-rows vertical-separator">
-                <h5>Pages to Print</h5>
-                <div class="radio-group">
-                    <label class="radio-option">
-                        <input type="radio" name="page-selection" value="all" checked>
-                        <span class="radio-circle"></span>
-                        <span class="radio-label">All Pages</span>
-                    </label>
-                    <label class="radio-option">
-                        <input type="radio" name="page-selection" value="specific-pages">
-                        <span class="radio-circle"></span>
-                        <span class="radio-label">Specific Pages</span>
-                    </label>
-                </div>
-                <input type="text" id="page-input" class="page-input" placeholder="1-5" disabled>
-            </div>
-
-            <div class="file-rows vertical-separator">
-                <h5>Page Orientation</h5>
-                <div class="radio-group">
-                    <label class="radio-option">
-                        <input type="radio" name="page-orientation" value="portrait" checked>
-                        <span class="radio-circle"></span>
-                        <span class="radio-label">Portrait</span>
-                    </label>
-                    <label class="radio-option">
-                        <input type="radio" name="page-orientation" value="landscape">
-                        <span class="radio-circle"></span>
-                        <span class="radio-label">Landscape</span>
-                    </label>
-                </div>
-            </div>
-
-            <div class="file-rows">
-                <h5>Print in Grayscale</h5>
-                <div class="switch">
-                    <input type="checkbox" id="grayscale-toggle" class="switch-input">
-                    <label for="grayscale-toggle" class="switch-label">
-                        <span class="switch-circle">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none">
-                                <rect x="1" y="1" width="34" height="34" rx="17" fill="white" stroke="#18191F" stroke-width="2"/>
-                                <rect x="11" y="11" width="14" height="14" rx="7" stroke="#18191F" stroke-width="2"/>
-                            </svg>
-                        </span>
-                    </label>
-                </div>
-            </div>
-
-            <div class="file-rows vertical-separator">
-                <h5>Paper Size</h5>
-                <div class="dropdown">
-                    <select class="dropdown-select">
-                        <option value="auto">Auto (8.5x13in)</option>
-                        <option value="letter">Letter (8.5x11in)</option>
-                        <option value="legal">Legal (8.5x14in)</option>
-                        <option value="a4">A4 (8.3x11.7in)</option>
-                    </select>
-                    <span class="dropdown-arrow">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
-                            <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </span>
-                </div>
-            </div>
-
-            <div class="file-rows vertical-separator">
-                <h5>Quality of the Paper</h5>
-                <div class="dropdown">
-                    <select id="paper-quality-dropdown" class="dropdown-select">
-                        <option value="80gsm">80 GSM (thicker)</option>
-                        <option value="70gsm">70 GSM (thinner)</option>
-                    </select>
-                    <span class="dropdown-arrow">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
-                            <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </span>
-                </div>
-            </div>
-
-        </div>
+    <div class="customer-id">
+        <span class="customer-id-label">Customer ID</span>
+        <span class="customer-id-value">#CID-4405</span>
     </div>
-    <button class="proceed-btn">Proceed</button>
+    <button class="proceed-btn">Finish Transaction</button>
 </div>
 
 {% endblock %}
