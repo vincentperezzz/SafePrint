@@ -1172,8 +1172,8 @@ input::-webkit-inner-spin-button {
 }
 
 .page-input:focus {
-    outline: none; 
     background-color: #FFF;  
+    border: 3px solid black; 
 }
 
 input:focus::placeholder {
@@ -1198,7 +1198,18 @@ input:focus::placeholder {
 }
 
 .switch-input {
-    display: none; 
+    opacity: 0; /* Makes the input invisible but still focusable */
+    width: 100%; /* Ensures it covers the switch area */
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    cursor: pointer;
+}
+
+.switch-input:focus + .switch-label {
+    border: 1px solid black; 
+    outline: none;
 }
 
 .switch-label {
@@ -1247,6 +1258,16 @@ input:focus::placeholder {
     padding: 0 0 0 10px;
     appearance: none; 
     cursor: pointer;
+}
+
+.dropdown-select:focus {
+    border: 3px solid black; 
+    outline: none;  
+}
+
+.dropdown-select:focus + .dropdown-arrow {
+    width: 34px;
+    height: 35px;
 }
 
 .dropdown-arrow {
