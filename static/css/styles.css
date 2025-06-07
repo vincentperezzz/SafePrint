@@ -1403,3 +1403,59 @@ input:focus::placeholder {
 .file.upload-error.file-size{
     color: var(--red-color);
 }
+
+/* CONFIRMATION HTML */
+
+.confirmation {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 30px;
+    border: 2px solid black;
+    border-radius: 12px;
+    padding: 20px;
+    width: 80%;
+    max-width: 700px;
+    margin: auto;
+}
+
+.confirmation-title {
+    font-size: 1.3rem;
+    font-weight: bold;
+}
+
+.confirmation-subtitle {
+    font-size: 1rem;
+    color: #666;
+}
+
+.customer-id {
+    display: flex;
+    padding: 20px 40px;
+    justify-content: space-between;
+    align-items: center;
+    align-self: stretch;
+    border-radius: 16px;
+    border: 1px solid var(--Dark, #191A23);
+    background: var(--Green, #B9FF66);
+    box-shadow: 0px 5px 0px 0px #191A23;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    color: black;
+}
+
+.customer-id-label {
+    font-size: 2rem;
+    font-weight: 600;
+    color: black;
+}
+
+.customer-id-value {
+    text-align: center;
+    font-family: Montserrat;
+    font-size: 44px;
+    font-style: normal;
+    font-weight: 800;
+    line-height: 54px;
+}
