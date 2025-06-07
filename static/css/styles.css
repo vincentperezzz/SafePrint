@@ -1443,6 +1443,7 @@ input:focus::placeholder {
     font-size: 16px;
     font-weight: 800;
     color: black;
+    margin-bottom: 10px;
 }
 
 .customer-id-label {
@@ -1460,18 +1461,54 @@ input:focus::placeholder {
     line-height: 54px;
 }
 
-/* Documents Section */
+.details-title{
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 5px;
+}
+
+.details-section{
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+}
+
+.details-section .right {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
 .documents {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     background: var(--Light-Pink, #FFE6E6);
     border-radius: 16px;
     padding: 20px;
     box-shadow: 0px 5px 0px 0px #191A23;
+    border: 1px solid var(--Dark, #191A23);
+    max-width: 385px;
+    width: 100%;
 }
 
 .document-item {
     display: flex;
     align-items: center;
-    margin-bottom: 10px;
+    background: var(--White, #FFFFFF);
+    height: 72px;
+    padding: 16px;
+    flex-direction: row;
+    align-items: flex-start;
+    border-radius: 16px;
+    border: 1px solid var(--light-gray-color, #E0E0E0);
+}
+
+.document-info{
+    display: flex;
+    flex-direction: column;
+    width: 100%;
 }
 
 .document-item img {
@@ -1480,37 +1517,56 @@ input:focus::placeholder {
     margin-right: 10px;
 }
 
+.document-info h6 {
+    margin: 0;
+    font-size: 14px;
+
+}
+
 .document-info span {
     display: block;
     font-size: 14px;
     font-weight: 600;
+    color:#7e7e7e;
 }
 
 /* Amount Section */
 .amount {
-    background: var(--Yellow, #FFD700);
+    background: var(--primary-color);
     border-radius: 16px;
     padding: 20px;
     text-align: center;
-    box-shadow: 0px 5px 0px 0px #191A23;
+    border: 1px solid var(--Dark, #191A23);
 }
 
 .amount h3 {
-    font-size: 24px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 42px;
     font-weight: 800;
+    margin: 0;
 }
 
 .amount span {
     font-size: 16px;
     font-weight: 600;
+    line-height: 1.5;
+}
+
+.document-id{
+    font-family: 'Montserrat', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    width: 60%;
+    text-align: right;
+    padding-top: 7px;
 }
 
 /* Feedback Section */
 .feedback {
-    background: var(--Blue, #66CCFF);
+    background: #00c6ae;
     border-radius: 16px;
     padding: 20px;
-    text-align: center;
+    border: 1px solid var(--Dark, #191A23);
     box-shadow: 0px 5px 0px 0px #191A23;
 }
 
@@ -1522,12 +1578,11 @@ input:focus::placeholder {
 .feedback p {
     font-size: 14px;
     font-weight: 600;
+    margin: 0;
 }
 
 .stars {
-    font-size: 20px;
-    color: gold;
-    margin: 10px 0;
+    margin: 5px 0 10px 0;
 }
 
 .feedback-btn {
