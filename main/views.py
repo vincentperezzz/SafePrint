@@ -9,3 +9,6 @@ def upload_view(request):
 def confirmation(request):
     stars = range(4) 
     return render(request, 'confirmation.html', {'stars': stars})
+
+def login_view(request):
+    return render(request, 'login.html')
