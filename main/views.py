@@ -5,3 +5,6 @@ def index_view(request):
 
 def upload_view(request):
     return render(request, 'upload.html')
+
+def confirmation(request):
+    return render(request, 'confirmation.html')

@@ -120,7 +120,7 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 
 //TEMPORARILY BROWSE BUTTON FUNCTIONALITY TO LINK TO UPLOAD.HTML
 document.addEventListener('DOMContentLoaded', () => {
-    const browseButton = document.querySelector('.browse-btn');
+    const browseButton = document.querySelector('.temporary-link');
     browseButton.addEventListener('click', () => {
         const url = browseButton.getAttribute('data-url');
         window.location.href = url;
