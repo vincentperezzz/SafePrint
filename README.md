@@ -13,7 +13,7 @@ SafePrint is a Django web application designed to provide a secure and efficient
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/SafePrint.git
+   git clone https://github.com/vincentperezzz/SafePrint.git
    ```
 
 2. Navigate to the project directory:
