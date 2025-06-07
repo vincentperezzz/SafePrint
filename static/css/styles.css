@@ -1173,8 +1173,11 @@ input::-webkit-inner-spin-button {
 
 .page-input:focus {
     outline: none; 
-    background-color: #FFF;
-    border-color: var(--primary-color); 
+    background-color: #FFF;  
+}
+
+input:focus::placeholder {
+    color: transparent;
 }
 
 .radio-group {

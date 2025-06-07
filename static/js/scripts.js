@@ -97,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
     allPagesRadio.addEventListener('change', () => {
         if (allPagesRadio.checked) {
             pageInput.disabled = true; 
+            pageInput.value = ''; 
         }
     });
 
