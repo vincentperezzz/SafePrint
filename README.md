@@ -82,7 +82,7 @@ SafePrint is a Django web application designed to provide a secure and efficient
    DJANGO_SECRET_KEY=your-secret-key
    DB_NAME=SAFEPRINT_DB
    DB_USER=SAFEPRINT_ADMIN
-   DB_PASSWORD=MYsQL^db0DGPcp
+   DB_PASSWORD=SAFEPRINT_PASSWORD
    DB_HOST=localhost
    DB_PORT=3306
    ```
