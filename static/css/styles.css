@@ -1415,7 +1415,7 @@ input:focus::placeholder {
     border-radius: 12px;
     padding: 20px;
     width: 80%;
-    max-width: 700px;
+    max-width: 800px;
     margin: auto;
     margin-bottom: 20px;
 }
@@ -1495,32 +1495,45 @@ input:focus::placeholder {
 
 .document-item {
     display: flex;
-    align-items: center;
     background: var(--White, #FFFFFF);
     height: 72px;
     padding: 16px;
     flex-direction: row;
-    align-items: flex-start;
     border-radius: 16px;
+    justify-content: space-between;
     border: 1px solid var(--light-gray-color, #E0E0E0);
 }
 
-.document-info{
+.document-info {
     display: flex;
     flex-direction: column;
-    width: 100%;
+    flex: 1; /* Allow the container to grow and shrink dynamically */
+    overflow: hidden; /* Ensure the content respects the container's boundaries */
+    min-width: 0; /* Allow the container to shrink smaller than its content */
+}
+
+.document-info h6 {
+    width: 100%; 
+    white-space: nowrap; 
+    overflow: hidden;
+    text-overflow: ellipsis; 
+    font-size: 14px; 
+    font-weight: 600; 
+    margin: 0;
 }
 
 .document-item img {
     width: 40px;
     height: 40px;
-    margin-right: 10px;
 }
 
-.document-info h6 {
-    margin: 0;
-    font-size: 14px;
-
+.document-item-wrapper{
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    flex: 1; 
+    min-width: 0; 
 }
 
 .document-info span {
@@ -1556,7 +1569,6 @@ input:focus::placeholder {
     font-family: 'Montserrat', sans-serif;
     font-size: 1rem;
     font-weight: 600;
-    width: 60%;
     text-align: right;
     padding-top: 7px;
 }
@@ -1597,12 +1609,16 @@ input:focus::placeholder {
     cursor: pointer;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1000px) {
     .confirmation {
         width: 90%;
         padding: 15px;
     }
 
+    /* .document-info {
+        max-width: 80%; 
+    } */
+    
     .customer-id {
         flex-direction: column;
         align-items: center;
