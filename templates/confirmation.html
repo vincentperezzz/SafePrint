@@ -8,7 +8,7 @@ SafePrint
 {% block content %}
 <div class="confirmation">
     <div class="confirmation-wrapper">
-        <div class="confirmation-title">Thank you! Please approach to our personnel for payment.</div>
+        <div class="confirmation-title">Thank you! Please approach to our personnel for payment</div>
         <div class="confirmation-subtitle">Please provide your Customer ID to our personnel</div>
     </div>
 
@@ -16,6 +16,41 @@ SafePrint
         <span class="customer-id-label">Customer ID</span>
         <span class="customer-id-value">#CID-4405</span>
     </div>
+
+    <div class="details-section">
+        <div class="documents">
+            <h3>Your Documents</h3>
+            <div class="document-item">
+                <img src="{% static 'assets/pdf-icon.png' %}" alt="PDF Icon">
+                <div class="document-info">
+                    <span>Abstract.pdf</span>
+                    <span>₱30.00</span>
+                    <span>#DOC-1001</span>
+                </div>
+            </div>
+            <div class="document-item">
+                <img src="{% static 'assets/pdf-icon.png' %}" alt="PDF Icon">
+                <div class="document-info">
+                    <span>School ID.pdf</span>
+                    <span>₱15.00</span>
+                    <span>#DOC-1002</span>
+                </div>
+            </div>
+        </div>
+        <div class="amount">
+            <h3>₱45.00</h3>
+            <span>Amount to Pay</span>
+        </div>
+        <div class="feedback">
+            <h3>How was your Experience?</h3>
+            <p>Your review meant a lot to us!</p>
+            <div class="stars">
+                ★ ★ ★ ★ ★
+            </div>
+            <button class="feedback-btn">Send a Feedback</button>
+        </div>
+    </div>
+
     <button class="proceed-btn">Finish Transaction</button>
 </div>
 
