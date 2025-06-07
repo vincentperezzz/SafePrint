@@ -1171,6 +1171,12 @@ input::-webkit-inner-spin-button {
     font-family: "Space Grotesk", sans-serif;
 }
 
+.page-input:focus {
+    outline: none; 
+    background-color: #FFF;
+    border-color: var(--primary-color); 
+}
+
 .radio-group {
     display: flex;
     flex-direction: row;
@@ -1235,7 +1241,7 @@ input::-webkit-inner-spin-button {
     font-size: 16px;
     font-family: "Space Grotesk", sans-serif;
     color: black;
-    padding: 0 10px;
+    padding: 0 0 0 10px;
     appearance: none; 
     cursor: pointer;
 }
@@ -1243,9 +1249,17 @@ input::-webkit-inner-spin-button {
 .dropdown-arrow {
     position: absolute;
     top: 50%;
-    right: 10px;
+    right: 2px;
+    width: 35px;
+    height: 36px;
     transform: translateY(-50%);
     pointer-events: none;
+    background-color: var(--primary-color); 
+    border-radius: 0 13px 13px 0; 
+}
+
+.dropdown-arrow svg{
+    margin-top: 8px;
 }
 
 .file-rows.vertical-separator {
