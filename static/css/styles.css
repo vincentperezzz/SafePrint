@@ -1570,7 +1570,7 @@ input:focus::placeholder {
     font-size: 1rem;
     font-weight: 600;
     text-align: right;
-    padding-top: 7px;
+    padding: 5px 0 0 10px;
 }
 
 /* Feedback Section */
