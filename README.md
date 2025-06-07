@@ -62,6 +62,8 @@ SafePrint is a Django web application designed to provide a secure and efficient
    Run the following commands to set up the database schema:
    ```
    python manage.py makemigrations
+   ```
+   ```
    python manage.py migrate
    ```
 
