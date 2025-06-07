@@ -13,7 +13,7 @@ SafePrint is a Django web application designed to provide a secure and efficient
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/SafePrint.git
+   git clone https://github.com/vincentperezzz/SafePrint.git
    ```
 
 2. Navigate to the project directory:
@@ -82,7 +82,7 @@ SafePrint is a Django web application designed to provide a secure and efficient
    DJANGO_SECRET_KEY=your-secret-key
    DB_NAME=SAFEPRINT_DB
    DB_USER=SAFEPRINT_ADMIN
-   DB_PASSWORD=MYsQL^db0DGPcp
+   DB_PASSWORD=SAFEPRINT_PASSWORD
    DB_HOST=localhost
    DB_PORT=3306
    ```
@@ -124,6 +124,3 @@ This ensures users can set up the database using MySQL Workbench and configure t
 
 ## Contributing
 Contributions are welcome! Please open an issue or submit a pull request for any improvements or features.
-
-## License
-This project is licensed under the MIT License. See the LICENSE file for details.
