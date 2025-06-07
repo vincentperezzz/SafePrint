@@ -101,6 +101,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Grayscale Toggle Functionality
+    const grayscaleToggle = document.getElementById('grayscale-toggle');
+
+    // Add keydown event listener for toggling the switch with Enter key
+    grayscaleToggle.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            grayscaleToggle.checked = !grayscaleToggle.checked; // Toggle the checked state
+            grayscaleToggle.dispatchEvent(new Event('change')); // Trigger change event if needed
+        }
+    });
+
 }); // END OF DOMContentLoaded
 
 // Smooth scroll for anchor links
