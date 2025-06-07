@@ -7,4 +7,5 @@ def upload_view(request):
     return render(request, 'upload.html')
 
 def confirmation(request):
-    return render(request, 'confirmation.html')
+    stars = range(4) 
+    return render(request, 'confirmation.html', {'stars': stars})
