@@ -1666,7 +1666,7 @@ input:focus::placeholder {
 }
 
 .vertical-navbar {
-    width: 250px;
+    min-width: 250px;
     background-color: var(--secondary-color); 
     color: white;
     display: flex;
@@ -1894,23 +1894,24 @@ input:focus::placeholder {
 }
 
 .document-approvals {
-    margin-top: 20px;
-    padding: 20px;
+    flex: 1;
+    flex-direction: column;
+    padding: 20px 20px 0 20px;
     border-radius: 12px;
-    background-color: var(--light-gray-color);
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: stretch;
 }
 
 .document-approvals-header{
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-family: 'Montserrat', sans-serif;
 }
 
-.document-approvals h2 {
+.document-approvals h2, .completed-jobs h2 {
     font-size: 1.5rem;
     font-weight: bold;
+    font-family: 'Montserrat', sans-serif;
 }
 
 .view-all-btn {
@@ -1942,22 +1943,28 @@ input:focus::placeholder {
 .document-list-container {
     display: flex;
     flex-direction: column;
+    justify-content: space-between; /* Space items between top and bottom */
+    align-items: center; /* Center items horizontally */
     gap: 10px;
     margin-top: 20px;
     border: 2px solid black;
     border-radius: 16px;
     background-color: #f9f9fb;
     padding: 20px;
+    height: 100%; /* Expand to 100% height */
+    
 }
 
 .search-bar {
     display: flex;
     align-items: center;
     gap: 10px;
-    border: 2px solid var(--Colors-Black, #18191F);
-    border-radius: 16px;
     padding: 10px;
-    background-color: #FFF;
+    width: 100%; 
+    border-radius: 24px;
+    border: 1px solid #000;
+    background: #F9F9FB;
+    box-shadow: 8px 8px 48px 8px rgba(0, 0, 0, 0.08);
 }
 
 .search-bar input {
@@ -1991,6 +1998,7 @@ input:focus::placeholder {
     gap: 10px;
     justify-content: center;
     margin-top: 20px;
+    width: 100%;
 }
 
 .deny-btn {
@@ -2039,63 +2047,136 @@ input:focus::placeholder {
     transform: translateY(2px); 
     box-shadow: 0px 2px 0px 0px #18191F; 
 }
+
+.dashboard-rows {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+}
+
+.dashboard-left {
+    flex: 7; 
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    height: 100%;
+}
+
+.dashboard-right {
+    flex: 3; 
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    height: 100%;
+}
+
 .customer-info {
-    margin-top: 20px;
-    padding: 20px;
-    border-radius: 12px;
-    background-color: var(--light-gray-color);
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    flex: 2; 
+    padding: 30px;
     text-align: center;
+    gap: 10px;
+    display: flex;
+    flex-direction: column;
+    border-radius: 24px;
+    border: 1px solid #000;
+    background: #F9F9FB;
+    box-shadow: 8px 8px 48px 8px rgba(0, 0, 0, 0.08);
 }
 
-.customer-info h2 {
-    font-size: 1.5rem;
+.price-display {
+    flex: 1; 
+    padding: 20px;
+    border-radius: 16px;
+    background-color: var(--primary-color);
+    text-align: center;
+    border: 2px solid var(--Colors-Black, #18191F);
     margin-bottom: 10px;
 }
 
-.customer-info p {
-    font-size: 1.2rem;
+.price-display p {
+    font-size: 3rem;
     font-weight: bold;
+    font-family: 'Montserrat', sans-serif;
     margin-bottom: 10px;
+}
+
+.price-display h2 {
+    font-size: 1.5rem;
+    font-weight: bold;
 }
 
 .customer-info input {
-    padding: 10px;
-    border: 1px solid #ccc;
+    border: 1px solid black;
     border-radius: 8px;
     width: 100%;
+    font-size: 4rem;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 1000;
     margin-bottom: 10px;
+    text-align: center;
+    background-color: #FFF;
+}
+
+.customer-info input::placeholder {
+    color: rgba(0, 0, 0, 0.30);
+    font-family: 'Montserrat', sans-serif;
+    font-size: 4rem;
+    font-weight: 1000;
+    text-align: center;
+    line-height: 4rem;
 }
 
 .clear-btn,
 .search-btn {
     padding: 10px 20px;
-    border-radius: 8px;
-    background-color: var(--primary-color);
-    color: black;
+    border-radius: 12px;
+    border: 2px solid #18191F; 
+    background-color: #FFF;
+    color: #18191F;
     font-weight: bold;
-    border: none;
     cursor: pointer;
-    transition: background-color 0.3s ease;
+    box-shadow: 0px 4px 0px 0px #18191F; 
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    text-align: center;
+    line-height: 1;
+}
+
+.search-btn {
+    line-height: 1.5;
+    font-size: 1.5rem;
 }
 
 .clear-btn:hover,
 .search-btn:hover {
-    background-color: #f5a623;
+    background-color: #F5F5F5; 
+    box-shadow: 0px 6px 0px 0px #18191F;
+}
+
+.clear-btn:active,
+.search-btn:active {
+    transform: translateY(2px); 
+    box-shadow: 0px 2px 0px 0px #18191F; 
 }
 
 .completed-jobs {
-    margin-top: 20px;
+    flex: 1; 
     padding: 20px;
-    border-radius: 12px;
-    background-color: var(--light-gray-color);
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
     text-align: center;
+    align-items: center;
+    gap: 10px;
+    display: flex;
+    flex-direction: column;
+    border-radius: 24px;
+    border: 1px solid #000;
+    background: #F9F9FB;
+    box-shadow: 8px 8px 48px 8px rgba(0, 0, 0, 0.08);
 }
 
-.completed-jobs h2 {
+.completed-jobs h2, .customer-info h2 {
     font-size: 1.5rem;
     margin-bottom: 10px;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: bold;
 }
 
 .completed-jobs img {
@@ -2106,4 +2187,57 @@ input:focus::placeholder {
 .completed-jobs p {
     font-size: 1.2rem;
     font-weight: bold;
+}
+
+@media (max-width: 1700px) {
+    .main-content {
+        padding: 40px;
+    }
+
+    .completed-jobs {
+        padding: 30px;
+        width: 100%;
+    }
+
+    .customer-info input {
+        border: 1px solid black;
+        border-radius: 8px;
+        width: 100%;
+        font-size: 2rem;
+        font-weight: 800;
+        margin-bottom: 10px;
+        text-align: center;
+        background-color: #FFF;
+    }
+
+    .customer-info input::placeholder {
+        color: rgba(0, 0, 0, 0.30);
+        font-size: 2rem;
+        font-weight: 800;
+        text-align: center;
+        line-height: 2rem;
+    }
+
+    .search-btn {
+        line-height: 1;
+        font-size: 1.3rem;
+    }
+
+    .view-all-btn {
+        padding: 10px;
+        font-size: 1rem;
+    }
+
+    .dashboard-rows {
+        text-align: left;
+        align-items: flex-start;
+    }
+
+    .dashboard-left, .dashboard-right {
+        width: 100%;
+    }
+
+    .customer-info, .price-display, .completed-jobs {
+        width: 100%;
+    }
 }
