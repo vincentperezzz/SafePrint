@@ -1673,7 +1673,7 @@ input:focus::placeholder {
     flex-direction: column;
     align-items: center;
     padding: 20px;
-    margin: 30px 0 30px 30px;
+    margin: 1.5% 0 1.5% 1.5%;
     border-radius: 20px;
 }
 
@@ -1783,13 +1783,30 @@ input:focus::placeholder {
     transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
+@media (max-height: 730px) {
+    .vertical-navbar {
+        overflow-y: auto; 
+        max-height: 100vh; 
+        padding: 20px;
+    }
+
+    .navbar-menu {
+        gap: 12px; 
+    }
+
+    .navbar-item {
+        padding: 12px 20px; 
+        font-size: 14px; 
+    }
+}
+
 /* Dashboard Content */
 .main-content {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
     gap: 20px;
-    padding: 40px;
+    padding: 1.5%;
     overflow-y: auto;   
 }
 
@@ -1855,7 +1872,7 @@ input:focus::placeholder {
 .stat-card {
     padding: 20px;
     border-radius: 16px;
-    width: 355px;
+    width: 28%;
     text-align: left;
     font-family: 'Montserrat', sans-serif;
     font-weight: 800;
@@ -1927,6 +1944,11 @@ input:focus::placeholder {
     box-shadow: 0px 4px 0px 0px #18191F; 
     transition: transform 0.1s ease, box-shadow 0.1s ease;
     text-align: center;
+}
+
+.specific-view-all-btn {
+    width: 100px;
+    padding: 8px;
 }
 
 .view-all-btn:hover {
@@ -2190,10 +2212,6 @@ input:focus::placeholder {
 }
 
 @media (max-width: 1700px) {
-    .main-content {
-        padding: 40px;
-    }
-
     .completed-jobs {
         padding: 30px;
         width: 100%;
@@ -2224,13 +2242,14 @@ input:focus::placeholder {
     }
 
     .view-all-btn {
-        padding: 10px;
         font-size: 1rem;
+        padding: 8px;
     }
 
     .dashboard-rows {
         text-align: left;
-        align-items: flex-start;
+        align-items: center;
+        align-content: flex-start;
     }
 
     .dashboard-left, .dashboard-right {
