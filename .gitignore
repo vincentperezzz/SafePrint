@@ -20,3 +20,7 @@ env/
 
 # Ignore environment files
 .env
+
+# Ignore pyc files in the main folder and SafePrint folders
+/main/*.pyc
+/SafePrint/*.pyc

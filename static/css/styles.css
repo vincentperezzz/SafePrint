@@ -1761,7 +1761,6 @@ input:focus::placeholder {
     background-color: var(--primary-color);
     color: #191A23;
     box-shadow: 0px 2px 0px 0px #18191F;
-    transform: translateY(2px);
     cursor: default;
     transition: none;
 }
@@ -1943,15 +1942,15 @@ input:focus::placeholder {
 .document-list-container {
     display: flex;
     flex-direction: column;
-    justify-content: space-between; /* Space items between top and bottom */
-    align-items: center; /* Center items horizontally */
+    justify-content: space-between;
+    align-items: center; 
     gap: 10px;
     margin-top: 20px;
     border: 2px solid black;
     border-radius: 16px;
     background-color: #f9f9fb;
     padding: 20px;
-    height: 100%; /* Expand to 100% height */
+    height: 100%; 
     
 }
 
