@@ -2357,15 +2357,23 @@ input:focus:required::placeholder {
     font-weight: 800;
     line-height: 28px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
+}
+
+.btn-login:hover {
+    background-color: #F5F5F5; 
+    box-shadow: 0px 6px 0px 0px #18191F;
+    transform: translateY(-2px);
+}
+
+.btn-login:active {
+    transform: translateY(2px); /* Pressed effect */
+    box-shadow: 0px 2px 0px 0px #18191F;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
 .btn-login svg {
     margin-left: 6px;
-}
-
-.btn-login:hover {
-    background: #FBB41D;
 }
 
 .login-links {
