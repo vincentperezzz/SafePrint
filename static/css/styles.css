@@ -1673,7 +1673,7 @@ input:focus::placeholder {
     flex-direction: column;
     align-items: center;
     padding: 20px;
-    margin: 30px;
+    margin: 30px 0 30px 30px;
     border-radius: 20px;
 }
 
@@ -1848,33 +1848,46 @@ input:focus::placeholder {
 .dashboard-stats {
     display: flex;
     gap: 20px;
-    justify-content: space-between;
 }
 
 .stat-card {
-    flex: 1;
     padding: 20px;
-    border-radius: 12px;
-    text-align: center;
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: bold;
-    font-size: 1.2rem;
+    border-radius: 16px;
+    width: 355px;
+    text-align: left;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 800;
+    font-size: 3rem;
     box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
 }
 
+.stat-card p {
+    margin: 0;
+    text-align: right;
+    padding-right: 10px;
+    line-height: 1;
+}
+
+.stat-card h3 {
+    margin: 0;
+    text-align: left;
+    font-weight: 700;
+}
+
 .stat-card.green {
-    background-color: var(--green-color);
-    color: black;
+    border: 2px solid var(--Colors-Black, #18191F);
+    background: var(--Accent-Green, #B9FF66);
 }
 
 .stat-card.red {
-    background-color: var(--red-color);
+    border: 2px solid var(--Colors-Black, #18191F);
+    background: var(--Accent-Red, #F33700);
     color: white;
 }
 
 .stat-card.yellow {
-    background-color: var(--primary-color);
-    color: black;
+    border: 2px solid var(--Colors-Black, #18191F);
+    background: var(--Accent-Primary-Color, #FBB41D);
 }
 
 .document-approvals {
