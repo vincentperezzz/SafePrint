@@ -1711,8 +1711,9 @@ input:focus::placeholder {
     background-color: var(--light-gray-color);
     width: fit-content;
     padding: 3px 5px;
-    border-radius: 7px;
+    border-radius: 4px;
     color: black;
+    line-height: 0.8rem;
 }
 
 /* Navbar Menu */
@@ -1742,6 +1743,12 @@ input:focus::placeholder {
     padding: 15px 18px;
     transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
     cursor: pointer;
+}
+
+.navbar-item:hover {
+    background-color: var(--light-gray-color);
+    color: #191A23;
+    box-shadow: 0px 6px 0px 0px #18191F;
 }
 
 .navbar-item:active {
@@ -1778,17 +1785,13 @@ input:focus::placeholder {
 }
 
 /* Dashboard Content */
-.dashboard-content {
+.main-content {
     flex-grow: 1;
-    padding: 20px;
-    overflow-y: auto;
-}
-
-.dashboard-wrapper {
     display: flex;
     flex-direction: column;
     gap: 20px;
-    padding: 20px;
+    padding: 40px;
+    overflow-y: auto;   
 }
 
 .dashboard-rows {
