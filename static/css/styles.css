@@ -2112,7 +2112,7 @@ input:focus::placeholder {
     font-size: 4rem;
     font-family: 'Montserrat', sans-serif;
     font-weight: 1000;
-    margin-bottom: 10px;
+    margin: 10px 0;
     text-align: center;
     background-color: #FFF;
 }
@@ -2177,6 +2177,7 @@ input:focus::placeholder {
     margin-bottom: 10px;
     font-family: 'Montserrat', sans-serif;
     font-weight: bold;
+    margin: 0;
 }
 
 .completed-jobs img {
