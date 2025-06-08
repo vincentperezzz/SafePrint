@@ -1763,6 +1763,7 @@ input:focus::placeholder {
     box-shadow: 0px 2px 0px 0px #18191F;
     cursor: default;
     transition: none;
+    pointer-events: none; 
 }
 
 .navbar-item.logout {
