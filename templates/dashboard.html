@@ -1,0 +1,62 @@
+{% extends "dashboard_layout.html" %}
+{% load static %}
+
+{% block title %}
+Dashboard
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-rows">
+    <div class="header-left">
+        <img src="{% static 'assets/avatar.svg' %}" alt="User Avatar" class="user-avatar">
+        <h1>Hello, Vincent!</h1>
+    </div>
+    <button class="need-assistance-btn">Need Assistance?</button>
+</div>
+
+<div class="dashboard-stats">
+    <div class="stat-card green">
+        <h3>Print Jobs <br>Completed</h3>
+        <p>2</p>
+    </div>
+    <div class="stat-card red">
+        <h3>Printing <br>Errors</h3>
+        <p>1</p>
+    </div>
+    <div class="stat-card yellow">
+        <h3>Pending <br>Customers</h3>
+        <p>2</p>
+    </div>
+</div>
+
+<div class="document-approvals">
+    <h2>Pending Document Approvals</h2>
+    <button class="view-all-btn">View all Pending Documents</button>
+    <div class="search-bar">
+        <input type="text" placeholder="Search by Name or Document ID">
+    </div>
+    <div class="no-documents">
+        <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
+        <p>No documents, please enter Customer ID</p>
+    </div>
+    <div class="approval-buttons">
+        <button class="deny-btn">Deny All</button>
+        <button class="approve-btn">Approve All Documents</button>
+    </div>
+</div>
+
+<div class="customer-info">
+    <h2>Price to Pay</h2>
+    <p>₱0</p>
+    <input type="text" placeholder="Enter the Customer ID">
+    <button class="clear-btn">Clear</button>
+    <button class="search-btn">Search by Customer ID</button>
+</div>
+
+<div class="completed-jobs">
+    <h2>Print Jobs Completed</h2>
+    <button class="view-all-btn">View all</button>
+    <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
+    <p>All Completed!</p>
+</div>
+{% endblock %}
