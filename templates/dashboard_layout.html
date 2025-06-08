@@ -26,12 +26,18 @@
                 </div>
             </div>
             <ul class="navbar-menu">
-                <li><a href="#" class="navbar-item active"><img src="{% static 'assets/dashboard.svg' %}" alt="Dashboard Icon"> Dashboard</a></li>
-                <li><a href="#" class="navbar-item"><img src="{% static 'assets/printing-queue.svg' %}" alt="Printing Queue Icon"> Printing Queue</a></li>
-                <li><a href="#" class="navbar-item"><img src="{% static 'assets/print-completed.svg' %}" alt="Print Completed Icon"> Print Completed</a></li>
-                <li><a href="#" class="navbar-item"><img src="{% static 'assets/printer-status.svg' %}" alt="Printer Status Icon"> Printer Status</a></li>
-                <li><a href="#" class="navbar-item"><img src="{% static 'assets/account-settings.svg' %}" alt="Account Settings Icon"> Account Settings</a></li>
-                <li><a href="#" class="navbar-item logout"><img src="{% static 'assets/logout.svg' %}" alt="Logout Icon"> Log out</a></li>
+                <li><a href="{% url 'dashboard' %}" class="navbar-item {% if 'dashboard' in request.path %}active{% endif %}">
+                    <img src="{% static 'assets/dashboard.svg' %}" alt="Dashboard Icon"> Dashboard</a></li>
+                <li><a href="{% url 'printing_queue' %}" class="navbar-item {% if 'queue' in request.path %}active{% endif %}">
+                    <img src="{% static 'assets/printing-queue.svg' %}" alt="Printing Queue Icon"> Printing Queue</a></li>
+                <li><a href="{% url 'print_completed' %}" class="navbar-item {% if 'completed' in request.path %}active{% endif %}">
+                    <img src="{% static 'assets/print-completed.svg' %}" alt="Print Completed Icon"> Print Completed</a></li>
+                <li><a href="{% url 'printer_status' %}" class="navbar-item {% if 'status' in request.path %}active{% endif %}">
+                    <img src="{% static 'assets/printer-status.svg' %}" alt="Printer Status Icon"> Printer Status</a></li>
+                <li><a href="{% url 'account_settings' %}" class="navbar-item {% if 'settings' in request.path %}active{% endif %}">
+                    <img src="{% static 'assets/account-settings.svg' %}" alt="Account Settings Icon"> Account Settings</a></li>
+                <li><a href="{% url 'login' %}" class="navbar-item logout">
+                    <img src="{% static 'assets/logout.svg' %}" alt="Logout Icon"> Log out</a></li>
             </ul>
         </nav>
 
