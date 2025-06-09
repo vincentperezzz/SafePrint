@@ -8,40 +8,24 @@ Dashboard
 {% block content %}
 <div class="dashboard-rows">
     <div class="header-left">
-        <img src="{% static 'assets/avatar.svg' %}" alt="User Avatar" class="user-avatar">
-        <h1>This is Print Queue!</h1>
+        <h1>Print Queue</h1>
     </div>
     <button class="need-assistance-btn">Need Assistance?</button>
 </div>
 
-<div class="dashboard-stats">
-    <div class="stat-card green">
-        <h3>Print Jobs <br>Completed</h3>
-        <p>2</p>
-    </div>
-    <div class="stat-card red">
-        <h3>Printing <br>Errors</h3>
-        <p>1</p>
-    </div>
-    <div class="stat-card yellow">
-        <h3>Pending <br>Customers</h3>
-        <p>2</p>
-    </div>
-</div>
-
+<hr class="dashboard-divider">
 
 <div class="dashboard-rows">
     
     <div class="dashboard-left">
-        <div class="document-approvals">
-            <div class="document-approvals-header">
+        <div class="pending-document-approvals">
+            <div class="queue-header">
                 <h2>Pending Document Approvals</h2>
-                <button class="view-all-btn">View all Pending Documents</button>
             </div>
             
-            <div class="document-list-container">
-                <div class="search-bar">
-                    <input type="text" placeholder="Search by Name or Document ID">
+            <div class="pending-document-list">
+                <div class="queue-search-bar">
+                    <input type="text" placeholder="Search by Name, Document ID, or Customer ID">
                     <span class="search-icon">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
                             <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -49,40 +33,72 @@ Dashboard
                         </svg>
                     </span>
                 </div>
-                <div class="no-documents">
-                    <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
-                    <p>No documents, please enter Customer ID</p>
+           
+                <div class="queue-list-header">
+                    <div class="queue-col doc-name"><b>Document Name</b></div>
+                    <div class="queue-col doc-customer"><b>Customer ID</b></div>
+                    <div class="queue-col doc-date"><b>Date Submitted</b></div>
+                    <div class="queue-col doc-id"><b>Document ID</b></div>
+                    <div class="queue-col doc-actions"></div>
                 </div>
-                <div class="approval-buttons">
-                    <button class="deny-btn">Deny All</button>
-                    <button class="approve-btn">Approve All Documents</button>
+
+                <div class="queue-row">
+                    <div class="queue-col doc-name">
+                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
+                        <div>
+                            <div class="doc-title">Abstract.pdf</div>
+                            <div class="doc-price">₱30.00</div>
+                        </div>
+                    </div>
+                    <div class="queue-col doc-customer">#CID-4405</div>
+                    <div class="queue-col doc-date">2025-04-10 08:32:55</div>
+                    <div class="queue-col doc-id">#DOC-1001</div>
+                    <div class="queue-col doc-actions">
+                        <button class="queue-deny-btn">Deny</button>
+                        <button class="queue-approve-btn">Approve</button>
+                    </div>
+                </div>
+
+                <div class="queue-row">
+                    <div class="queue-col doc-name">
+                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
+                        <div>
+                            <div class="doc-title">School ID.pdf</div>
+                            <div class="doc-price">₱15.00</div>
+                        </div>
+                    </div>
+                    <div class="queue-col doc-customer">#CID-4405</div>
+                    <div class="queue-col doc-date">2025-04-10 08:33:55</div>
+                    <div class="queue-col doc-id">#DOC-1002</div>
+                    <div class="queue-col doc-actions">
+                        <button class="queue-deny-btn">Deny</button>
+                        <button class="queue-approve-btn">Approve</button>
+                    </div>
+                </div>
+
+                <div class="queue-row">
+                    <div class="queue-col doc-name">
+                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
+                        <div>
+                            <div class="doc-title">English Essay.pdf</div>
+                            <div class="doc-price">₱5.00</div>
+                        </div>
+                    </div>
+                    <div class="queue-col doc-customer">#CID-3298</div>
+                    <div class="queue-col doc-date">2025-04-10 08:25:11</div>
+                    <div class="queue-col doc-id">#DOC-1027</div>
+                    <div class="queue-col doc-actions">
+                        <button class="queue-deny-btn">Deny</button>
+                        <button class="queue-approve-btn">Approve</button>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="dashboard-right">
-        <div class="customer-info">
-            <div class='price-display'>
-                <p>₱45.00</p>
-                <h2>Price to Pay</h2>
+        <div class="on-queue-documents">
+            <div class="queue-header">
+                <h2>On Queue Documents</h2>
             </div>
-            <div class='dashboard-rows'>  
-                <h2>Enter Customer ID</h2>
-                <button class="clear-btn">Clear</button>
-            </div>
-            <input type="text" placeholder="CST-XXXX">
-
-            <button class="search-btn">Search by Customer ID</button>
-        </div>
-
-        <div class="completed-jobs">
-            <div class='dashboard-rows'>
-                <h2>Completed Jobs</h2>
-                <button class="view-all-btn">View all</button>
-            </div>
-            <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
-            <p>All Completed!</p>
         </div>
     </div>
 
