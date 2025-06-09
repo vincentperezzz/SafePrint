@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}
-Dashboard
+Printing Queue
 {% endblock %}
 
 {% block content %}
@@ -14,77 +14,5 @@ Dashboard
     <button class="need-assistance-btn">Need Assistance?</button>
 </div>
 
-<div class="dashboard-stats">
-    <div class="stat-card green">
-        <h3>Print Jobs <br>Completed</h3>
-        <p>2</p>
-    </div>
-    <div class="stat-card red">
-        <h3>Printing <br>Errors</h3>
-        <p>1</p>
-    </div>
-    <div class="stat-card yellow">
-        <h3>Pending <br>Customers</h3>
-        <p>2</p>
-    </div>
-</div>
 
-
-<div class="dashboard-rows">
-    
-    <div class="dashboard-left">
-        <div class="document-approvals">
-            <div class="document-approvals-header">
-                <h2>Pending Document Approvals</h2>
-                <button class="view-all-btn">View all Pending Documents</button>
-            </div>
-            
-            <div class="document-list-container">
-                <div class="search-bar">
-                    <input type="text" placeholder="Search by Name or Document ID">
-                    <span class="search-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                            <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </span>
-                </div>
-                <div class="no-documents">
-                    <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
-                    <p>No documents, please enter Customer ID</p>
-                </div>
-                <div class="approval-buttons">
-                    <button class="deny-btn">Deny All</button>
-                    <button class="approve-btn">Approve All Documents</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="dashboard-right">
-        <div class="customer-info">
-            <div class='price-display'>
-                <p>₱45.00</p>
-                <h2>Price to Pay</h2>
-            </div>
-            <div class='dashboard-rows'>  
-                <h2>Enter Customer ID</h2>
-                <button class="clear-btn">Clear</button>
-            </div>
-            <input type="text" placeholder="CST-XXXX">
-
-            <button class="search-btn">Search by Customer ID</button>
-        </div>
-
-        <div class="completed-jobs">
-            <div class='dashboard-rows'>
-                <h2>Completed Jobs</h2>
-                <button class="view-all-btn">View all</button>
-            </div>
-            <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
-            <p>All Completed!</p>
-        </div>
-    </div>
-
-</div>
 {% endblock %}
