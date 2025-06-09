@@ -2618,6 +2618,7 @@ input:focus::placeholder {
     border-radius: 16px;
     padding: 16px;
     height: 475px; 
+    box-shadow: 0px 6px 0px 0px #18191F;
 }
 
 .queue-search-bar {
@@ -2629,6 +2630,7 @@ input:focus::placeholder {
     border-radius: 16px;
     border: 2px solid #000;
     height: 52px;
+    background: #FFF;
 }
 
 .queue-search-bar input {
@@ -2650,6 +2652,7 @@ input:focus::placeholder {
     padding: 16px;
     border: 1px solid var(--Accent-Mid-Gray, #A19F9F);
     border-radius: 12px;
+    background: #FFF;
 }
 
 .queue-row {
@@ -2669,14 +2672,15 @@ input:focus::placeholder {
     align-items: center;
 }
 
-.doc-name { flex: 1.75; gap: 8px; }
-.doc-customer, .doc-date { flex: 1.3; }
-.doc-id { flex: 0.8; }
-.doc-actions { flex: 1.3; gap: 8px; justify-content: flex-end; }
+.doc-name { flex: 1.75; }
+.doc-customer { flex: 1; }
+.doc-date { flex: 1.3; }
+.doc-id { flex: 0.7; }
+.doc-actions { flex: 1.3; justify-content: flex-end; }
 
 .pdf-icon {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     margin-right: 8px;
 }
 
@@ -2707,7 +2711,7 @@ input:focus::placeholder {
 }
 
 .queue-deny-btn:hover {
-    background-color: #F95A2C; 
+    background-color: #E65C22; 
     box-shadow: 0px 6px 0px 0px #18191F;
 }
 
@@ -2740,6 +2744,7 @@ input:focus::placeholder {
     box-shadow: 0px 2px 0px 0px #18191F; 
 }
 
+/* On Queue Documents */
 .on-queue-documents {
     flex: 1;
     flex-direction: column;
@@ -2753,4 +2758,136 @@ input:focus::placeholder {
     font-size: 21px;
     font-weight: bold;
     font-family: 'Montserrat', sans-serif;
+}
+
+.on-queue-documents-list {
+    display: flex;
+    flex-direction: column;
+    align-items: center; 
+    gap: 8px;
+    margin-top: 15px;
+    border: 2px solid black;
+    border-radius: 16px;
+    padding: 16px;
+    height: 475px;
+    background: #E9FEE4; 
+    box-shadow: 0px 6px 0px 0px #18191F;
+}
+
+.on-queue-header {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 50px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 16px;
+    padding: 16px;
+    border: 1px solid var(--strokeColor-lightGrey, #E7E7E7);
+    border-radius: 12px;
+    background: #FFF;
+}
+
+.on-queue-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 69px;
+    padding: 16px;
+    border-radius: 12px;
+    box-sizing: border-box;
+    font-family: 'Montserrat', sans-serif;
+    background: #fff;
+}
+
+.doc-name { flex: 2.5; gap: 10px; }
+.on-queue-header .doc-printer,
+.on-queue-header .doc-approved {
+    flex: 1.2;
+}
+.on-queue-header .doc-id {
+    flex: 0.7;
+}
+.on-queue-header .doc-actions { flex: 0.7; justify-content: flex-end; }
+
+.on-queue-row .doc-printer,
+.on-queue-row .doc-approved {
+    flex: 1.2;
+}
+.on-queue-row .doc-id {
+    flex: 0.7;
+}
+.on-queue-row .doc-actions { flex: 0.7; justify-content: flex-end; }
+
+.on-queue-row .queue-col.doc-printer {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.doc-title {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.doc-price {
+    font-size: 12px;
+    font-weight: 500;
+    color: #6D6D6D;
+}
+
+.doc-printer {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.queue-col .doc-printer {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.doc-approved {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.doc-id {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.printer-status {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 20px;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+
+.printer-online {
+    background: #16A163;
+}
+
+.printer-error {
+    background: #D52323;
+}
+
+.queue-cancel-btn {
+    background: #F95A2C;
+    color: #000;
+    border-radius: 12px;
+    border: 2px solid var(--Colors-Black, #18191F);
+    box-shadow: 0px 2px 0px 0px #18191F;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 12px;
+    font-weight: 800;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.queue-cancel-btn:hover {
+    background-color: #E65C22; 
+    box-shadow: 0px 6px 0px 0px #18191F;
 }
