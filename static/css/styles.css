@@ -2669,10 +2669,27 @@ input:focus::placeholder {
     align-items: center;
 }
 
-.doc-name { flex: 1.75; gap: 8px; }
-.doc-customer, .doc-date { flex: 1.3; }
-.doc-id { flex: 0.8; }
-.doc-actions { flex: 1.3; gap: 8px; justify-content: flex-end; }
+.doc-name { 
+    display: flex;
+    flex: 1.75; 
+    gap: 8px; 
+    min-width: 0;
+    align-items: center;
+}
+
+.doc-customer, .doc-date { 
+    flex: 1.3; 
+}
+
+.doc-id { 
+    flex: 0.8; 
+}  
+
+.doc-actions { 
+    flex: 1.3; 
+    gap: 8px; 
+    justify-content: flex-end; 
+}
 
 .pdf-icon {
     width: 36px;
@@ -2680,9 +2697,23 @@ input:focus::placeholder {
     margin-right: 8px;
 }
 
+.doc-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 0%;
+}
+
 .doc-title {
     font-weight: 600;
     font-size: 12px;
+    min-width: 0;
+    flex: 1 1 0%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    padding-right: 20px;
 }
 
 .doc-price {
@@ -2704,6 +2735,7 @@ input:focus::placeholder {
     gap: 10px;
     margin-right: 8px;
     cursor: pointer;
+    transition: all 0.3s ease;
 }
 
 .queue-deny-btn:hover {
@@ -2728,6 +2760,7 @@ input:focus::placeholder {
     padding: 10px 16px;
     gap: 10px;
     cursor: pointer;
+    transition: all 0.3s ease
 }
 
 .queue-approve-btn:hover {
