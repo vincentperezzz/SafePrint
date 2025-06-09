@@ -40,20 +40,26 @@ Dashboard
             </div>
             
             <div class="document-list-container">
-                <div class="search-bar">
-                    <input type="text" placeholder="Search by Name or Document ID">
-                    <span class="search-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                            <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </span>
-                </div>
                 <div id="no-documents" class="no-documents">
                     <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
                     <p>No documents, please enter Customer ID</p>
                 </div>
                 <div id="document-results" class="document-results">
+                    <div class="search-bar">
+                        <input type="text" placeholder="Search by Name or Document ID">
+                        <span class="search-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                    </div>
+                     <div class="document-item-title">
+                        <span>Document Name</span>
+                        <p>Document ID</p>
+                    </div>
+                        
+                    {% comment %} Document items will be dynamically inserted here {% endcomment %}
                     <div class="document-item">
                         <div class="document-item-wrapper">
                             <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">

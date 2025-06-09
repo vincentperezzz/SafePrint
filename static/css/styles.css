@@ -1501,7 +1501,7 @@ input:focus::placeholder {
     flex-direction: row;
     border-radius: 16px;
     justify-content: space-between;
-    border: 1px solid var(--light-gray-color, #E0E0E0);
+    border: 1px solid var(--Accent-Mid-Gray, #A19F9F);
 }
 
 .document-info {
@@ -1985,6 +1985,7 @@ input:focus::placeholder {
     border-radius: 16px;
     border: 1px solid #000;
     background: white;
+    margin-bottom: 10px;
 }
 
 .search-bar input {
@@ -2079,6 +2080,26 @@ input:focus::placeholder {
     width: 100%;
 }
 
+.document-item-title{
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #18191F;
+    font-family: 'Montserrat', sans-serif;
+    margin: 0;
+    background-color: white;
+    border: 1px solid var(--Accent-Mid-Gray, #A19F9F);
+    padding: 10px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.document-item-title p{
+    margin: 0 170px 0 0;
+}
+
 .document-item {
     display: flex;
     align-items: center;
@@ -2088,14 +2109,12 @@ input:focus::placeholder {
 .actions {
     display: flex;
     gap: 10px;
-    margin-top: 10px;
 }
 
 .actions button {
     padding: 8px 12px;
     border-radius: 12px;
     border: 2px solid #18191F;
-    font-family: 'Montserrat', sans-serif;
     font-size: 0.9rem;
     font-weight: bold;
     cursor: pointer;
@@ -2122,7 +2141,7 @@ input:focus::placeholder {
 
 .dashboard-rows {
     display: flex;
-    gap: 30px;
+    gap: 20px;
     width: 100%;
 }
 
