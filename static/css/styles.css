@@ -1965,7 +1965,6 @@ input:focus::placeholder {
 .document-list-container {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
     align-items: center; 
     gap: 10px;
     margin-top: 20px;
@@ -2016,15 +2015,14 @@ input:focus::placeholder {
 }
 
 .approval-buttons {
-    display: flex;
+    display: none;
     gap: 10px;
     justify-content: center;
-    margin-top: 20px;
     width: 100%;
 }
 
 .deny-btn {
-    flex: 2; 
+    flex: 4; 
     padding: 10px 20px;
     border-radius: 12px;
     border: 2px solid #18191F;
@@ -2398,22 +2396,6 @@ input:focus::placeholder {
     line-height: 28px;
     color: var(--Colors-Black, #18191F);
     background: transparent;
-}
-
-input:required::placeholder {
-    width: 251px;
-    color: var(--Colors-Black, #18191F);
-    font-feature-settings: 'liga' off, 'clig' off;
-    font-family: Montserrat;
-    font-size: 21px;
-    font-style: normal;
-    font-weight: 500;
-    line-height: 28px;
-    transition: color 0.2s;
-}
-
-input:focus:required::placeholder {
-    display: none;
 }
 
 .btn-login {
