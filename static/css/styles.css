@@ -2684,9 +2684,23 @@ input:focus::placeholder {
     margin-right: 8px;
 }
 
+.doc-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 0%;
+}
+
 .doc-title {
     font-weight: 600;
     font-size: 12px;
+    min-width: 0;
+    flex: 1 1 0%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    padding-right: 20px;
 }
 
 .doc-price {
@@ -2708,6 +2722,7 @@ input:focus::placeholder {
     gap: 10px;
     margin-right: 8px;
     cursor: pointer;
+    transition: all 0.3s ease;
 }
 
 .queue-deny-btn:hover {
@@ -2732,6 +2747,7 @@ input:focus::placeholder {
     padding: 10px 16px;
     gap: 10px;
     cursor: pointer;
+    transition: all 0.3s ease
 }
 
 .queue-approve-btn:hover {
