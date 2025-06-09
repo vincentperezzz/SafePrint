@@ -124,10 +124,33 @@ Dashboard
                 <h2>Completed Jobs</h2>
                 <button class="view-all-btn specific-view-all-btn">View All</button>
             </div>
-            <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
-            <p>All Completed!</p>
+            <div class="no-jobs">
+                <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
+                <p>All Completed!</p>
+            </div>
+
+            <div class="completedJobs-item-title">
+                <span>Document Name</span>
+                <p>Printer Assigned</p>
+            </div>
+
+            <div class="jobs-item">
+                <div class="jobs-item-wrapper">
+                    <h6 title="Abstract.pdf">Abstract.pdf</h6>
+                    <div class="Printer-Assigned">Printer 1</div>
+                    <button class="jobs-done-btn">Done</button>
+                </div>
+            
+                <div class="jobs-item-wrapper">
+                    <h6 title="This is a very long title in a pdf that would consume all the textbox.pdf">
+                        This is a very long title in a pdf that would consume all the textbox.pdf
+                    </h6>
+                    <div class="Printer-Assigned">Printer 2</div>
+                    <button class="jobs-done-btn">Done</button>
+                </div>
+            </div>
+            
         </div>
     </div>
-
 </div>
 {% endblock %}

@@ -2254,7 +2254,7 @@ input:focus::placeholder {
     flex: 1; 
     padding: 20px;
     text-align: center;
-    align-items: center;
+    align-items: stretch; 
     gap: 10px;
     display: flex;
     flex-direction: column;
@@ -2282,9 +2282,111 @@ input:focus::placeholder {
     font-weight: bold;
 }
 
+.jobs-item {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+
+.completedJobs-item-title{
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    font-size: 1rem;
+    font-weight: bold;
+    color: #18191F;
+    font-family: 'Montserrat', sans-serif;
+    margin: 0;
+    background-color: white;
+    border: 1px solid var(--Accent-Mid-Gray, #A19F9F);
+    padding: 10px;
+    border-radius: 12px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.completedJobs-item-title p{
+    font-size: 0.8rem;
+    margin: 0;
+}
+
+.jobs-item-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--White, #FFFFFF);
+    padding: 16px;
+    border-radius: 16px;
+    border: 1px solid var(--Accent-Mid-Gray, #A19F9F);
+    justify-content: space-between;
+}
+
+.Printer-Assigned {
+    flex: 0; 
+    text-align: right; 
+    font-size: 0.9rem;
+    color: #18191F;
+    width: auto;
+    white-space: nowrap; 
+}
+
+.jobs-item-wrapper h6 {
+    flex: 1;
+    width: 0; 
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0;
+    text-align: left;
+}
+
+.jobs-done-btn {
+    flex: 0; 
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 2px solid #18191F;
+    background-color: #B9FF66;
+    color: black;
+    font-weight: bold;
+    font-size: 0.8rem;
+    cursor: pointer;
+    box-shadow: 0px 4px 0px 0px #18191F;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.jobs-done-btn:hover {
+    background-color: #9ACD32; 
+    box-shadow: 0px 6px 0px 0px #18191F; 
+}
+
+.jobs-done-btn:active {
+    transform: translateY(2px); 
+    box-shadow: 0px 2px 0px 0px #18191F; 
+}
+
+.job-item-wrapper {
+    display: none;
+    flex: 1;
+    width: 100%; 
+    align-items: center;
+    gap: 10px;
+    background: var(--White, #FFFFFF);
+    height: auto;
+    padding: 16px;
+    flex-direction: row;
+    border-radius: 16px;
+    width: 100%;
+    justify-content: space-between;
+    border: 1px solid var(--Accent-Mid-Gray, #A19F9F);
+}
+
 @media (max-width: 1700px) {
     .completed-jobs {
-        padding: 30px;
+        padding: 20px;
         width: 100%;
     }
 
@@ -2432,7 +2534,7 @@ input:focus::placeholder {
 }
 
 .btn-login:active {
-    transform: translateY(2px); /* Pressed effect */
+    transform: translateY(2px); 
     box-shadow: 0px 2px 0px 0px #18191F;
     transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
