@@ -1,4 +1,4 @@
-{% extends "dashboard_layout.html" %}
+{% extends "admin_layout.html" %}
 {% load static %}
 
 {% block title %}
@@ -49,9 +49,38 @@ Dashboard
                         </svg>
                     </span>
                 </div>
-                <div class="no-documents">
+                <div id="no-documents" class="no-documents">
                     <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
                     <p>No documents, please enter Customer ID</p>
+                </div>
+                <div id="document-results" class="document-results" style="display: none;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Document Name</th>
+                                <th>Document ID</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Abstract.pdf</td>
+                                <td>#DOC-1001</td>
+                                <td>
+                                    <button class="deny-btn">Deny</button>
+                                    <button class="approve-btn">Approve</button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>School ID.pdf</td>
+                                <td>#DOC-1002</td>
+                                <td>
+                                    <button class="deny-btn">Deny</button>
+                                    <button class="approve-btn">Approve</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
                 <div class="approval-buttons">
                     <button class="deny-btn">Deny All</button>
