@@ -1,4 +1,4 @@
-{% extends "dashboard_layout.html" %}
+{% extends "admin_layout.html" %}
 {% load static %}
 
 {% block title %}
@@ -40,22 +40,60 @@ Dashboard
             </div>
             
             <div class="document-list-container">
-                <div class="search-bar">
-                    <input type="text" placeholder="Search by Name or Document ID">
-                    <span class="search-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                            <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </span>
-                </div>
-                <div class="no-documents">
+                <div id="no-documents" class="no-documents">
                     <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
                     <p>No documents, please enter Customer ID</p>
                 </div>
-                <div class="approval-buttons">
-                    <button class="deny-btn">Deny All</button>
-                    <button class="approve-btn">Approve All Documents</button>
+                <div id="document-results" class="document-results">
+                    <div class="search-bar">
+                        <input type="text" placeholder="Search by Name or Document ID">
+                        <span class="search-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                    </div>
+                     <div class="document-item-title">
+                        <span>Document Name</span>
+                        <p>Document ID</p>
+                    </div>
+                        
+                    {% comment %} Document items will be dynamically inserted here {% endcomment %}
+                    <div class="document-item">
+                        <div class="document-item-wrapper">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                            <div class="document-info">
+                                <h6 title="This is a very long title in a pdf that would consume all the textbox.pdf">
+                                    This is a very long title in a pdf that would consume all the textbox.pdf
+                                </h6>
+                                <span>₱30.00</span>
+                            </div>
+                        </div>
+                        <div class="document-id">#DOC-1001</div>
+                        <div class="actions">
+                            <button class="deny-btn">Deny</button>
+                            <button class="approve-btn">Approve</button>
+                        </div>
+                    </div>
+
+
+                    <div class="document-item">
+                        <div class="document-item-wrapper">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                            <div class="document-info">
+                                <h6 title="Abstract.pdf">
+                                    Abstract.pdf
+                                </h6>
+                                <span>₱30.00</span>
+                            </div>
+                        </div>
+                        <div class="document-id">#DOC-1002</div>
+                        <div class="actions">
+                            <button class="deny-btn">Deny</button>
+                            <button class="approve-btn">Approve</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -73,6 +111,11 @@ Dashboard
             </div>
             <input type="text" placeholder="CST-XXXX">
 
+            <div class="approval-buttons">
+                <button class="deny-btn">Deny All</button>
+                <button class="approve-btn">Approve All</button>
+            </div>
+
             <button class="search-btn">Search by Customer ID</button>
         </div>
 
@@ -81,10 +124,33 @@ Dashboard
                 <h2>Completed Jobs</h2>
                 <button class="view-all-btn specific-view-all-btn">View All</button>
             </div>
-            <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
-            <p>All Completed!</p>
+            <div class="no-jobs">
+                <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
+                <p>All Completed!</p>
+            </div>
+
+            <div class="completedJobs-item-title">
+                <span>Document Name</span>
+                <p>Printer Assigned</p>
+            </div>
+
+            <div class="jobs-item">
+                <div class="jobs-item-wrapper">
+                    <h6 title="Abstract.pdf">Abstract.pdf</h6>
+                    <div class="Printer-Assigned">Printer 1</div>
+                    <button class="jobs-done-btn">Done</button>
+                </div>
+            
+                <div class="jobs-item-wrapper">
+                    <h6 title="This is a very long title in a pdf that would consume all the textbox.pdf">
+                        This is a very long title in a pdf that would consume all the textbox.pdf
+                    </h6>
+                    <div class="Printer-Assigned">Printer 2</div>
+                    <button class="jobs-done-btn">Done</button>
+                </div>
+            </div>
+            
         </div>
     </div>
-
 </div>
 {% endblock %}
