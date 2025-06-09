@@ -53,34 +53,41 @@ Dashboard
                     <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
                     <p>No documents, please enter Customer ID</p>
                 </div>
-                <div id="document-results" class="document-results" style="display: none;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Document Name</th>
-                                <th>Document ID</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>Abstract.pdf</td>
-                                <td>#DOC-1001</td>
-                                <td>
-                                    <button class="deny-btn">Deny</button>
-                                    <button class="approve-btn">Approve</button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>School ID.pdf</td>
-                                <td>#DOC-1002</td>
-                                <td>
-                                    <button class="deny-btn">Deny</button>
-                                    <button class="approve-btn">Approve</button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div id="document-results" class="document-results">
+                    <div class="document-item">
+                        <div class="document-item-wrapper">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                            <div class="document-info">
+                                <h6 title="This is a very long title in a pdf that would consume all the textbox.pdf">
+                                    This is a very long title in a pdf that would consume all the textbox.pdf
+                                </h6>
+                                <span>₱30.00</span>
+                            </div>
+                        </div>
+                        <div class="document-id">#DOC-1001</div>
+                        <div class="actions">
+                            <button class="deny-btn">Deny</button>
+                            <button class="approve-btn">Approve</button>
+                        </div>
+                    </div>
+
+
+                    <div class="document-item">
+                        <div class="document-item-wrapper">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                            <div class="document-info">
+                                <h6 title="Abstract.pdf">
+                                    Abstract.pdf
+                                </h6>
+                                <span>₱30.00</span>
+                            </div>
+                        </div>
+                        <div class="document-id">#DOC-1002</div>
+                        <div class="actions">
+                            <button class="deny-btn">Deny</button>
+                            <button class="approve-btn">Approve</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
