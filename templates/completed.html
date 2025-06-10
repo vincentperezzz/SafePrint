@@ -8,11 +8,73 @@ Print Completed
 {% block content %}
 <div class="dashboard-rows">
     <div class="header-left">
-        <img src="{% static 'assets/avatar.svg' %}" alt="User Avatar" class="user-avatar">
-        <h1>Yeah all Done Printing listed here!</h1>
+        <h1>Print Completed</h1>
     </div>
     <button class="need-assistance-btn">Need Assistance?</button>
 </div>
 
+<hr class="dashboard-divider">
 
+<div class="dashboard-rows">
+    <div class="completed-section">
+        <h2 class="completed-title">All Printers</h2>
+
+        <div class="completed-printer-card">
+            <div class="completed-printer-header">Printer 1 Jobs Completed</div>
+            <div class="completed-table-header">
+                <div class="completed-col doc-name">Document Name</div>
+                <div class="completed-col doc-id">Document ID</div>
+                <div class="completed-col doc-printer">Printer Assigned</div>
+                <div class="completed-col doc-action"></div>
+            </div>
+            <div class="completed-row">
+                <div class="completed-col doc-name">
+                    <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
+                    <span>Abstract.pdf</span>
+                </div>
+                <div class="completed-col doc-id">#DOC-2099</div>
+                <div class="completed-col doc-printer">Printer 1</div>
+                <div class="completed-col doc-action">
+                    <button class="handed-over-btn">Handed Over</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="completed-printer-card">
+            <div class="completed-printer-header">Printer 2 Jobs Completed</div>
+            <div class="completed-table-header">
+                <div class="completed-col doc-name">Document Name</div>
+                <div class="completed-col doc-id">Document ID</div>
+                <div class="completed-col doc-printer">Printer Assigned</div>
+                <div class="completed-col doc-action"></div>
+            </div>
+            <div class="completed-row">
+                <div class="completed-col doc-name">
+                    <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
+                    <span>Abstract.pdf</span>
+                </div>
+                <div class="completed-col doc-id">#DOC-2098</div>
+                <div class="completed-col doc-printer">Printer 2</div>
+                <div class="completed-col doc-action">
+                    <button class="handed-over-btn">Handed Over</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="completed-printer-card">
+            <div class="completed-printer-header">Printer 3 Jobs Completed</div>
+            <div class="completed-table-header">
+                <div class="completed-col doc-name">Document Name</div>
+                <div class="completed-col doc-id">Document ID</div>
+                <div class="completed-col doc-printer">Printer Assigned</div>
+                <div class="completed-col doc-action"></div>
+            </div>
+            <div class="completed-row completed-empty">
+                <img src="{% static 'assets/all-completed.png' %}" alt="All Completed" class="all-completed">
+                <div class="completed-empty-text">All Completed!</div>
+            </div>
+        </div>
+    </div>
+
+</div>
 {% endblock %}
