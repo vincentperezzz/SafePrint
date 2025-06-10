@@ -1360,7 +1360,7 @@ input:focus::placeholder {
 }
 
 
-.proceed-btn {
+.proceed-btn, .add-printer-btn {
     display: flex;
     padding: 10px;
     height: 50px;
@@ -1382,12 +1382,12 @@ input:focus::placeholder {
     margin: 10px auto;
 }
 
-.proceed-btn:hover {
+.proceed-btn:hover, .add-printer-btn:hover {
     background-color: #F5F5F5; 
     box-shadow: 0px 6px 0px 0px #18191F; 
 }
 
-.proceed-btn:active {
+.proceed-btn:active, .add-printer-btn:active {
     transform: translateY(2px);
     box-shadow: 0px 2px 0px 0px #18191F; 
 }
@@ -2786,4 +2786,144 @@ input:focus::placeholder {
     font-size: 21px;
     font-weight: bold;
     font-family: 'Montserrat', sans-serif;
+}
+
+/* PRINTER STATUS */
+
+.printer-status-section {
+    margin: 40px auto;
+    max-width: 900px;
+    font-family: 'Montserrat', sans-serif;
+}
+
+.printer-status-card {
+    border: 2px solid #18191F;
+    border-radius: 16px;
+    padding: 24px;
+    background: #fff;
+}
+
+.printer-status-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.need-assistance-btn {
+    background: #B9FF66;
+    color: #18191F;
+    border-radius: 12px;
+    border: none;
+    font-weight: bold;
+    padding: 8px 18px;
+    cursor: pointer;
+}
+
+.printer-search-bar {
+    display: flex;
+    align-items: center;
+    border: 2px solid #18191F;
+    border-radius: 12px;
+    padding: 8px 16px;
+    margin-bottom: 18px;
+}
+
+.printer-search-bar input {
+    border: none;
+    outline: none;
+    flex: 1;
+    font-size: 16px;
+    background: transparent;
+}
+
+.printer-table {
+    width: 100%;
+}
+
+.printer-table-header, .printer-table-row {
+    display: grid;
+    grid-template-columns: 2.5fr 1.5fr 1fr 1fr 1.5fr 1.5fr 0.5fr;
+    align-items: center;
+    padding: 10px 0;
+}
+
+.printer-table-header {
+    font-weight: bold;
+    border-bottom: 2px solid #A19F9F;
+}
+
+.printer-table-row {
+    border-bottom: 1px solid #E7E7E7;
+}
+
+.printer-table-row:nth-child(even) {
+    background: #FAFAFC;
+}
+
+.printer-table-row:nth-child(odd) {
+    background: #FFFFFF;
+}
+
+.printer-info{
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.printer-table .dropdown-select {
+    font-size: 13px;
+    padding: 4px 24px 4px 8px;
+    height: 28px;
+    min-width: 60px;
+    border-radius: 8px;
+}
+
+.printer-table .dropdown {
+    min-width: 0;
+    max-width: 150px;
+    position: relative;
+}
+
+.printer-table .dropdown-arrow {
+    background: none;
+}
+
+.status-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 6px;
+}
+.status-dot.idle { background: #6fdc6f; }
+.status-dot.printing { background: #ffe066; }
+.status-dot.error { background: #ff6f6f; }
+
+.ink-bars {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 2px;
+}
+.ink { width: 18px; height: 6px; border-radius: 2px; display: inline-block; }
+.ink.cyan { background: #66D1FF; }
+.ink.magenta { background: #A3BFFA; }
+.ink.yellow { background: #FBB41D; }
+.ink.black { background: #18191F; }
+
+.ink-status.ok { color: #6fdc6f; font-weight: bold; }
+.ink-status.low { color: #ffe066; font-weight: bold; }
+
+.edit-btn{
+    width: 25px;
+    margin: 5px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.edit-btn:hover {
+    transform: scale(1.3);
+}
+
+.edit-btn:active {
+    transform: scale(0.9);
 }

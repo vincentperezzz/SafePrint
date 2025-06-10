@@ -8,11 +8,87 @@ Printer Status
 {% block content %}
 <div class="dashboard-rows">
     <div class="header-left">
-        <img src="{% static 'assets/avatar.svg' %}" alt="User Avatar" class="user-avatar">
-        <h1>Checking Printer Status huh?</h1>
+        <h1>Printer Status</h1>
     </div>
     <button class="need-assistance-btn">Need Assistance?</button>
 </div>
 
+<hr class="dashboard-divider">
 
+<div class="printer-status-card">
+    <div class="queue-search-bar">
+        <input type="text" placeholder="Search by Printer Name of Serial Number">
+        <span class="search-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </span>
+    </div>
+    <div class="printer-table">
+        <div class="printer-table-header">
+            <div>Printer Name</div>
+            <div>Serial Number</div>
+            <div>Status</div>
+            <div>Ink Level</div>
+            <div>Paper Assigned</div>
+            <div>GSM</div>
+            <div></div>
+        </div>
+        <!-- Repeat this row for each printer -->
+        <div class="printer-table-row">
+            <div class="printer-info">
+                <div class="printer-name">Printer 1</div>
+                <div class="printer-model">Brother DCP-T820DW</div>
+            </div>
+            <div>XXXXXXXXXXXXXX</div>
+            <div><span class="status-dot idle"></span> Idle</div>
+            <div>
+                <div class="ink-bars">
+                    <span class="ink cyan"></span>
+                    <span class="ink magenta"></span>
+                    <span class="ink yellow"></span>
+                    <span class="ink black"></span>
+                </div>
+                <span class="ink-status ok">OK</span>
+            </div>
+            <div class="paper-assigned">
+                <div class="dropdown">
+                    <select class="dropdown-select">
+                        <option>Folio</option>
+                        <option>A4</option>
+                        <option>Short</option>
+                    </select>
+                    <span class="dropdown-arrow">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
+                            <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span>
+                </div>
+            </div>
+            <div class="gsm">
+                <div class="dropdown">
+                    <select class="dropdown-select">
+                        <option>70</option>
+                        <option>80</option>
+                    </select>
+                    <span class="dropdown-arrow">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
+                            <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span>
+                </div>
+            </div>
+            <div>
+                <div class="edit-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                      <path d="M2.49902 14.3761V17.5011H5.62402L14.8407 8.28444L11.7157 5.15944L2.49902 14.3761ZM17.2574 5.86777C17.5824 5.54277 17.5824 5.01777 17.2574 4.69277L15.3074 2.74277C14.9824 2.41777 14.4574 2.41777 14.1324 2.74277L12.6074 4.26777L15.7324 7.39277L17.2574 5.86777Z" fill="#5A5D6C"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+        <!-- ...more rows... -->
+    </div>
+    <button class="add-printer-btn">Configure to Add Printer</button>
+</div>
 {% endblock %}
