@@ -2956,7 +2956,7 @@ input:focus::placeholder {
     margin-right: 6px;
 }
 .status-dot.idle { background: #6fdc6f; }
-.status-dot.printing { background: #ffe066; }
+.status-dot.printing { background: #ffff00; }
 .status-dot.error { background: #ff6f6f; }
 
 .ink-bars {
@@ -2966,8 +2966,8 @@ input:focus::placeholder {
 }
 .ink { width: 18px; height: 6px; border-radius: 2px; display: inline-block; }
 .ink.cyan { background: #66D1FF; }
-.ink.magenta { background: #A3BFFA; }
-.ink.yellow { background: #FBB41D; }
+.ink.magenta { background: #ed008d; }
+.ink.yellow { background: #fff200; }
 .ink.black { background: #18191F; }
 
 .ink-status.ok { color: #6fdc6f; font-weight: bold; }
