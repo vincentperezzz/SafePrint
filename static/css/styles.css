@@ -316,7 +316,7 @@ html {
     font-size: 0.9rem;
     line-height: 16px;
     cursor: pointer;
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
 }
 
 .browse-btn:hover {
@@ -1376,7 +1376,7 @@ input:focus::placeholder {
     font-weight: 800;
     font-size: 1.3rem;
     cursor: pointer;
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
     text-align: center;
     width: 100%;
     margin: 10px auto;
@@ -1844,7 +1844,7 @@ input:focus::placeholder {
     font-size: 16px;
     padding: 7px 10px;
     cursor: pointer;
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
     margin-bottom: 8px;
 }
 
@@ -1944,7 +1944,7 @@ input:focus::placeholder {
     margin-bottom: 10px;
     cursor: pointer;
     box-shadow: 0px 4px 0px 0px #18191F; 
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
     text-align: center;
 }
 
@@ -2036,7 +2036,7 @@ input:focus::placeholder {
     font-size: 16px;
     cursor: pointer;
     box-shadow: 0px 4px 0px 0px #18191F; 
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.3s ease;
 }
 
 .deny-btn:hover {
@@ -2060,7 +2060,7 @@ input:focus::placeholder {
     font-size: 16px;
     cursor: pointer;
     box-shadow: 0px 4px 0px 0px #18191F; 
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.3s ease;
 }
 
 .approve-btn:hover {
@@ -2118,7 +2118,7 @@ input:focus::placeholder {
     font-size: 0.9rem;
     font-weight: bold;
     cursor: pointer;
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
 }
 
 .actions .deny-btn {
@@ -2228,7 +2228,7 @@ input:focus::placeholder {
     font-weight: bold;
     cursor: pointer;
     box-shadow: 0px 4px 0px 0px #18191F; 
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
     text-align: center;
     line-height: 1;
 }
@@ -2355,7 +2355,7 @@ input:focus::placeholder {
     font-size: 0.8rem;
     cursor: pointer;
     box-shadow: 0px 4px 0px 0px #18191F;
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
 }
 
 .jobs-done-btn:hover {
@@ -2731,7 +2731,7 @@ input:focus::placeholder {
     gap: 10px;
     margin-right: 8px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
 }
 
 .queue-deny-btn:hover {
@@ -2756,7 +2756,7 @@ input:focus::placeholder {
     padding: 10px 16px;
     gap: 10px;
     cursor: pointer;
-    transition: all 0.3s ease
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
 }
 
 .queue-approve-btn:hover {
@@ -2976,7 +2976,7 @@ input:focus::placeholder {
 .edit-btn{
     width: 25px;
     margin: 5px;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
 }
 
 .edit-btn:hover {
@@ -3044,7 +3044,7 @@ input:focus::placeholder {
     font-weight: 800;
     padding: 10px 16px;
     cursor: pointer;
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
 }
 
 .queue-cancel-btn:hover {
@@ -3143,12 +3143,17 @@ input:focus::placeholder {
     font-weight: 800;
     padding: 10px 16px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
 }
 
 .handed-over-btn:hover {
     background-color: #9ACD32; 
     box-shadow: 0px 6px 0px 0px #18191F; 
+}
+
+.handed-over-btn:active {
+    transform: translateY(2px); 
+    box-shadow: 0px 2px 0px 0px #18191F; 
 }
 
 .completed-row.completed-empty {
