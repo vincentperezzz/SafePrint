@@ -36,9 +36,9 @@ Printing Queue
            
                 <div class="queue-list-header">
                     <div class="queue-col doc-name"><b>Document Name</b></div>
-                    <div class="queue-col doc-customer"><b>Customer ID</b></div>
-                    <div class="queue-col doc-date"><b>Date Submitted</b></div>
-                    <div class="queue-col doc-id"><b>Document ID</b></div>
+                    <div class="queue-col doc-customer">Customer ID</div>
+                    <div class="queue-col doc-date">Date Submitted</div>
+                    <div class="queue-col doc-id">Document ID</div>
                     <div class="queue-col doc-actions"></div>
                 </div>
 
@@ -80,7 +80,7 @@ Printing Queue
                     <div class="queue-col doc-name">
                         <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
                         <div class="doc-info">
-                            <div class="doc-title" title="This is a very long title in a pdf that would consume all the textbox.pdf">This is a very long title in a pdf that would consume all the textbox.pdf</div>
+                            <div class="doc-title" title="English Essay.pdf">English Essay.pdf</div>
                             <div class="doc-price">₱5.00</div>
                         </div>
                     </div>
@@ -98,6 +98,65 @@ Printing Queue
         <div class="on-queue-documents">
             <div class="queue-header">
                 <h2>On Queue Documents</h2>
+            </div>
+
+            <div class="on-queue-documents-list">
+                <div class="queue-search-bar">
+                    <input type="text" placeholder="Search by Name, Document ID, or Customer ID">
+                    <span class="search-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span>
+                </div>
+            
+                <div class="on-queue-header">
+                    <div class="queue-col doc-name"><b>Document Name</b></div>
+                    <div class="queue-col doc-printer">Printer Assigned</div>
+                    <div class="queue-col doc-approved">Approved by</div>
+                    <div class="queue-col doc-id">Document ID</div>
+                    <div class="queue-col doc-actions"></div>
+                </div>
+
+                <div class="on-queue-row">
+                    <div class="queue-col doc-name">
+                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
+                        <div>
+                            <div class="doc-title">Document 1.pdf</div>
+                            <div class="doc-price">₱30.00</div>
+                        </div>
+                    </div>
+                    <div class="queue-col doc-printer">
+                        <div><span class="printer-status printer-online"></span> Printer 2 (Printing)</div>
+                    </div>
+                    <div class="queue-col doc-approved">Charles Gavino</div>
+                    <div class="queue-col doc-id">#DOC-1001</div>
+                    <div class="queue-col doc-actions">
+                        <button class="queue-cancel-btn">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="on-queue-row">
+                    <div class="queue-col doc-name">
+                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
+                        <div>
+                            <div class="doc-title">STS Assignment.pdf</div>
+                            <div class="doc-price">₱15.00</div>
+                        </div>
+                    </div>
+                    <div class="queue-col doc-printer">
+                        <div><span class="printer-status printer-error"></span> Printer 3 (Error)</div>
+                        <div><span class="printer-status printer-online"></span> Printer 1 (Printing)</div>
+                    </div>
+                    <div class="queue-col doc-approved">Vincent Perez</div>
+                    <div class="queue-col doc-id">#DOC-1002</div>
+                    <div class="queue-col doc-actions">
+                        <button class="queue-cancel-btn">Cancel</button>
+                    </div>
+                </div>
+
+            
             </div>
         </div>
     </div>
