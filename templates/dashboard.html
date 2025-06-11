@@ -36,7 +36,7 @@ Dashboard
         <div class="document-approvals">
             <div class="document-approvals-header">
                 <h2>Pending Document Approvals</h2>
-                <button class="view-all-btn">View all Pending Documents</button>
+                <a href="{% url 'printing_queue' %}" class="view-all-btn">View all Pending Documents</a>
             </div>
             
             <div class="document-list-container">
@@ -122,7 +122,7 @@ Dashboard
         <div class="completed-jobs">
             <div class='dashboard-rows'>
                 <h2>Completed Jobs</h2>
-                <button class="view-all-btn specific-view-all-btn">View All</button>
+                <button onclick="window.location.href='{% url 'print_completed' %}'" class="view-all-btn specific-view-all-btn">View All</button>
             </div>
             <div class="no-jobs">
                 <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
