@@ -2036,8 +2036,8 @@ input:focus::placeholder {
     padding: 10px 20px;
     border-radius: 12px;
     border: 2px solid #18191F;
-    background-color: #F33700; 
-    color: white;
+    background-color: #F95A2C;
+    color: black;
     font-weight: bold;
     font-size: 16px;
     cursor: pointer;
@@ -2128,8 +2128,8 @@ input:focus::placeholder {
 }
 
 .actions .deny-btn {
-    background-color: #F33700;
-    color: white;
+    background-color: #F95A2C;
+    color: black;
 }
 
 .actions .deny-btn:hover {
@@ -2893,7 +2893,7 @@ input:focus::placeholder {
     font-family: 'Montserrat', sans-serif;
     font-size: 16px;
     padding: 16px;
-    border: 1px solid var(--strokeColor-lightGrey, #E7E7E7);
+    border: 1px solid var(--mid-gray-color, #A19F9F);
     border-radius: 12px;
     background: #FFF;
 }
@@ -2908,7 +2908,7 @@ input:focus::placeholder {
     box-sizing: border-box;
     font-family: 'Montserrat', sans-serif;
     background: #fff;
-    border: 1px solid var(--strokeColor-lightGrey, #E7E7E7);
+    border: 1px solid var(--mid-gray-color, #A19F9F);
 }
 
 .doc-name { flex: 2.5; gap: 10px; }
@@ -3114,7 +3114,7 @@ input:focus::placeholder {
 
 .completed-table-header {
     display: flex;
-    border: 1px solid var(--strokeColor-lightGrey, #E7E7E7);
+    border: 1px solid var(--mid-gray-color, #A19F9F);
     border-radius: 12px;
     background: #fff;
     height: 50px;
@@ -3129,7 +3129,7 @@ input:focus::placeholder {
 .completed-row {
     display: flex;
     border-radius: var(--radi-lg, 12px);
-    border: 1px solid var(--strokeColor-lightGrey, #E7E7E7);
+    border: 1px solid var(--mid-gray-color, #A19F9F);
     background: var(--bgColor-light, #FFF);
     align-items: center;
     padding: 16px;
@@ -3177,6 +3177,7 @@ input:focus::placeholder {
     justify-content: center;
     align-items: center;
     flex-direction: column;
+    border: none;
     background: transparent;
 }
 
