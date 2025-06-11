@@ -1062,6 +1062,12 @@ html {
     color: #666;
 }
 
+.file-failed {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #f33700;
+}
+
 .file-title{
     display: flex;
     flex-direction: column;
