@@ -82,34 +82,14 @@ SafePrint is a Django web application designed to provide a secure and efficient
 
 2. **Create the Database**:
    - Open MySQL Workbench and connect to your MySQL server.
-   - Create the database and tables:
-     
-3. **Configure the `.env` File**:
-   Add the database credentials to the `.env` file:
-   ```
-   DJANGO_SECRET_KEY=your-secret-key
-   DB_NAME=SAFEPRINT_DB
-   DB_USER=SAFEPRINT_ADMIN
-   DB_PASSWORD=SAFEPRINT_PASSWORD
-   DB_HOST=localhost
-   DB_PORT=3306
-   ```
+   - Create the database and tables
 
-4. **Apply Migrations**:
+3. **Apply Migrations**:
    Run the following commands to apply migrations:
    ```
    python manage.py makemigrations
    python manage.py migrate
    ```
-
-This ensures users can set up the database using MySQL Workbench and configure the Django project accordingly. Let me know if you need further adjustments!## Database Setup
-
-1. **Install MySQL Workbench**:
-   Download and install MySQL Workbench from [MySQL Workbench Downloads](https://dev.mysql.com/downloads/workbench/).
-
-2. **Create the Database**:
-   - Open MySQL Workbench and connect to your MySQL server.
-   - Create the database and tables.
 
 This ensures users can set up the database using MySQL Workbench and configure the Django project accordingly. Let me know if you need further adjustments!
 ## Notes
