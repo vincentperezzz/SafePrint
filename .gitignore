@@ -1,6 +1,8 @@
 # Ignore Python cache files in the main folder and SafePrint folder
 /main/__pycache__/
 /main/migrations/__pycache__/
+/portal/__pycache__/
+/portal/migrations/__pycache__/
 /SafePrint/__pycache__/
 
 # Ignore compiled Python files
