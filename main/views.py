@@ -21,12 +21,11 @@ def login_view(request):
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
-        print(username, password)  # Debugging line to check input values
         try:
             user = AdminUser.objects.get(username=username)
             if user.password == password:
                 request.session['admin_user_id'] = user.id
-                return redirect(reverse('dashboard'))  # 'dashboard' should be the name of your portal dashboard URL
+                return redirect(reverse('dashboard'))  # GOTO the link
             else:
                 error = "Invalid password."
         except AdminUser.DoesNotExist:
