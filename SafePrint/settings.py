@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'livereload',
     'main',  # Your main app
+    'portal',  # Your portal app
 ]
 
 MIDDLEWARE = [
