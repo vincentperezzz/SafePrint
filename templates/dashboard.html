@@ -8,8 +8,13 @@ Dashboard
 {% block content %}
 <div class="dashboard-rows">
     <div class="header-left">
-        <img src="{% static 'assets/avatar.svg' %}" alt="User Avatar" class="user-avatar">
-        <h1>Hello, Vincent!</h1>
+    {% get_media_prefix as MEDIA_URL %}
+    {% if user.profile_image %}
+        <img src="{{ user.profile_image.url }}" alt="User Avatar" class="user-avatar">
+    {% else %}
+        <img src="{{ MEDIA_URL }}profile_images/default-avatar.png" alt="Default Avatar" class="user-avatar">
+    {% endif %}
+        <h1>Welcome, {{ user.name }}</h1>
     </div>
     <button class="need-assistance-btn">Need Assistance?</button>
 </div>
