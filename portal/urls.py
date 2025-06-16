@@ -8,4 +8,5 @@ urlpatterns = [
     path('completed/', views.print_completed, name='print_completed'),
     path('status/', views.printer_status, name='printer_status'),
     path('settings/', views.account_settings, name='account_settings'),
+    path('change-image-ajax/', views.change_image_ajax, name='change_image_ajax'),
 ]
