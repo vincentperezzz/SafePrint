@@ -1,12 +1,21 @@
 from django.db import models
+import os
+
+def user_profile_image_path(instance, filename):
+    ext = filename.split('.')[-1]
+    # Use the username as the filename
+    filename = f"{instance.username}.{ext}"
+    return os.path.join('', filename)
 
 class AdminUser(models.Model):
+    name = models.CharField(max_length=255)  # Added name field
     username = models.CharField(max_length=255)
     password = models.CharField(max_length=255)
     role = models.CharField(max_length=50)
+    profile_image = models.ImageField(upload_to='profile_images/', null=True, blank=True)
 
     def __str__(self):
-        return self.username    
+        return self.username
 
     class Meta:
         db_table = 'admin_users'
