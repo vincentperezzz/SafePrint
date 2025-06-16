@@ -22,21 +22,27 @@ Account Settings
     <div class="settings-section">
         <span class="settings-title">General</span>
         <div class="settings-header">
-            <img src="{% static 'assets/avatar.svg' %}" alt="User Avatar" class="settings-avatar">
-            <button class="general-btn">Change Image</button>
+            {% get_media_prefix as MEDIA_URL %}
+            {% if user.profile_image %}
+                <img src="{{ user.profile_image.url }}" alt="User Avatar" class="user-avatar">
+            {% else %}
+                <img src="{{ MEDIA_URL }}profile_images/default-avatar.png" alt="Default Avatar" class="user-avatar">
+            {% endif %}
+            <input type="file" id="image-upload" style="display:none;" accept="image/*">
+            <button class="general-btn" onclick="document.getElementById('image-upload').click();">Change Image</button>
         </div>
 
         <div class="settings-field-row">
             <div class="settings-field">
                 <label>Name</label>
-                <input type="text" value="Vincent Perez" readonly>
+                <input type="text" value="{{ user.name }}" readonly>
             </div>
             <button class="general-btn">Edit</button>
         </div>
         <div class="settings-field-row">
             <div class="settings-field">
                 <label>Username</label>
-                <input type="text" value="@vincentperez" readonly>
+                <input type="text" value="{{ user.username }}" readonly>
             </div>
             <button class="general-btn">Edit</button>
         </div>
@@ -131,4 +137,9 @@ Account Settings
     </div>
 
 </div>
+
+<script>
+    var changeImageUrl = "{% url 'change_image_ajax' %}";
+    var csrfToken = "{{ csrf_token }}";
+</script>
 {% endblock %}

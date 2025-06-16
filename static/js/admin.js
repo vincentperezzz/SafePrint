@@ -45,4 +45,33 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         console.error('Clear button is missing in the DOM.');
     }
-});
+
+    document.getElementById('image-upload').addEventListener('change', function() {
+        var fileInput = this;
+        if (fileInput.files.length > 0) {
+            var formData = new FormData();
+            formData.append('profile_image', fileInput.files[0]);
+            fetch(changeImageUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                var img = document.getElementById('profile-img');
+                if (data.success) {
+                    var img = document.getElementById('profile-img');
+                    if (img) {
+                        img.src = data.image_url + '?t=' + new Date().getTime();
+                    };
+                    location.reload();
+                } else {
+                    alert(data.error || "Upload failed.");
+                }
+            });
+        }
+    });
+}); // End of DOMContentLoaded event listener
+
