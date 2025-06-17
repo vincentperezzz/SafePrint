@@ -17,6 +17,7 @@ Account Settings
 </div>
 
 <hr class="dashboard-divider">
+<div id="pageMessages"></div>
 
 <div class="settings-container">
     <div class="settings-section">
@@ -35,14 +36,14 @@ Account Settings
         <div class="settings-field-row">
             <div class="settings-field">
                 <label>Name</label>
-                <input type="text" value="{{ user.name }}" readonly>
+                <input type="text" id="Name" value="{{ user.name }}" readonly>
             </div>
             <button class="general-btn" onclick="showPopupOverlay('editNameOverlay')">Edit</button>
         </div>
         <div class="settings-field-row">
             <div class="settings-field">
                 <label>Username</label>
-                <input type="text" value="{{ user.username }}" readonly>
+                <input type="text" id="Username" value="{{ user.username }}" readonly>
             </div>
             <button class="general-btn" onclick="showPopupOverlay('editUsernameOverlay')">Edit</button>
         </div>
@@ -74,7 +75,7 @@ Account Settings
             </div>
             {% for user in users %}
                 {% if user.role != "Manager" %}
-                <div class="user-account-row">
+                <div class="user-account-row" id="user-account-row-{{user.id}}">
                     <input type="checkbox">
                     <div class="user-info">
                         <div class="user-name">{{ user.name }}</div>
@@ -84,7 +85,7 @@ Account Settings
                         <svg xmlns="http://www.w3.org/2000/svg" width="21" height="20" viewBox="0 0 21 20" fill="none">
                             <path d="M2.84082 14.3761V17.5011H5.96582L15.1825 8.28444L12.0575 5.15944L2.84082 14.3761ZM17.5992 5.86777C17.9242 5.54277 17.9242 5.01777 17.5992 4.69277L15.6492 2.74277C15.3242 2.41777 14.7992 2.41777 14.4742 2.74277L12.9492 4.26777L16.0742 7.39277L17.5992 5.86777Z" fill="#5A5D6C"/>
                         </svg>
-                    <button class="user-delete-btn">
+                    <button class="user-delete-btn" onclick="showDeleteUserOverlay({{user.id}}, '{{user.username}}')">
                         <svg xmlns="http://www.w3.org/2000/svg" width="23" height="22" viewBox="0 0 23 22" fill="none">
                             <path d="M13.285 9.5975L11.3417 11.5408L9.38921 9.5975L8.09672 10.89L10.0492 12.8333L8.10588 14.7767L9.39838 16.0692L11.3417 14.1258L13.285 16.0692L14.5775 14.7767L12.6342 12.8333L14.5775 10.89L13.285 9.5975ZM14.55 3.66667L13.6334 2.75H9.05005L8.13338 3.66667H4.92505V5.5H17.7584V3.66667H14.55ZM5.84172 17.4167C5.84172 18.425 6.66672 19.25 7.67505 19.25H15.0084C16.0167 19.25 16.8417 18.425 16.8417 17.4167V6.41667H5.84172V17.4167ZM7.67505 8.25H15.0084V17.4167H7.67505V8.25Z" fill="#D70206"/>
                         </svg>
@@ -189,6 +190,20 @@ Account Settings
   </div>
 </div>
 
+<!-- Delete Confirmation Overlay -->
+<div class="popup-overlay" id="deleteUserOverlay">
+  <div class="delete-popup-box">
+    <div class="delete-popup-title">Are you sure?</div>
+    <div class="delete-popup-desc">
+      You are about to delete <span id="delete-user-name"></span> and will not be allowed to restore.
+    </div>
+    <input type="hidden" id="delete-user-id">
+    <div class="delete-popup-actions">
+      <button class="delete-confirm-btn" id="deleteConfirmBtn">Delete</button>
+      <button class="delete-cancel-btn" onclick="hidePopupOverlay('deleteUserOverlay')">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <script>
     var changeImageUrl = "{% url 'change_image_ajax' %}";
@@ -196,6 +211,7 @@ Account Settings
     var updateUsernameUrl = "{% url 'update_username' %}";
     var updatePasswordUrl = "{% url 'update_password' %}";
     var updateUserPasswordUrl = "{% url 'update_user_password' %}";
+    var deleteUserUrl = "{% url 'delete_user_ajax' %}"; 
     var csrfToken = "{{ csrf_token }}";
 </script>
 {% endblock %}
