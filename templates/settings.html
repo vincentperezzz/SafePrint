@@ -101,7 +101,8 @@ Account Settings
             {% endfor %}
         </div>
 
-        <button class="create-account-btn">Create new account
+        <button class="create-account-btn" id="createAccountBtn" onclick="showPopupOverlay('createAccountOverlay')">
+            Create new account
             <span>
                 <svg xmlns="http://www.w3.org/2000/svg" width="30" height="28" viewBox="0 0 30 28" fill="none">
                     <path d="M15.509 5.8335V22.1668" stroke="#18191F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -203,6 +204,25 @@ Account Settings
       <button class="delete-cancel-btn" onclick="hidePopupOverlay('deleteUserOverlay')">Cancel</button>
     </div>
   </div>
+</div>
+
+
+<div class="popup-overlay" id="createAccountOverlay">
+  <div class="popup-form">
+    <div class="popup-header">
+      <span class="popup-title">Create New Account</span>
+      <span class="popup-close" onclick="hidePopupOverlay('createAccountOverlay')">&times;</span>
+    </div>
+    <hr class="popup-divider">
+    <form id="create-account-form" method="post">
+      {% csrf_token %}
+      <input type="text" name="name" class="popup-input" placeholder="Enter Name" required>
+      <input type="text" name="username" class="popup-input" placeholder="Enter Username" required>
+      <input type="password" name="password" class="popup-input" placeholder="Enter Password" required autocomplete="new-password">
+      <input type="password" name="confirm_password" class="popup-input" placeholder="Re-enter Password" required autocomplete="new-password">
+      <button type="submit" class="popup-done-btn">Create Account</button>
+    </form>
+    </div>
 </div>
 
 <script>
