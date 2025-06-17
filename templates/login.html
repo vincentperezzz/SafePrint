@@ -13,6 +13,7 @@ SafePrint
             <h2>Log in</h2>
         </div>
             <div class="login-form">
+            <div id="pageMessages"></div>
             <form method="post">
                 {% csrf_token %}
                 <div class="form-group">
@@ -39,8 +40,19 @@ SafePrint
                     <span class="contact-admin">&nbsp;Contact your administrator</span>
                 </div>
             </form>
+            <script src="{% static 'js/scripts.js' %}"></script>
             {% if error %}
-                <p style="color:red;">{{ error }}</p>
+            <script>
+            createAlert(
+                "Error",           // title
+                "",                // summary
+                "{{ error }}",     // details
+                "danger",          // severity
+                true,              // dismissible
+                true,              // autoDismiss
+                "pageMessages"
+            );
+            </script>
             {% endif %}
             </div>
     </div>

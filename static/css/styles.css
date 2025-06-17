@@ -3579,3 +3579,32 @@ input:focus::placeholder {
     transform: translateY(2px);
     box-shadow: 0px 2px 0px 0px #18191F;
 }
+/* Alert Messages */
+#pageMessages {
+  position: fixed;
+  top: 25px;
+  right: 17px;
+  width: 20%;
+  z-index: 9999;
+}
+
+.alert {
+  position: relative;
+  font-size: 18px;
+}
+
+.alert h4 {
+  font-size: 18px;
+}
+
+.alert .close {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  font-size: 1em;
+  cursor: pointer
+}
+
+.alert .fa {
+  margin-right: .3em;
+}
