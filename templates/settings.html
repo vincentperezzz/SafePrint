@@ -80,7 +80,7 @@ Account Settings
                         <div class="user-name">{{ user.name }}</div>
                         <div class="user-username">{{ user.username }}</div>
                     </div>
-                    <button class="user-edit-btn">
+                    <button class="user-edit-btn" onclick="showEditUserPasswordOverlay({{user.id}}, '{{user.username}}')">
                         <svg xmlns="http://www.w3.org/2000/svg" width="21" height="20" viewBox="0 0 21 20" fill="none">
                             <path d="M2.84082 14.3761V17.5011H5.96582L15.1825 8.28444L12.0575 5.15944L2.84082 14.3761ZM17.5992 5.86777C17.9242 5.54277 17.9242 5.01777 17.5992 4.69277L15.6492 2.74277C15.3242 2.41777 14.7992 2.41777 14.4742 2.74277L12.9492 4.26777L16.0742 7.39277L17.5992 5.86777Z" fill="#5A5D6C"/>
                         </svg>
@@ -161,9 +161,29 @@ Account Settings
     <hr class="popup-divider">
     <form id="edit-password-form" method="post">
       {% csrf_token %}
-      <input type="password" name="current_password" class="popup-input" placeholder="Current Password" required>
-      <input type="password" name="new_password" class="popup-input" placeholder="Enter new Password" required>
-      <input type="password" name="confirm_password" class="popup-input" placeholder="Re-enter new Password" required>
+      <input type="password" name="current_password" class="popup-input" placeholder="Current Password" required autocomplete="current-password">
+      <input type="password" name="new_password" class="popup-input" placeholder="Enter new Password" required autocomplete="new-password">
+      <input type="password" name="confirm_password" class="popup-input" placeholder="Re-enter new Password" required  autocomplete="new-password">
+      <button type="submit" class="popup-done-btn">Done</button>
+    </form>
+  </div>
+</div>
+
+<!-- Overlay for editing password (hidden by default) -->
+<div class="popup-overlay" id="editUserPasswordOverlay">
+  <div class="popup-form">
+    <div class="popup-header">
+      <span class="popup-title">Edit <span id="edit-user-password-name"></span>'s Password</span>
+      <span class="popup-close" onclick="hidePopupOverlay('editUserPasswordOverlay')">&times;</span>
+    </div>
+    <hr class="popup-divider">
+    <form id="edit-user-password-form" method="post">
+      {% csrf_token %}
+      <input type="hidden" name="user_id" id="edit-user-password-id">
+      <label for="new_user_password">New Password</label>
+      <input type="password" name="new_user_password" id="new_user_password" class="popup-input" placeholder="Enter new password" required autocomplete="new-password">
+      <label for="confirm_user_password">Re-enter New Password</label>
+      <input type="password" name="confirm_user_password" id="confirm_user_password" class="popup-input" placeholder="Re-enter new password" required autocomplete="new-password">
       <button type="submit" class="popup-done-btn">Done</button>
     </form>
   </div>
@@ -175,6 +195,7 @@ Account Settings
     var updateNameUrl = "{% url 'update_name' %}";
     var updateUsernameUrl = "{% url 'update_username' %}";
     var updatePasswordUrl = "{% url 'update_password' %}";
+    var updateUserPasswordUrl = "{% url 'update_user_password' %}";
     var csrfToken = "{{ csrf_token }}";
 </script>
 {% endblock %}
