@@ -4,10 +4,13 @@ import os
 from django.conf import settings
 from django.http import JsonResponse
 from django.contrib.auth.hashers import make_password, check_password
+from django.http import Http404
 
 
 def dashboard(request):
     user_id = request.session.get('admin_user_id')
+    if not user_id:
+        raise Http404("User not found in session")
     user = None
     if user_id:
         user = AdminUser.objects.get(id=user_id)
@@ -15,19 +18,30 @@ def dashboard(request):
 
 
 def printing_queue(request):
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        raise Http404("User not found in session")
     return render(request, 'queue.html')
 
 
 def print_completed(request):
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        raise Http404("User not found in session")
     return render(request, 'completed.html')
 
 
 def printer_status(request):
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        raise Http404("User not found in session")
     return render(request, 'status.html')
 
 
 def account_settings(request):
     user_id = request.session.get('admin_user_id')
+    if not request.session.get('admin_user_id'):
+        raise Http404("User not found in session") 
     user = None
     if user_id:
         user = AdminUser.objects.get(id=user_id)

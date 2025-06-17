@@ -221,3 +221,17 @@ function createAlert(title, summary, details, severity, dismissible, autoDismiss
         }, 5000);
     }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (LoginError) {
+        createAlert(
+            "Error",           // title
+            "",                // summary
+            LoginError,     // details
+            "danger",          // severity
+            true,              // dismissible
+            true,              // autoDismiss
+            "pageMessages"
+        );
+    }
+});

@@ -2,12 +2,12 @@
 {% load static %}
 
 {% block title %}
-SafePrint
+Login
 {% endblock %}
 
 {% block content %}
 
-<div class="login-container">
+<div class="login-container" id="login-main-content">
     <div class="login-box">
         <div class="login-header">
             <h2>Log in</h2>
@@ -40,21 +40,22 @@ SafePrint
                     <span class="contact-admin">&nbsp;Contact your administrator</span>
                 </div>
             </form>
-            <script src="{% static 'js/scripts.js' %}"></script>
             {% if error %}
             <script>
-            createAlert(
-                "Error",           // title
-                "",                // summary
-                "{{ error }}",     // details
-                "danger",          // severity
-                true,              // dismissible
-                true,              // autoDismiss
-                "pageMessages"
-            );
+            LoginError = "{{ error }}"; 
             </script>
             {% endif %}
             </div>
+    </div>
+</div>
+
+<div id="admin-404-overlay">
+    <div class="admin-404-box">
+        <div class="admin-404-container">
+            <div class="admin-404-header">Oops! Admins only</div>
+            <div class="admin-404-sub">Small screen, big no-no.</div>
+        </div>
+        <img src="{% static 'assets/404-illus.png' %}" alt="404" class="admin-404-img">
     </div>
 </div>
 
