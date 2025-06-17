@@ -175,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 createAlert('Success', 'Name Updated', 'Your name has been successfully updated.', 'success', true, true, 'pageMessages');
                 document.getElementById('Name').value = data.new_name;
                 hidePopupOverlay('editNameOverlay');
+                document.getElementById('edit-name-form').reset();
             } else {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating your name.', 'danger', true, true, 'pageMessages');
             }
@@ -198,6 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 createAlert('Success', 'Username Updated', 'Your username has been successfully updated.', 'success', true, true, 'pageMessages');
                 document.getElementById('Username').value = data.new_username;
                 hidePopupOverlay('editUsernameOverlay');
+                document.getElementById('edit-username-form').reset();
             } else {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating your username.','danger',true,false,'pageMessages');
             }
@@ -220,6 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success) {
                 createAlert('Success', 'Password Updated', 'Your password has been successfully updated.', 'success', true, true, 'pageMessages');
                 hidePopupOverlay('editPasswordOverlay');
+                document.getElementById('edit-password-form').reset();
             } else {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating your password.', 'danger', true, true, 'pageMessages');
             }
@@ -242,6 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success) {
                 createAlert('Success', 'Password Updated', 'The user password has been successfully updated.', 'success', true, true, 'pageMessages');
                 hidePopupOverlay('editUserPasswordOverlay');
+                document.getElementById('edit-user-password-form').reset();
             } else {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating the user password.', 'danger', true, true, 'pageMessages');
             }
@@ -282,6 +286,41 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    // Create Admin User Account
+    document.getElementById('create-account-form').onsubmit = function(e) {
+        e.preventDefault();
+        var form = this;
+        var formData = new FormData(form);
+
+        var name = formData.get('name');
+        var username = formData.get('username');
+        var password = formData.get('password');
+        var confirmPassword = formData.get('confirm_password');
+
+        fetch('/portal/add_user_ajax/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken 
+            },
+            body: JSON.stringify({
+                name: name,
+                username: username,
+                password: password,
+                confirm_password: confirmPassword
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                createAlert('Success', 'Account Created', 'The user account has been successfully created.', 'success', true, true, 'pageMessages');
+                hidePopupOverlay('createAccountOverlay');
+                location.reload();
+            } else {
+                createAlert('Error', 'Creation Failed', data.error || 'An error occurred while creating the user account.', 'danger', true, true, 'pageMessages');
+            }
+        });
+    };
 
 
 }); // End of DOMContentLoaded event listener

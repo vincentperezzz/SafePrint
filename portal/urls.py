@@ -14,4 +14,5 @@ urlpatterns = [
     path('update-password/', views.update_password, name='update_password'),
     path('update-user-password/', views.update_user_password, name='update_user_password'),
     path('delete_user_ajax/', views.delete_user_ajax, name='delete_user_ajax'),
+    path('add_user_ajax/', views.add_user_ajax, name='add_user_ajax'),
 ]

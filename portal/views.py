@@ -145,3 +145,33 @@ def delete_user_ajax(request):
         except AdminUser.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'User does not exist'})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+@csrf_exempt
+def add_user_ajax(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        name = data.get('name')
+        username = data.get('username')
+        password = data.get('password')
+        confirm_password = data.get('confirm_password')
+        role = 'admin'
+
+        if not name or not username or not password or not confirm_password:
+            print(name, username, password, confirm_password)
+            return JsonResponse({'success': False, 'error': 'All fields are required.'})
+
+        if password != confirm_password:
+            return JsonResponse({'success': False, 'error': 'Passwords do not match.'})
+
+        if AdminUser.objects.filter(username=username).exists():
+            return JsonResponse({'success': False, 'error': 'Username already exists.'})
+
+        new_user = AdminUser.objects.create(
+            name=name,
+            username=username,
+            password=password,
+            role=role
+        )
+        return JsonResponse({'success': True, 'name': name, 'username': username, 'user_id': new_user.id})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
