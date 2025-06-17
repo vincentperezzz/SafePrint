@@ -3491,4 +3491,90 @@ input:focus::placeholder {
     box-shadow: 0px 2px 0px 0px #18191F; 
 }
 
+.popup-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.15);
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
 
+.popup-form {
+    background: #fff;
+    border: 2px solid #222;
+    border-radius: 18px;
+    max-width: 650px;
+    padding: 0 2.5em 2em 2.5em;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.18);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 1.2em;
+}
+
+.popup-title {
+    font-size: 1.6em;
+    font-weight: 700;
+    margin-left: 0.1em;
+}
+
+.popup-close {
+    font-size: 2em;
+    font-weight: 400;
+    cursor: pointer;
+    margin-right: 0.1em;
+    line-height: 1;
+}
+
+.popup-divider {
+    border: none;
+    border-top: 2px solid #222;
+    margin: 0.7em 0 1.5em 0;
+}
+
+.popup-input {
+    width: 100%;
+    padding: 0.8em 1em;
+    margin-bottom: 1.2em;
+    border: 2px solid #222;
+    border-radius: 14px;
+    font-size: 1.1em;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.popup-done-btn {
+    width: 100%;
+    padding: 10px 20px;
+    border-radius: 12px;
+    border: 2px solid #18191F;
+    background-color: #caff70;
+    color: #18191F;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0px 4px 0px 0px #18191F;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
+    text-align: center;
+    line-height: 1.5;
+    font-size: 1.5rem;
+    margin-top: 0.5em;
+}
+
+.popup-done-btn:hover {
+    background-color: #eaffb2;
+    box-shadow: 0px 6px 0px 0px #18191F;
+}
+
+.popup-done-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0px 2px 0px 0px #18191F;
+}
