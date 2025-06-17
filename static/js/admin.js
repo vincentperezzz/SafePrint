@@ -73,5 +73,79 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     });
+
+    // Edit Name
+    document.getElementById('edit-name-form').onsubmit = function(e) {
+        e.preventDefault();
+        var formData = new FormData(this);
+        fetch(updateNameUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.error || "Update failed.");
+            }
+        });
+    };
+    
+    // Edit Username
+    document.getElementById('edit-username-form').onsubmit = function(e) {
+        e.preventDefault();
+        var formData = new FormData(this);
+        fetch(updateUsernameUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.error || "Update failed.");
+            }
+        });
+    };
+    
+    // Edit Password
+    document.getElementById('edit-password-form').onsubmit = function(e) {
+        e.preventDefault();
+        var formData = new FormData(this);
+        fetch(updatePasswordUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.error || "Update failed.");
+            }
+        });
+    };
+
+
+
 }); // End of DOMContentLoaded event listener
 
+function showPopupOverlay(id) {
+    var overlay = document.getElementById(id);
+    if (overlay) overlay.style.display = 'flex';
+}
+function hidePopupOverlay(id) {
+    var overlay = document.getElementById(id);
+    if (overlay) overlay.style.display = 'none';
+}

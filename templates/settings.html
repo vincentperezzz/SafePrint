@@ -37,21 +37,21 @@ Account Settings
                 <label>Name</label>
                 <input type="text" value="{{ user.name }}" readonly>
             </div>
-            <button class="general-btn">Edit</button>
+            <button class="general-btn" onclick="showPopupOverlay('editNameOverlay')">Edit</button>
         </div>
         <div class="settings-field-row">
             <div class="settings-field">
                 <label>Username</label>
                 <input type="text" value="{{ user.username }}" readonly>
             </div>
-            <button class="general-btn">Edit</button>
+            <button class="general-btn" onclick="showPopupOverlay('editUsernameOverlay')">Edit</button>
         </div>
         <div class="settings-field-row">
             <div class="settings-field">
                 <label>Password</label>
                 <input type="password" value="*************" readonly>
             </div>
-            <button class="general-btn">Change Password</button>
+            <button class="general-btn" onclick="showPopupOverlay('editPasswordOverlay')">Change Password</button>
         </div>
     </div>
 
@@ -138,8 +138,62 @@ Account Settings
 
 </div>
 
+<!-- Overlay background -->
+<div class="popup-overlay" id="editNameOverlay">
+  <div class="popup-form">
+    <div class="popup-header">
+      <span class="popup-title">Edit Name</span>
+      <span class="popup-close" onclick="hidePopupOverlay('editNameOverlay')">&times;</span>
+    </div>
+    <hr class="popup-divider">
+    <form id="edit-name-form" method="post">
+      {% csrf_token %}
+      <input type="text" name="new_name" class="popup-input" placeholder="Enter new Name" required>
+      <input type="text" name="confirm_name" class="popup-input" placeholder="Re-enter new Name" required>
+      <button type="submit" class="popup-done-btn">Done</button>
+    </form>
+  </div>
+</div>
+
+<div class="popup-overlay" id="editUsernameOverlay" style="display:none;">
+  <div class="popup-form">
+    <div class="popup-header">
+      <span class="popup-title">Edit Username</span>
+      <span class="popup-close" onclick="hidePopupOverlay('editUsernameOverlay')">&times;</span>
+    </div>
+    <hr class="popup-divider">
+    <form id="edit-username-form" method="post">
+      {% csrf_token %}
+      <input type="text" name="new_username" class="popup-input" placeholder="Enter new Username" required>
+      <input type="text" name="confirm_username" class="popup-input" placeholder="Re-enter new Username" required>
+      <button type="submit" class="popup-done-btn">Done</button>
+    </form>
+  </div>
+</div>
+
+<div class="popup-overlay" id="editPasswordOverlay" style="display:none;">
+  <div class="popup-form">
+    <div class="popup-header">
+      <span class="popup-title">Edit Password</span>
+      <span class="popup-close" onclick="hidePopupOverlay('editPasswordOverlay')">&times;</span>
+    </div>
+    <hr class="popup-divider">
+    <form id="edit-password-form" method="post">
+      {% csrf_token %}
+      <input type="password" name="current_password" class="popup-input" placeholder="Current Password" required>
+      <input type="password" name="new_password" class="popup-input" placeholder="Enter new Password" required>
+      <input type="password" name="confirm_password" class="popup-input" placeholder="Re-enter new Password" required>
+      <button type="submit" class="popup-done-btn">Done</button>
+    </form>
+  </div>
+</div>
+
+
 <script>
     var changeImageUrl = "{% url 'change_image_ajax' %}";
+    var updateNameUrl = "{% url 'update_name' %}";
+    var updateUsernameUrl = "{% url 'update_username' %}";
+    var updatePasswordUrl = "{% url 'update_password' %}";
     var csrfToken = "{{ csrf_token }}";
 </script>
 {% endblock %}
