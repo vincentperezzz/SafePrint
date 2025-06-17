@@ -9,4 +9,7 @@ urlpatterns = [
     path('status/', views.printer_status, name='printer_status'),
     path('settings/', views.account_settings, name='account_settings'),
     path('change-image-ajax/', views.change_image_ajax, name='change_image_ajax'),
+    path('update-name/', views.update_name, name='update_name'),
+    path('update-username/', views.update_username, name='update_username'),
+    path('update-password/', views.update_password, name='update_password'),
 ]
