@@ -1797,12 +1797,8 @@ input:focus::placeholder {
         padding: 20px;
     }
 
-    .navbar-menu {
-        gap: 12px; 
-    }
-
     .navbar-item {
-        padding: 12px 20px; 
+        padding: 15px 18px; 
         font-size: 14px; 
     }
 }
