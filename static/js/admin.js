@@ -137,6 +137,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    // Edit User Password
+    document.getElementById('edit-user-password-form').onsubmit = function(e) {
+        e.preventDefault();
+        var formData = new FormData(this);
+        fetch(updateUserPasswordUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                hidePopupOverlay('editUserPasswordOverlay');
+                location.reload();
+            } else {
+                alert(data.error || "Update failed.");
+            }
+        });
+    };
+
 
 
 }); // End of DOMContentLoaded event listener
@@ -148,4 +170,10 @@ function showPopupOverlay(id) {
 function hidePopupOverlay(id) {
     var overlay = document.getElementById(id);
     if (overlay) overlay.style.display = 'none';
+}
+
+function showEditUserPasswordOverlay(userId, userName) {
+    document.getElementById('edit-user-password-id').value = userId;
+    document.getElementById('edit-user-password-name').textContent = userName;
+    showPopupOverlay('editUserPasswordOverlay');
 }

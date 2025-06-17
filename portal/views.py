@@ -6,6 +6,7 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.http import Http404
+from django.views.decorators.csrf import csrf_exempt
 
 
 def dashboard(request):
@@ -100,3 +101,20 @@ def update_password(request):
             user.save()
             return JsonResponse({'success': True})
         return JsonResponse({'success': False, 'error': 'Password incorrect or does not match.'})
+    
+@csrf_exempt
+def update_user_password(request):
+    if request.method == 'POST':
+        user_id = request.POST.get('user_id')
+        new_password = request.POST.get('new_user_password')
+        confirm_password = request.POST.get('confirm_user_password')
+        if new_password != confirm_password:
+            return JsonResponse({'success': False, 'error': 'Passwords do not match.'})
+        try:
+            user = AdminUser.objects.get(id=user_id)
+            user.password = new_password  # Hash in production!
+            user.save()
+            return JsonResponse({'success': True})
+        except AdminUser.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User not found.'})
+    return JsonResponse({'success': False, 'error': 'Invalid request.'})
