@@ -18,6 +18,7 @@ def confirmation(request):
 
 def login_view(request):
     error = None
+    request.session.flush()
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
