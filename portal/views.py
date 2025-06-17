@@ -1,6 +1,7 @@
+import os
 from django.shortcuts import render
 from portal.models import AdminUser
-import os
+from .models import AdminUser
 from django.conf import settings
 from django.http import JsonResponse
 from django.contrib.auth.hashers import make_password, check_password
@@ -43,9 +44,11 @@ def account_settings(request):
     if not request.session.get('admin_user_id'):
         raise Http404("User not found in session") 
     user = None
+    user = AdminUser.objects.get(id=user_id)
+    users = AdminUser.objects.exclude(role="Manager")
     if user_id:
         user = AdminUser.objects.get(id=user_id)
-    return render(request, 'settings.html', {'user': user})
+    return render(request, 'settings.html', {'user': user, 'users': users})
 
 
 def change_image_ajax(request):
