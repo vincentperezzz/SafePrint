@@ -1,4 +1,5 @@
 import os
+import json
 from django.shortcuts import render
 from portal.models import AdminUser
 from .models import AdminUser
@@ -7,6 +8,7 @@ from django.http import JsonResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.http import Http404
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth import get_user_model
 
 
 def dashboard(request):
@@ -74,7 +76,7 @@ def update_name(request):
             user = AdminUser.objects.get(id=user_id)
             user.name = new_name
             user.save()
-            return JsonResponse({'success': True})
+            return JsonResponse({'success': True, 'new_name': new_name})
         return JsonResponse({'success': False, 'error': 'Names do not match.'})
 
 def update_username(request):
@@ -86,7 +88,7 @@ def update_username(request):
             user = AdminUser.objects.get(id=user_id)
             user.username = new_username
             user.save()
-            return JsonResponse({'success': True})
+            return JsonResponse({'success': True, 'new_username': new_username})
         return JsonResponse({'success': False, 'error': 'Usernames do not match.'})
 
 def update_password(request):
@@ -118,3 +120,28 @@ def update_user_password(request):
         except AdminUser.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'User not found.'})
     return JsonResponse({'success': False, 'error': 'Invalid request.'})
+
+
+@csrf_exempt
+def delete_user_ajax(request):
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Not authenticated'})
+    try:
+        current_user = AdminUser.objects.get(id=user_id)
+    except AdminUser.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Not authenticated'})
+    if current_user.role != 'Manager':
+        return JsonResponse({'success': False, 'error': 'Not authorized'})
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_id_to_delete = data.get('user_id')
+        try:
+            user = AdminUser.objects.get(id=user_id_to_delete)
+            if user.role == 'Manager':
+                return JsonResponse({'success': False, 'error': 'Cannot delete manager'})
+            user.delete()
+            return JsonResponse({'success': True, 'id': user_id_to_delete})
+        except AdminUser.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User does not exist'})
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
