@@ -72,7 +72,30 @@ SafePrint is a Django web application designed to provide a secure and efficient
    python manage.py runserver
    ```
 
-9. Access the application:
+9. Create a superuser (optional):
+   If you want to access the admin interface, create a superuser account:
+   ```
+   python manage.py createsuperuser
+   ```
+
+10. Create Manager account (only for fresh installations):
+    ```
+      python manage.py shell
+      ```
+      Then run the following commands in the Django shell:
+      ```python
+      from portal.models import AdminUser
+      from django.contrib.auth.hashers import make_password
+
+      AdminUser.objects.create(
+          name='Manager Name',
+          username='manager',
+          password=make_password('your_secure_password'),
+          role='Manager'
+      )
+      ```
+
+11. Access the application:
    Open your browser and navigate to `http://127.0.0.1:8000/`.
 
 ## Database Setup
@@ -112,3 +135,6 @@ This ensures users can set up the database using MySQL Workbench and configure t
 
 ## Contributing
 Contributions are welcome! Please open an issue or submit a pull request for any improvements or features.
+
+
+
