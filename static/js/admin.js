@@ -371,7 +371,6 @@ document.getElementById('searchUserInput').addEventListener('input', function() 
     const rows = document.querySelectorAll('.user-account-row');
     let visibleCount = 0;
     rows.forEach(row => {
-        if (row.id === "no-users-row") return; // Skip the placeholder row
         const usernameDiv = row.querySelector('.user-username');
         const nameDiv = row.querySelector('.user-name');
         if (usernameDiv && nameDiv) {
@@ -382,7 +381,8 @@ document.getElementById('searchUserInput').addEventListener('input', function() 
             if (match) visibleCount++;
         }
     });
-    document.getElementById('no-users-row').style.display = visibleCount === 0 ? '' : 'none';
+    // Show "No match found" only if there are no visible user rows
+    document.getElementById('no-match-row').style.display = visibleCount === 0 ? 'flex' : 'none';
 });
 
 // Feedback Modal

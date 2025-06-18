@@ -60,7 +60,7 @@ Account Settings
     <div class="settings-section" id="manager">
         <span class="settings-title">Manage Accounts</span>
         <div class="settings-search-bar">
-            <input type="text" id="searchUserInput" placeholder="Search by username">
+            <input type="text" id="searchUserInput" placeholder="Search by Name or Username">
             <span class="search-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="25" height="24" viewBox="0 0 25 24" fill="none">
                     <path d="M11.3418 19C15.7601 19 19.3418 15.4183 19.3418 11C19.3418 6.58172 15.7601 3 11.3418 3C6.92352 3 3.3418 6.58172 3.3418 11C3.3418 15.4183 6.92352 19 11.3418 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -90,6 +90,12 @@ Account Settings
                             <path d="M13.285 9.5975L11.3417 11.5408L9.38921 9.5975L8.09672 10.89L10.0492 12.8333L8.10588 14.7767L9.39838 16.0692L11.3417 14.1258L13.285 16.0692L14.5775 14.7767L12.6342 12.8333L14.5775 10.89L13.285 9.5975ZM14.55 3.66667L13.6334 2.75H9.05005L8.13338 3.66667H4.92505V5.5H17.7584V3.66667H14.55ZM5.84172 17.4167C5.84172 18.425 6.66672 19.25 7.67505 19.25H15.0084C16.0167 19.25 16.8417 18.425 16.8417 17.4167V6.41667H5.84172V17.4167ZM7.67505 8.25H15.0084V17.4167H7.67505V8.25Z" fill="#D70206"/>
                         </svg>
                     </button>
+                </div>
+
+                <div class="user-account-row" id="no-match-row" style="display:none;">
+                    <div class="user-info">
+                        <div class="user-name">No match found.</div>
+                    </div>
                 </div>
                 {% endif %}
             {% empty %}
