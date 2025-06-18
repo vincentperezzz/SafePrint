@@ -384,3 +384,28 @@ document.getElementById('searchUserInput').addEventListener('input', function() 
     });
     document.getElementById('no-users-row').style.display = visibleCount === 0 ? '' : 'none';
 });
+
+// Feedback Modal
+document.addEventListener('DOMContentLoaded', function() {
+  var feedbackBtn = document.querySelector('.settings-feedback-btn');
+  if (feedbackBtn) {
+    feedbackBtn.onclick = function(e) {
+      e.preventDefault();
+      document.getElementById('feedbackModal').style.display = 'block';
+    };
+  }
+
+  var closeBtn = document.getElementById('closeFeedbackModal');
+  if (closeBtn) {
+    closeBtn.onclick = function() {
+      document.getElementById('feedbackModal').style.display = 'none';
+    };
+  }
+
+  window.onclick = function(event) {
+    var modal = document.getElementById('feedbackModal');
+    if (event.target == modal) {
+      modal.style.display = 'none';
+    }
+  };
+});
