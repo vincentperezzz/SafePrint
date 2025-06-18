@@ -81,6 +81,20 @@ function createAlert(title, summary, details, severity, dismissible, autoDismiss
     }
 }
 
+window.onload = function() {
+    const alertData = sessionStorage.getItem('alert');
+    if (alertData) {
+        const { type, message } = JSON.parse(alertData);
+        if (type === 'success') {
+            createAlert('Success', 'Account Created', message, 'success', true, true, 'pageMessages');
+            
+        } else {
+            createAlert('Error', 'Account Creation Failed', message, 'danger', true, true, 'pageMessages');
+        }
+        sessionStorage.removeItem('alert');
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     // TEMPORARILY make the no-documents section hidden and document-results section visible
     const searchButton = document.querySelector('.search-btn');
@@ -313,11 +327,17 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                createAlert('Success', 'Account Created', 'The user account has been successfully created.', 'success', true, true, 'pageMessages');
-                hidePopupOverlay('createAccountOverlay');
+                sessionStorage.setItem('alert', JSON.stringify({
+                    type: 'success',
+                    message: 'Account created successfully'
+                }));
                 location.reload();
             } else {
-                createAlert('Error', 'Creation Failed', data.error || 'An error occurred while creating the user account.', 'danger', true, true, 'pageMessages');
+                sessionStorage.setItem('alert', JSON.stringify({
+                    type: 'error',
+                    message: data.error || 'An error occurred while creating the user account.'
+                }));
+                location.reload();
             }
         });
     };
