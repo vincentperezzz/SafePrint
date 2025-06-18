@@ -394,8 +394,8 @@ document.getElementById('searchUserInput').addEventListener('input', function() 
     document.getElementById('no-match-row').style.display = visibleCount === 0 ? 'flex' : 'none';
 });
 
-// Feedback Modal
 document.addEventListener('DOMContentLoaded', function() {
+  // Feedback Comments Modal
   var feedbackBtn = document.querySelector('.settings-feedback-btn');
   if (feedbackBtn) {
     feedbackBtn.onclick = function(e) {
@@ -404,19 +404,40 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   }
 
-  var closeBtn = document.getElementById('closeFeedbackModal');
-  if (closeBtn) {
-    closeBtn.onclick = function() {
+  var closeFeedbackBtn = document.getElementById('closeFeedbackModal');
+  if (closeFeedbackBtn) {
+    closeFeedbackBtn.onclick = function() {
       document.getElementById('feedbackModal').style.display = 'none';
     };
   }
 
+  // Problem Reports Modal
+  var problemBtn = document.querySelector('.settings-problem-btn');
+  if (problemBtn) {
+    problemBtn.onclick = function(e) {
+      e.preventDefault();
+      document.getElementById('problemModal').style.display = 'block';
+    };
+  }
+
+  var closeProblemBtn = document.getElementById('closeProblemModal');
+  if (closeProblemBtn) {
+    closeProblemBtn.onclick = function() {
+      document.getElementById('problemModal').style.display = 'none';
+    };
+  }
+
+  // Close modals when clicking outside modal content
   window.onclick = function(event) {
-    var modal = document.getElementById('feedbackModal');
-    if (event.target == modal) {
-      modal.style.display = 'none';
+    var feedbackModal = document.getElementById('feedbackModal');
+    var problemModal = document.getElementById('problemModal');
+    if (event.target == feedbackModal) {
+      feedbackModal.style.display = 'none';
     }
-  };
+    if (event.target == problemModal) {
+      problemModal.style.display = 'none';
+    }
+  }
 });
 
 
