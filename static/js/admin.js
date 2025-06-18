@@ -365,3 +365,22 @@ function showDeleteUserOverlay(userId, userName) {
     document.getElementById('delete-user-name').textContent = userName;
     showPopupOverlay('deleteUserOverlay');
 }
+
+document.getElementById('searchUserInput').addEventListener('input', function() {
+    const filter = this.value.toLowerCase();
+    const rows = document.querySelectorAll('.user-account-row');
+    let visibleCount = 0;
+    rows.forEach(row => {
+        if (row.id === "no-users-row") return; // Skip the placeholder row
+        const usernameDiv = row.querySelector('.user-username');
+        const nameDiv = row.querySelector('.user-name');
+        if (usernameDiv && nameDiv) {
+            const username = usernameDiv.textContent.toLowerCase();
+            const name = nameDiv.textContent.toLowerCase();
+            const match = username.includes(filter) || name.includes(filter);
+            row.style.display = match ? '' : 'none';
+            if (match) visibleCount++;
+        }
+    });
+    document.getElementById('no-users-row').style.display = visibleCount === 0 ? '' : 'none';
+});
