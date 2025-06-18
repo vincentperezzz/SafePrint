@@ -1798,7 +1798,7 @@ input:focus::placeholder {
     }
 
     .navbar-item {
-        padding: 15px 18px; 
+        padding: 13px 18px; 
         font-size: 14px; 
     }
 }
