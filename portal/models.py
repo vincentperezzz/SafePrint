@@ -77,3 +77,24 @@ class Payment(models.Model):
 
     class Meta:
         db_table = 'payments'
+
+class Feedback(models.Model):
+    CATEGORY_CHOICES = [
+        ('Comment', 'Comment'),
+        ('Report a Problem', 'Report a Problem'),
+    ]
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    name = models.CharField(max_length=100, blank=True, default="Anonymous")
+    message = models.TextField()
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.name:
+            self.name = "Anonymous"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.category} by {self.name}"
+    
+    class Meta:
+        db_table = 'feedback'
