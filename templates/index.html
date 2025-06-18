@@ -234,7 +234,7 @@ SafePrint
 
 <div class="feedback-container">
     <div class="form-container">
-        <form action="peers.html" class="feedback-form">
+    <form action="{% url 'feedback' %}" method="post" class="feedback-form">            {% csrf_token %}
             <div class="form-category">
                 <label>
                     <input type="radio" name="category" value="Comment" required>
@@ -247,7 +247,7 @@ SafePrint
             </div>
         
             <label for="name">Name (optional)</label>
-            <input type="text" id="name" name="name" required placeholder="Name">
+            <input type="text" id="name" name="name"placeholder="Name">
         
             <label for="message">Message*</label>
             <textarea id="message" name="message" rows="4" required placeholder="Your message here..."></textarea>
