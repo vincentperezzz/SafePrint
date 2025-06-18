@@ -3606,7 +3606,7 @@ input:focus::placeholder {
     border: 2px solid #222;
     border-radius: 18px;
     width: 60%;
-    max-height: 65vh;
+    max-height: 80vh;
     max-width: 650px;
     padding: 0;
     overflow: hidden;
