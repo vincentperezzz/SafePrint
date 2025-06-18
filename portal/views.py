@@ -135,15 +135,24 @@ def delete_user_ajax(request):
         return JsonResponse({'success': False, 'error': 'Not authorized'})
     if request.method == 'POST':
         data = json.loads(request.body)
-        user_id_to_delete = data.get('user_id')
-        try:
-            user = AdminUser.objects.get(id=user_id_to_delete)
-            if user.role == 'Manager':
-                return JsonResponse({'success': False, 'error': 'Cannot delete manager'})
-            user.delete()
-            return JsonResponse({'success': True, 'id': user_id_to_delete})
-        except AdminUser.DoesNotExist:
-            return JsonResponse({'success': False, 'error': 'User does not exist'})
+        user_ids_to_delete = data.get('user_ids')  # Expecting a list of IDs
+        if not user_ids_to_delete:
+            return JsonResponse({'success': False, 'error': 'No user IDs provided'})
+        if not isinstance(user_ids_to_delete, list):
+            user_ids_to_delete = [user_ids_to_delete]
+        deleted_ids = []
+        errors = []
+        for uid in user_ids_to_delete:
+            try:
+                user = AdminUser.objects.get(id=uid)
+                if user.role == 'Manager':
+                    errors.append({'id': uid, 'error': 'Cannot delete manager'})
+                    continue
+                user.delete()
+                deleted_ids.append(uid)
+            except AdminUser.DoesNotExist:
+                errors.append({'id': uid, 'error': 'User does not exist'})
+        return JsonResponse({'success': True, 'deleted_ids': deleted_ids, 'errors': errors})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
 @csrf_exempt

@@ -95,6 +95,8 @@ window.onload = function() {
     }
 };
 
+let selectedIds = [];
+
 document.addEventListener('DOMContentLoaded', () => {
     // TEMPORARILY make the no-documents section hidden and document-results section visible
     const searchButton = document.querySelector('.search-btn');
@@ -278,15 +280,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     'X-CSRFToken': csrfToken,
                 },
                 credentials: 'same-origin',
-                body: JSON.stringify({ user_id: userId })
+                body: JSON.stringify({user_ids: selectedIds})
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    var userRow = document.getElementById('user-account-row-' + userId);
-                    if (userRow) {
-                        userRow.remove();
-                    }
+                    selectedIds.forEach(id => {
+                        const row = document.getElementById('user-account-row-' + id);
+                        if (row) row.remove();
+                    });
                     hidePopupOverlay('deleteUserOverlay');
                     createAlert('Success', 'User Deleted', 'The user has been successfully deleted.', 'success', true, true, 'pageMessages');
                 } else {
@@ -361,8 +363,15 @@ function showEditUserPasswordOverlay(userId, userName) {
 }
 
 function showDeleteUserOverlay(userId, userName) {
-    document.getElementById('delete-user-id').value = userId;
-    document.getElementById('delete-user-name').textContent = userName;
+    if (Array.isArray(userId)) {
+        selectedIds = userId;
+        document.getElementById('delete-user-id').value = userId.join(',');
+        document.getElementById('delete-user-name').textContent = userName;
+    } else {
+        selectedIds = [userId];
+        document.getElementById('delete-user-id').value = userId;
+        document.getElementById('delete-user-name').textContent = userName;
+    }
     showPopupOverlay('deleteUserOverlay');
 }
 
@@ -409,3 +418,32 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   };
 });
+
+
+// Get all checkboxes and the delete button
+const deleteBtn = document.getElementById('deleteSelectedBtn');
+
+// Delegate event to the container for dynamic rows
+document.querySelector('.user-accounts-table').addEventListener('change', function(e) {
+    if (e.target.type === 'checkbox') {
+        updateDeleteButton();
+    }
+});
+
+function updateDeleteButton() {
+    const checkedBoxes = document.querySelectorAll('.user-account-row input[type="checkbox"]:checked');
+    deleteBtn.style.display = checkedBoxes.length > 0 ? 'inline-block' : 'none';
+}
+
+// When the button is clicked, collect selected user IDs and show popup
+deleteBtn.addEventListener('click', function() {
+    const checkedBoxes = document.querySelectorAll('.user-account-row input[type="checkbox"]:checked');
+    const selectedIds = Array.from(checkedBoxes).map(cb => {
+        const row = cb.closest('.user-account-row');
+        return parseInt(row.id.replace('user-account-row-', ''), 10);
+    });
+    const label = selectedIds.length > 1 ? `${selectedIds.length} users` : `${selectedIds.length} user`;
+    showDeleteUserOverlay(selectedIds, label);
+});
+
+
