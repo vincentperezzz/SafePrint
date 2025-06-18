@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 from . import views
 
 urlpatterns = [
@@ -7,4 +7,5 @@ urlpatterns = [
     path('upload/', views.upload_view, name='upload'),
     path('confirmation/', views.confirmation, name='confirmation'),
     path('login/', views.login_view, name='login'),
+    path('', include('portal.urls')),
 ]
