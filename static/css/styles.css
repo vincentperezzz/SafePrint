@@ -3221,6 +3221,13 @@ input:focus::placeholder {
     justify-content: space-between;
 }
 
+.manage-settings-header{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
 .settings-avatar {
     width: 60px;
     height: 60px;

@@ -58,7 +58,10 @@ Account Settings
 
     {% if user.role == "Manager" %}
     <div class="settings-section" id="manager">
-        <span class="settings-title">Manage Accounts</span>
+        <div class="manage-settings-header">
+            <span class="settings-title">Manager Settings</span>
+            <button id="deleteSelectedBtn" class="queue-cancel-btn" style="display: none;">Delete</button>
+        </div>
         <div class="settings-search-bar">
             <input type="text" id="searchUserInput" placeholder="Search by Name or Username">
             <span class="search-icon">
