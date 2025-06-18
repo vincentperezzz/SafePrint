@@ -1,6 +1,6 @@
 import os
 import json
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from portal.models import AdminUser
 from .models import AdminUser
 from django.conf import settings
@@ -9,6 +9,7 @@ from django.contrib.auth.hashers import make_password
 from django.http import Http404
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import get_user_model
+from .forms import FeedbackForm
 
 
 def dashboard(request):
@@ -184,3 +185,13 @@ def add_user_ajax(request):
         return JsonResponse({'success': True, 'name': name, 'username': username, 'user_id': new_user.id})
 
     return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+
+def feedback_view(request):
+    if request.method == 'POST':
+        form = FeedbackForm(request.POST)
+        if form.is_valid():
+            form.save()
+    else:
+        form = FeedbackForm()
+    return render(request, 'index.html', {'form': form})
