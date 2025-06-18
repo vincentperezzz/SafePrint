@@ -235,3 +235,25 @@ document.addEventListener('DOMContentLoaded', function() {
         );
     }
 });
+
+document.getElementById('feedback-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+
+    fetch("{% url 'feedback' %}", {
+        method: "POST",
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert("Thank you for your feedback!");
+            window.location.reload();
+        }
+    });
+});
