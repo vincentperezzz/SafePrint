@@ -5,7 +5,7 @@ from portal.models import AdminUser
 from .models import AdminUser
 from django.conf import settings
 from django.http import JsonResponse
-from django.contrib.auth.hashers import make_password, check_password
+from django.contrib.auth.hashers import make_password
 from django.http import Http404
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import get_user_model
@@ -99,7 +99,7 @@ def update_password(request):
         confirm_password = request.POST.get('confirm_password')
         user = AdminUser.objects.get(id=user_id)
         if user.password == current_password and new_password == confirm_password:
-            user.password = new_password  # For real apps, hash the password!
+            user.password = make_password(new_password) # For real apps, hash the password!
             user.save()
             return JsonResponse({'success': True})
         return JsonResponse({'success': False, 'error': 'Password incorrect or does not match.'})
@@ -114,7 +114,7 @@ def update_user_password(request):
             return JsonResponse({'success': False, 'error': 'Passwords do not match.'})
         try:
             user = AdminUser.objects.get(id=user_id)
-            user.password = new_password  # Hash in production!
+            user.password = make_password(new_password)  
             user.save()
             return JsonResponse({'success': True})
         except AdminUser.DoesNotExist:
@@ -169,7 +169,7 @@ def add_user_ajax(request):
         new_user = AdminUser.objects.create(
             name=name,
             username=username,
-            password=password,
+            password=make_password(password),
             role=role
         )
         return JsonResponse({'success': True, 'name': name, 'username': username, 'user_id': new_user.id})
