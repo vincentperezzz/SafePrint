@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from portal.models import AdminUser
+from django.contrib.auth.hashers import check_password
 
 
 def index_view(request):
@@ -24,7 +25,7 @@ def login_view(request):
         password = request.POST.get('password')
         try:
             user = AdminUser.objects.get(username=username)
-            if user.password == password:
+            if check_password(password, user.password):
                 request.session['admin_user_id'] = user.id
                 return redirect(reverse('dashboard'))  # GOTO the link
             else:

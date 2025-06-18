@@ -1,10 +1,14 @@
+import os
+import json
 from django.shortcuts import render
 from portal.models import AdminUser
-import os
+from .models import AdminUser
 from django.conf import settings
 from django.http import JsonResponse
-from django.contrib.auth.hashers import make_password, check_password
+from django.contrib.auth.hashers import make_password
 from django.http import Http404
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth import get_user_model
 
 
 def dashboard(request):
@@ -43,9 +47,11 @@ def account_settings(request):
     if not request.session.get('admin_user_id'):
         raise Http404("User not found in session") 
     user = None
+    user = AdminUser.objects.get(id=user_id)
+    users = AdminUser.objects.exclude(role="Manager")
     if user_id:
         user = AdminUser.objects.get(id=user_id)
-    return render(request, 'settings.html', {'user': user})
+    return render(request, 'settings.html', {'user': user, 'users': users})
 
 
 def change_image_ajax(request):
@@ -70,7 +76,7 @@ def update_name(request):
             user = AdminUser.objects.get(id=user_id)
             user.name = new_name
             user.save()
-            return JsonResponse({'success': True})
+            return JsonResponse({'success': True, 'new_name': new_name})
         return JsonResponse({'success': False, 'error': 'Names do not match.'})
 
 def update_username(request):
@@ -82,7 +88,7 @@ def update_username(request):
             user = AdminUser.objects.get(id=user_id)
             user.username = new_username
             user.save()
-            return JsonResponse({'success': True})
+            return JsonResponse({'success': True, 'new_username': new_username})
         return JsonResponse({'success': False, 'error': 'Usernames do not match.'})
 
 def update_password(request):
@@ -93,7 +99,79 @@ def update_password(request):
         confirm_password = request.POST.get('confirm_password')
         user = AdminUser.objects.get(id=user_id)
         if user.password == current_password and new_password == confirm_password:
-            user.password = new_password  # For real apps, hash the password!
+            user.password = make_password(new_password) # For real apps, hash the password!
             user.save()
             return JsonResponse({'success': True})
         return JsonResponse({'success': False, 'error': 'Password incorrect or does not match.'})
+    
+@csrf_exempt
+def update_user_password(request):
+    if request.method == 'POST':
+        user_id = request.POST.get('user_id')
+        new_password = request.POST.get('new_user_password')
+        confirm_password = request.POST.get('confirm_user_password')
+        if new_password != confirm_password:
+            return JsonResponse({'success': False, 'error': 'Passwords do not match.'})
+        try:
+            user = AdminUser.objects.get(id=user_id)
+            user.password = make_password(new_password)  
+            user.save()
+            return JsonResponse({'success': True})
+        except AdminUser.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User not found.'})
+    return JsonResponse({'success': False, 'error': 'Invalid request.'})
+
+
+@csrf_exempt
+def delete_user_ajax(request):
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Not authenticated'})
+    try:
+        current_user = AdminUser.objects.get(id=user_id)
+    except AdminUser.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Not authenticated'})
+    if current_user.role != 'Manager':
+        return JsonResponse({'success': False, 'error': 'Not authorized'})
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_id_to_delete = data.get('user_id')
+        try:
+            user = AdminUser.objects.get(id=user_id_to_delete)
+            if user.role == 'Manager':
+                return JsonResponse({'success': False, 'error': 'Cannot delete manager'})
+            user.delete()
+            return JsonResponse({'success': True, 'id': user_id_to_delete})
+        except AdminUser.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User does not exist'})
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+@csrf_exempt
+def add_user_ajax(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        name = data.get('name')
+        username = data.get('username')
+        password = data.get('password')
+        confirm_password = data.get('confirm_password')
+        role = 'admin'
+
+        if not name or not username or not password or not confirm_password:
+            print(name, username, password, confirm_password)
+            return JsonResponse({'success': False, 'error': 'All fields are required.'})
+
+        if password != confirm_password:
+            return JsonResponse({'success': False, 'error': 'Passwords do not match.'})
+
+        if AdminUser.objects.filter(username=username).exists():
+            return JsonResponse({'success': False, 'error': 'Username already exists.'})
+
+        new_user = AdminUser.objects.create(
+            name=name,
+            username=username,
+            password=make_password(password),
+            role=role
+        )
+        return JsonResponse({'success': True, 'name': name, 'username': username, 'user_id': new_user.id})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
