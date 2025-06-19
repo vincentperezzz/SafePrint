@@ -211,6 +211,9 @@ def feedback_view(request):
         form = FeedbackForm()
     return render(request, 'index.html', {'form': form})
 
+def thank_view(request):
+    return render(request, 'thank.html')
+
 
 def feedback_comments_api(request):
     feedback_comments = Feedback.objects.filter(category='Comment').order_by('-submitted_at')
