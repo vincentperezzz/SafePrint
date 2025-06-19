@@ -94,13 +94,7 @@ Account Settings
                         </svg>
                     </button>
                 </div>
-
-                <div class="user-account-row" id="no-match-row" style="display:none;">
-                    <div class="user-info">
-                        <div class="user-name">No match found.</div>
-                    </div>
-                </div>
-                {% endif %}
+            {% endif %}
             {% empty %}
             <div class="user-account-row">
                 <div class="user-info">
@@ -108,6 +102,12 @@ Account Settings
                 </div>
             </div>
             {% endfor %}
+
+           <div class="user-account-row" id="no-match-row" style="display:none;">
+              <div class="user-info">
+                  <div class="user-name">No match found.</div>
+              </div>
+          </div> 
         </div>
 
         <button class="create-account-btn" id="createAccountBtn" onclick="showPopupOverlay('createAccountOverlay')">
