@@ -3354,6 +3354,10 @@ input:focus::placeholder {
     padding: 0 20px;
 }
 
+#no-match-row{
+    background: #FAFAFB;
+}
+
 .user-account-row input[type="checkbox"] {
     border: 1px solid var(--Data-viz-Gray-Gray-50, #8D8D8D);
     border-radius: 4px;
