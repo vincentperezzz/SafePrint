@@ -3346,11 +3346,11 @@ input:focus::placeholder {
     padding: 0 20px;
     gap: 12px;
     border-bottom: 1px solid var(--Border-Light-Secondary, #E4E2E4);
-    background: #FAFAFB;
+    background: #FFF;
 }
 
 .user-account-row:nth-child(even) {
-    background: #FFF;
+    background: #FAFAFB;
     padding: 0 20px;
 }
 
