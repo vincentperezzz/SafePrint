@@ -117,9 +117,9 @@ document.addEventListener('DOMContentLoaded', () => {
             approvalButtons.style.display = 'flex';
 
             // Temporarily Completed Job Part
-            noJobsSection.style.display = 'none';
-            completedJobsTitle.style.display = 'flex';
-            jobsItem.style.display = 'flex';
+            if (noJobsSection) noJobsSection.style.display = 'none';
+            if (completedJobsTitle) completedJobsTitle.style.display = 'flex';
+            if (jobsItem) jobsItem.style.display = 'flex';
         });
     } else {
         console.error('One or more elements (search-btn, no-documents, document-results, approval-buttons) are missing in the DOM.');
@@ -145,37 +145,42 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Clear button is missing in the DOM.');
     }
 
-    document.getElementById('image-upload').addEventListener('change', function() {
-        var fileInput = this;
-        if (fileInput.files.length > 0) {
-            var formData = new FormData();
-            formData.append('profile_image', fileInput.files[0]);
-            fetch(changeImageUrl, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': csrfToken
-                },
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                var img = document.getElementById('profile-img');
-                if (data.success) {
+    const imageUpload = document.getElementById('image-upload');
+    if (imageUpload) {
+        imageUpload.addEventListener('change', function() {
+            var fileInput = this;
+            if (fileInput.files.length > 0) {
+                var formData = new FormData();
+                formData.append('profile_image', fileInput.files[0]);
+                fetch(changeImageUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
                     var img = document.getElementById('profile-img');
-                    if (img) {
-                        img.src = data.image_url + '?t=' + new Date().getTime();
-                    };
-                    createAlert('Success', 'Image Updated', 'Your profile image has been successfully updated.', 'success', true, true, 'pageMessages');
-                    location.reload();
-                } else {
-                    createAlert('Error', 'Image Upload Failed', data.error || 'An error occurred while uploading the image.', 'danger', true, true, 'pageMessages');
-                }
-            });
-        }
-    });
+                    if (data.success) {
+                        var img = document.getElementById('profile-img');
+                        if (img) {
+                            img.src = data.image_url + '?t=' + new Date().getTime();
+                        };
+                        createAlert('Success', 'Image Updated', 'Your profile image has been successfully updated.', 'success', true, true, 'pageMessages');
+                        location.reload();
+                    } else {
+                        createAlert('Error', 'Image Upload Failed', data.error || 'An error occurred while uploading the image.', 'danger', true, true, 'pageMessages');
+                    }
+                });
+            }
+        });
+    }
 
     // Edit Name
-    document.getElementById('edit-name-form').onsubmit = function(e) {
+    const editNameForm = document.getElementById('edit-name-form');
+    if (editNameForm) {
+        editNameForm.onsubmit = function(e) {
         e.preventDefault();
         var formData = new FormData(this);
         fetch(updateNameUrl, {
@@ -196,10 +201,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating your name.', 'danger', true, true, 'pageMessages');
             }
         });
-    };
+        };
+    }
     
     // Edit Username
-    document.getElementById('edit-username-form').onsubmit = function(e) {
+    const editUsernameForm = document.getElementById('edit-username-form');
+    if (editUsernameForm) {
+        editUsernameForm.onsubmit = function(e) {
         e.preventDefault();
         var formData = new FormData(this);
         fetch(updateUsernameUrl, {
@@ -220,11 +228,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating your username.','danger',true,false,'pageMessages');
             }
         });
-    };
+        };
+    }
     
     // Edit Password
-    document.getElementById('edit-password-form').onsubmit = function(e) {
-        e.preventDefault();
+    const editPasswordForm = document.getElementById('edit-password-form');
+    if (editPasswordForm) {
+        editPasswordForm.onsubmit = function(e) {
+         e.preventDefault();
         var formData = new FormData(this);
         fetch(updatePasswordUrl, {
             method: 'POST',
@@ -243,10 +254,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating your password.', 'danger', true, true, 'pageMessages');
             }
         });
-    };
+        };
+    }
 
     // Edit User Password
-    document.getElementById('edit-user-password-form').onsubmit = function(e) {
+    const editUserPasswordForm = document.getElementById('edit-user-password-form');
+    if (editUserPasswordForm) {
+        editUserPasswordForm.onsubmit = function(e) {
         e.preventDefault();
         var formData = new FormData(this);
         fetch(updateUserPasswordUrl, {
@@ -266,7 +280,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating the user password.', 'danger', true, true, 'pageMessages');
             }
         });
-    };
+        };
+    }
 
     // Delete User
     var deleteBtn = document.getElementById('deleteConfirmBtn');
@@ -303,8 +318,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Create Admin User Account
-    document.getElementById('create-account-form').onsubmit = function(e) {
-        e.preventDefault();
+    const createAccountForm = document.getElementById('create-account-form');
+    if (createAccountForm) {
+        createAccountForm.onsubmit = function(e) {
+         e.preventDefault();
         var form = this;
         var formData = new FormData(form);
 
@@ -342,9 +359,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 location.reload();
             }
         });
-    };
+        };
+    }
 
-    document.querySelector('.settings-feedback-btn').addEventListener('click', function(e) {
+    // Feedback Modals
+    const feedbackBtn = document.querySelector('.settings-feedback-btn');
+    if (feedbackBtn) {
+        feedbackBtn.addEventListener('click', function(e) {
         e.preventDefault();
         document.getElementById('feedbackModal').style.display = 'block';
         fetch(updateFeebackUrl)
@@ -371,10 +392,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
             });
-    });
-    
-    document.querySelector('.settings-problem-btn').addEventListener('click', function(e) {
-        e.preventDefault();
+        });
+    }
+
+    // Problem Reports Modal
+    const problemBtn = document.querySelector('.settings-problem-btn');
+    if (problemBtn) {
+        problemBtn.addEventListener('click', function(e) {
+         e.preventDefault();
         document.getElementById('problemModal').style.display = 'block';
         fetch(updateProblemUrl)
             .then(response => response.json())
@@ -400,7 +425,51 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
             });
-    });
+        });
+    }
+
+    // Printer Status Dropdowns Update Database
+    const dropdownSelects = document.querySelectorAll('.dropdown-select');
+    if (dropdownSelects.length > 0) {
+        dropdownSelects.forEach(function(select) {
+            select.addEventListener('change', function() {
+                const printerId = this.dataset.printerId;
+                const field = this.dataset.field;
+                const value = this.value;
+                
+                // Form data for the request
+                const formData = new FormData();
+                formData.append('printer_id', printerId);
+                formData.append('field', field);
+                formData.append('value', value);
+                
+                fetch(updatePrinterUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => {
+                            console.error('Server response:', text);
+                            throw new Error(`Server error: ${response.status}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    createAlert('Success', 'Status Updated', 'Printer status has been updated successfully.', 'success', true, true, 'pageMessages');
+                })
+                .catch(error => {
+                    console.error('Error updating printer status:', error);
+                    createAlert('Error', 'Update Failed', 'Failed to update printer status. Please try again or contact support.', 'danger', true, true, 'pageMessages');
+                });
+            });
+        });
+    }
+
 
 
 }); // End of DOMContentLoaded event listener

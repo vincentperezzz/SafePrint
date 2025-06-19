@@ -19,4 +19,5 @@ urlpatterns = [
     path('thankyou/', views.thankyou_view, name='thankyou'),
     path('api/feedback-comments/', views.feedback_comments_api, name='feedback_comments_api'),
     path('api/problem-reports/', views.problem_reports_api, name='problem_reports_api'),
+    path('update_printer_field/', views.update_printer_field, name='update_printer_field'),
 ]
