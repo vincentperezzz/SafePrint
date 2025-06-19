@@ -1,15 +1,18 @@
 import os
 import json
-from django.shortcuts import render, redirect
-from portal.models import AdminUser
+from django.shortcuts import render
+from portal.models import AdminUser, Feedback
 from .models import AdminUser
 from django.conf import settings
 from django.http import JsonResponse
 from django.contrib.auth.hashers import make_password
 from django.http import Http404
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth import get_user_model
 from .forms import FeedbackForm
+from django.http import JsonResponse
+from django.utils.timezone import localtime
+
+
 
 
 def dashboard(request):
@@ -47,12 +50,16 @@ def account_settings(request):
     user_id = request.session.get('admin_user_id')
     if not request.session.get('admin_user_id'):
         raise Http404("User not found in session") 
-    user = None
     user = AdminUser.objects.get(id=user_id)
     users = AdminUser.objects.exclude(role="Manager")
-    if user_id:
-        user = AdminUser.objects.get(id=user_id)
-    return render(request, 'settings.html', {'user': user, 'users': users})
+    feedback_comments = Feedback.objects.filter(category='Comment').order_by('-submitted_at')
+    problem_reports = Feedback.objects.filter(category='Report a Problem').order_by('-submitted_at')
+    return render(request, 'settings.html', {
+        'user': user,
+        'users': users,
+        'feedback_comments': feedback_comments,
+        'problem_reports': problem_reports,
+    })
 
 
 def change_image_ajax(request):
@@ -187,6 +194,7 @@ def add_user_ajax(request):
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
 
+
 def feedback_view(request):
     if request.method == 'POST':
         form = FeedbackForm(request.POST)
@@ -195,3 +203,28 @@ def feedback_view(request):
     else:
         form = FeedbackForm()
     return render(request, 'index.html', {'form': form})
+
+
+def feedback_comments_api(request):
+    feedback_comments = Feedback.objects.filter(category='Comment').order_by('-submitted_at')
+    data = [
+        {
+            'name': f.name or "Anonymous",
+            'message': f.message,
+            'submitted_at': localtime(f.submitted_at).strftime("%Y-%m-%d %I:%M %p")
+        }
+        for f in feedback_comments
+    ]
+    return JsonResponse({'feedback_comments': data})
+
+def problem_reports_api(request):
+    problem_reports = Feedback.objects.filter(category='Report a Problem').order_by('-submitted_at')
+    data = [
+        {
+            'name': p.name or "Anonymous",
+            'message': p.message,
+            'submitted_at': localtime(p.submitted_at).strftime("%Y-%m-%d %I:%M %p")
+        }
+        for p in problem_reports
+    ]
+    return JsonResponse({'problem_reports': data})
