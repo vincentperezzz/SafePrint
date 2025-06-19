@@ -3,11 +3,11 @@ from . import views
 
 urlpatterns = [
     # Add your admin-specific URL patterns here
-    path('dashboard/', views.dashboard, name='dashboard'),
-    path('queue/', views.printing_queue, name='printing_queue'),
-    path('completed/', views.print_completed, name='print_completed'),
-    path('status/', views.printer_status, name='printer_status'),
-    path('settings/', views.account_settings, name='account_settings'),
+    path('portal/dashboard/', views.dashboard, name='dashboard'),
+    path('portal/queue/', views.printing_queue, name='printing_queue'),
+    path('portal/completed/', views.print_completed, name='print_completed'),
+    path('portal/status/', views.printer_status, name='printer_status'),
+    path('portal/settings/', views.account_settings, name='account_settings'),
     path('change-image-ajax/', views.change_image_ajax, name='change_image_ajax'),
     path('update-name/', views.update_name, name='update_name'),
     path('update-username/', views.update_username, name='update_username'),
