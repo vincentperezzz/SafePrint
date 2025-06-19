@@ -2868,6 +2868,16 @@ input:focus::placeholder {
     background: #FFFFFF;
 }
 
+.printer-name{
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.printer-model{
+    font-size: 14px;
+    color: #6D6D6D;
+}
+
 .on-queue-documents-list {
     display: flex;
     flex-direction: column;
@@ -2936,7 +2946,7 @@ input:focus::placeholder {
 .printer-table .dropdown-select {
     font-size: 13px;
     padding: 4px 24px 4px 8px;
-    height: 28px;
+    height: 35px;
     min-width: 60px;
     border-radius: 8px;
 }
@@ -2958,9 +2968,9 @@ input:focus::placeholder {
     border-radius: 50%;
     margin-right: 6px;
 }
-.status-dot.idle { background: #6fdc6f; }
-.status-dot.printing { background: #ffff00; }
-.status-dot.error { background: #ff6f6f; }
+.status-dot.idle { background: #15be15; }
+.status-dot.printing { background: #ffa500; }
+.status-dot.error { background: #d72828; }
 
 .ink-bars {
     display: flex;

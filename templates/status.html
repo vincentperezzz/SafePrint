@@ -36,13 +36,17 @@ Printer Status
             <div></div>
         </div>
         <!-- Repeat this row for each printer -->
+        {% for printer in printers %}
         <div class="printer-table-row">
             <div class="printer-info">
-                <div class="printer-name">Printer 1</div>
-                <div class="printer-model">Brother DCP-T820DW</div>
+                <div class="printer-name">{{ printer.printer_name }}</div>
+                <div class="printer-model">{{ printer.model_name}}</div>
             </div>
-            <div>XXXXXXXXXXXXXX</div>
-            <div><span class="status-dot idle"></span> Idle</div>
+            <div>{{ printer.printer_serialNumber }}</div>
+            <div>
+                <span class="status-dot {% if printer.printer_status == 'Idle' %}idle{% elif printer.printer_status == 'Printing' %}printing{% elif printer.printer_status == 'Error' %}error{% endif %}"></span>
+                {{ printer.printer_status }}
+            </div>
             <div>
                 <div class="ink-bars">
                     <span class="ink cyan"></span>
@@ -55,9 +59,9 @@ Printer Status
             <div class="paper-assigned">
                 <div class="dropdown">
                     <select class="dropdown-select">
-                        <option>Folio</option>
-                        <option>A4</option>
-                        <option>Short</option>
+                        {% for value, label in paper_size_choices %}
+                            <option value="{{ value }}" {% if printer.paper_assigned == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
                     </select>
                     <span class="dropdown-arrow">
                         <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
@@ -69,8 +73,9 @@ Printer Status
             <div class="gsm">
                 <div class="dropdown">
                     <select class="dropdown-select">
-                        <option>70</option>
-                        <option>80</option>
+                        {% for value, label in gsm_choices %}
+                            <option value="{{ value }}" {% if printer.paper_quality == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
                     </select>
                     <span class="dropdown-arrow">
                         <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
@@ -87,7 +92,7 @@ Printer Status
                 </div>
             </div>
         </div>
-        <!-- ...more rows... -->
+        {% endfor %}
     </div>
     <button class="add-printer-btn">Configure to Add Printer</button>
 </div>
