@@ -344,6 +344,64 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    document.querySelector('.settings-feedback-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        document.getElementById('feedbackModal').style.display = 'block';
+        fetch(updateFeebackUrl)
+            .then(response => response.json())
+            .then(data => {
+                const list = document.querySelector("#feedbackModal .feedback-list");
+                list.innerHTML = "";
+                if (data.feedback_comments.length === 0) {
+                    list.innerHTML = `<div class="feedback-card"><b>No feedback comments found.</b></div>`;
+                } else {
+                    data.feedback_comments.forEach(fb => {
+                        list.innerHTML += `
+                            <div class="feedback-card">
+                                <b>Name</b><br>
+                                ${fb.name}
+                                <div class="feedback-spacer"></div>
+                                <b>Message</b><br>
+                                ${fb.message}
+                                <div class="feedback-spacer"></div>
+                                <b>Submitted at:</b><br>
+                                ${fb.submitted_at}
+                            </div>
+                        `;
+                    });
+                }
+            });
+    });
+    
+    document.querySelector('.settings-problem-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        document.getElementById('problemModal').style.display = 'block';
+        fetch(updateProblemUrl)
+            .then(response => response.json())
+            .then(data => {
+                const list = document.querySelector("#problemModal .feedback-list");
+                list.innerHTML = "";
+                if (data.problem_reports.length === 0) {
+                    list.innerHTML = `<div class="feedback-card"><b>No problem reports found.</b></div>`;
+                } else {
+                    data.problem_reports.forEach(fb => {
+                        list.innerHTML += `
+                            <div class="feedback-card">
+                                <b>Name</b><br>
+                                ${fb.name}
+                                <div class="feedback-spacer"></div>
+                                <b>Message</b><br>
+                                ${fb.message}
+                                <div class="feedback-spacer"></div>
+                                <b>Submitted at:</b><br>
+                                ${fb.submitted_at}
+                            </div>
+                        `;
+                    });
+                }
+            });
+    });
+
 
 }); // End of DOMContentLoaded event listener
 

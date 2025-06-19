@@ -16,4 +16,6 @@ urlpatterns = [
     path('delete_user_ajax/', views.delete_user_ajax, name='delete_user_ajax'),
     path('add_user_ajax/', views.add_user_ajax, name='add_user_ajax'),
     path('feedback/', views.feedback_view, name='feedback'),
+    path('api/feedback-comments/', views.feedback_comments_api, name='feedback_comments_api'),
+    path('api/problem-reports/', views.problem_reports_api, name='problem_reports_api'),
 ]

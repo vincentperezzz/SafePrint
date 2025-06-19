@@ -136,29 +136,24 @@ Account Settings
         <h2>Feedback Comments</h2>
         <button class="modal-header-btn" id="closeFeedbackModal">Done</button>
     </div>
-    <hr class = modal-divider>
+    <hr class="modal-divider">
     <div class="feedback-list">
-      <div class="feedback-card">
-        <b>Name</b><br>
-        Anonymous
-        <div class="feedback-spacer"></div>
-        <b>Message</b><br>
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-      </div>
-      <div class="feedback-card">
-        <b>Name</b><br>
-        Anonymous
-        <div class="feedback-spacer"></div>
-        <b>Message</b><br>
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-      </div>
-      <div class="feedback-card">
-        <b>Name</b><br>
-        Anonymous
-        <div class="feedback-spacer"></div>
-        <b>Message</b><br>
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-      </div>
+      {% for feedback in feedback_comments %}
+        <div class="feedback-card">
+          <b>Name</b><br>
+          {{ feedback.name|default:"Anonymous" }}
+          <div class="feedback-spacer"></div>
+          <b>Message</b><br>
+          {{ feedback.message }}
+          <div class="feedback-spacer"></div>
+          <b>Submitted at:</b><br>
+          {{ feedback.submitted_at|date:"Y-m-d h:i A" }}
+        </div>
+      {% empty %}
+        <div class="feedback-card">
+          <b>No feedback comments found.</b>
+        </div>
+      {% endfor %}
     </div>
   </div>
 </div>
@@ -172,31 +167,25 @@ Account Settings
     </div>
     <hr class="modal-divider">
     <div class="feedback-list">
-      <div class="feedback-card">
-        <b>Name</b><br>
-        Anonymous
-        <div class="feedback-spacer"></div>
-        <b>Problem</b><br>
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-      </div>
-      <div class="feedback-card">
-        <b>Name</b><br>
-        Anonymous
-        <div class="feedback-spacer"></div>
-        <b>Problem</b><br>
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-      </div>
-      <div class="feedback-card">
-        <b>Name</b><br>
-        Anonymous
-        <div class="feedback-spacer"></div>
-        <b>Problem</b><br>
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-      </div>
+      {% for feedback in problem_reports %}
+        <div class="feedback-card">
+          <b>Name</b><br>
+          {{ feedback.name|default:"Anonymous" }}
+          <div class="feedback-spacer"></div>
+          <b>Message</b><br>
+          {{ feedback.message }}
+          <div class="feedback-spacer"></div>
+          <b>Submitted at:</b><br>
+          {{ feedback.submitted_at|date:"Y-m-d h:i A" }}
+        </div>
+      {% empty %}
+        <div class="feedback-card">
+          <b>No problem reports found.</b>
+        </div>
+      {% endfor %}
     </div>
   </div>
 </div>
-
 <!-- Overlay background -->
 <div class="popup-overlay" id="editNameOverlay">
   <div class="popup-form">
@@ -307,6 +296,8 @@ Account Settings
     var updatePasswordUrl = "{% url 'update_password' %}";
     var updateUserPasswordUrl = "{% url 'update_user_password' %}";
     var deleteUserUrl = "{% url 'delete_user_ajax' %}"; 
+    var updateFeebackUrl = "{% url 'feedback_comments_api' %}";
+    var updateProblemUrl = "{% url 'problem_reports_api' %}";
     var csrfToken = "{{ csrf_token }}";
 </script>
 {% endblock %}
