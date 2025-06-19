@@ -121,9 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (completedJobsTitle) completedJobsTitle.style.display = 'flex';
             if (jobsItem) jobsItem.style.display = 'flex';
         });
-    } else {
-        console.error('One or more elements (search-btn, no-documents, document-results, approval-buttons) are missing in the DOM.');
-    }
+    } 
 
     // Clear Button Functionality
     const clearButton = document.querySelector('.clear-btn');
@@ -141,9 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (completedJobsTitle) completedJobsTitle.style.display = 'none';
             if (jobsItem) jobsItem.style.display = 'none';
         });
-    } else {
-        console.error('Clear button is missing in the DOM.');
-    }
+    } 
 
     const imageUpload = document.getElementById('image-upload');
     if (imageUpload) {
@@ -257,6 +253,29 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    // Search User Accounts
+    const searchUserInput = document.getElementById('searchUserInput');
+    if (searchUserInput) {
+        searchUserInput.addEventListener('input', function() {
+            const filter = this.value.toLowerCase();
+            const rows = document.querySelectorAll('.user-account-row');
+            let visibleCount = 0;
+            rows.forEach(row => {
+                const usernameDiv = row.querySelector('.user-username');
+                const nameDiv = row.querySelector('.user-name');
+                if (usernameDiv && nameDiv) {
+                    const username = usernameDiv.textContent.toLowerCase();
+                    const name = nameDiv.textContent.toLowerCase();
+                    const match = username.includes(filter) || name.includes(filter);
+                    row.style.display = match ? '' : 'none';
+                    if (match) visibleCount++;
+                }
+            });
+            // Show "No match found" only if there are no visible user rows
+            document.getElementById('no-match-row').style.display = visibleCount === 0 ? 'flex' : 'none';
+        });    
+    } 
+
     // Edit User Password
     const editUserPasswordForm = document.getElementById('edit-user-password-form');
     if (editUserPasswordForm) {
@@ -317,6 +336,34 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    // Get all checkboxes and the delete button
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+    const userAccountsTable = document.querySelector('.user-accounts-table');
+    if (deleteSelectedBtn && userAccountsTable) {
+        // Delegate event to the container for dynamic rows
+        userAccountsTable.addEventListener('change', function(e) {
+            if (e.target.type === 'checkbox') {
+                updateDeleteButton();
+            }
+        });
+
+        // Define updateDeleteButton function within the scope
+        function updateDeleteButton() {
+            const checkedBoxes = document.querySelectorAll('.user-account-row input[type="checkbox"]:checked');
+            deleteSelectedBtn.style.display = checkedBoxes.length > 0 ? 'inline-block' : 'none';
+        }
+        
+        deleteSelectedBtn.addEventListener('click', function() {
+            const checkedBoxes = document.querySelectorAll('.user-account-row input[type="checkbox"]:checked');
+            const selectedIds = Array.from(checkedBoxes).map(cb => {
+                const row = cb.closest('.user-account-row');
+                return parseInt(row.id.replace('user-account-row-', ''), 10);
+            });
+            const label = selectedIds.length > 1 ? `${selectedIds.length} users` : `${selectedIds.length} user`;
+            showDeleteUserOverlay(selectedIds, label);
+        });
+    }
+
     // Create Admin User Account
     const createAccountForm = document.getElementById('create-account-form');
     if (createAccountForm) {
@@ -362,7 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Feedback Modals
+    // Feedback Modals Post to Backend
     const feedbackBtn = document.querySelector('.settings-feedback-btn');
     if (feedbackBtn) {
         feedbackBtn.addEventListener('click', function(e) {
@@ -395,7 +442,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Problem Reports Modal
+    // Problem Reports Modal Post to Backend
     const problemBtn = document.querySelector('.settings-problem-btn');
     if (problemBtn) {
         problemBtn.addEventListener('click', function(e) {
@@ -426,6 +473,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         });
+    }
+
+    // Feedback Comments Modal
+    if (feedbackBtn) {
+        feedbackBtn.onclick = function(e) {
+        e.preventDefault();
+        document.getElementById('feedbackModal').style.display = 'block';
+        };
+    }
+
+    var closeFeedbackBtn = document.getElementById('closeFeedbackModal');
+    if (closeFeedbackBtn) {
+        closeFeedbackBtn.onclick = function() {
+        document.getElementById('feedbackModal').style.display = 'none';
+        };
+    }
+
+    // Problem Reports Modal
+    if (problemBtn) {
+        problemBtn.onclick = function(e) {
+        e.preventDefault();
+        document.getElementById('problemModal').style.display = 'block';
+        };
+    }
+
+    var closeProblemBtn = document.getElementById('closeProblemModal');
+    if (closeProblemBtn) {
+        closeProblemBtn.onclick = function() {
+        document.getElementById('problemModal').style.display = 'none';
+        };
+    }
+
+    // Close modals when clicking outside modal content
+    window.onclick = function(event) {
+        var feedbackModal = document.getElementById('feedbackModal');
+        var problemModal = document.getElementById('problemModal');
+        if (event.target == feedbackModal) {
+        feedbackModal.style.display = 'none';
+        }
+        if (event.target == problemModal) {
+        problemModal.style.display = 'none';
+        }
     }
 
     // Printer Status Dropdowns Update Database
@@ -501,97 +590,5 @@ function showDeleteUserOverlay(userId, userName) {
     }
     showPopupOverlay('deleteUserOverlay');
 }
-
-document.getElementById('searchUserInput').addEventListener('input', function() {
-    const filter = this.value.toLowerCase();
-    const rows = document.querySelectorAll('.user-account-row');
-    let visibleCount = 0;
-    rows.forEach(row => {
-        const usernameDiv = row.querySelector('.user-username');
-        const nameDiv = row.querySelector('.user-name');
-        if (usernameDiv && nameDiv) {
-            const username = usernameDiv.textContent.toLowerCase();
-            const name = nameDiv.textContent.toLowerCase();
-            const match = username.includes(filter) || name.includes(filter);
-            row.style.display = match ? '' : 'none';
-            if (match) visibleCount++;
-        }
-    });
-    // Show "No match found" only if there are no visible user rows
-    document.getElementById('no-match-row').style.display = visibleCount === 0 ? 'flex' : 'none';
-});
-
-document.addEventListener('DOMContentLoaded', function() {
-  // Feedback Comments Modal
-  var feedbackBtn = document.querySelector('.settings-feedback-btn');
-  if (feedbackBtn) {
-    feedbackBtn.onclick = function(e) {
-      e.preventDefault();
-      document.getElementById('feedbackModal').style.display = 'block';
-    };
-  }
-
-  var closeFeedbackBtn = document.getElementById('closeFeedbackModal');
-  if (closeFeedbackBtn) {
-    closeFeedbackBtn.onclick = function() {
-      document.getElementById('feedbackModal').style.display = 'none';
-    };
-  }
-
-  // Problem Reports Modal
-  var problemBtn = document.querySelector('.settings-problem-btn');
-  if (problemBtn) {
-    problemBtn.onclick = function(e) {
-      e.preventDefault();
-      document.getElementById('problemModal').style.display = 'block';
-    };
-  }
-
-  var closeProblemBtn = document.getElementById('closeProblemModal');
-  if (closeProblemBtn) {
-    closeProblemBtn.onclick = function() {
-      document.getElementById('problemModal').style.display = 'none';
-    };
-  }
-
-  // Close modals when clicking outside modal content
-  window.onclick = function(event) {
-    var feedbackModal = document.getElementById('feedbackModal');
-    var problemModal = document.getElementById('problemModal');
-    if (event.target == feedbackModal) {
-      feedbackModal.style.display = 'none';
-    }
-    if (event.target == problemModal) {
-      problemModal.style.display = 'none';
-    }
-  }
-});
-
-
-// Get all checkboxes and the delete button
-const deleteBtn = document.getElementById('deleteSelectedBtn');
-
-// Delegate event to the container for dynamic rows
-document.querySelector('.user-accounts-table').addEventListener('change', function(e) {
-    if (e.target.type === 'checkbox') {
-        updateDeleteButton();
-    }
-});
-
-function updateDeleteButton() {
-    const checkedBoxes = document.querySelectorAll('.user-account-row input[type="checkbox"]:checked');
-    deleteBtn.style.display = checkedBoxes.length > 0 ? 'inline-block' : 'none';
-}
-
-// When the button is clicked, collect selected user IDs and show popup
-deleteBtn.addEventListener('click', function() {
-    const checkedBoxes = document.querySelectorAll('.user-account-row input[type="checkbox"]:checked');
-    const selectedIds = Array.from(checkedBoxes).map(cb => {
-        const row = cb.closest('.user-account-row');
-        return parseInt(row.id.replace('user-account-row-', ''), 10);
-    });
-    const label = selectedIds.length > 1 ? `${selectedIds.length} users` : `${selectedIds.length} user`;
-    showDeleteUserOverlay(selectedIds, label);
-});
 
 
