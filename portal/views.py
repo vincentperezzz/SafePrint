@@ -207,12 +207,12 @@ def feedback_view(request):
         form = FeedbackForm(request.POST)
         if form.is_valid():
             form.save()
-            return redirect('thank')
+            return redirect('thankyou')
     else:
         form = FeedbackForm()
     return render(request, 'index.html', {'form': form})
 
-def thank_view(request):
+def thankyou_view(request):
     return render(request, 'thank.html')
 
 
