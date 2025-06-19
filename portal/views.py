@@ -53,6 +53,21 @@ def printer_status(request):
     })
 
 
+def update_printer_field(request):
+    if request.method == "POST":
+        printer_id = request.POST.get('printer_id')
+        field = request.POST.get('field')
+        value = request.POST.get('value')
+        try:
+            printer = Printer.objects.get(id=printer_id)
+            setattr(printer, field, value)
+            printer.save()
+            return JsonResponse({'success': True})
+        except Printer.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Printer not found'})
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+
 def account_settings(request):
     user_id = request.session.get('admin_user_id')
     if not request.session.get('admin_user_id'):
@@ -82,6 +97,7 @@ def change_image_ajax(request):
         return JsonResponse({'success': True, 'image_url': user.profile_image.url})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
+
 def update_name(request):
     if request.method == 'POST':
         user_id = request.session.get('admin_user_id')
@@ -94,6 +110,7 @@ def update_name(request):
             return JsonResponse({'success': True, 'new_name': new_name})
         return JsonResponse({'success': False, 'error': 'Names do not match.'})
 
+
 def update_username(request):
     if request.method == 'POST':
         user_id = request.session.get('admin_user_id')
@@ -105,6 +122,7 @@ def update_username(request):
             user.save()
             return JsonResponse({'success': True, 'new_username': new_username})
         return JsonResponse({'success': False, 'error': 'Usernames do not match.'})
+
 
 def update_password(request):
     if request.method == 'POST':
@@ -119,6 +137,7 @@ def update_password(request):
             return JsonResponse({'success': True})
         return JsonResponse({'success': False, 'error': 'Password incorrect or does not match.'})
     
+
 @csrf_exempt
 def update_user_password(request):
     if request.method == 'POST':
@@ -170,6 +189,7 @@ def delete_user_ajax(request):
         return JsonResponse({'success': True, 'deleted_ids': deleted_ids, 'errors': errors})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
+
 @csrf_exempt
 def add_user_ajax(request):
     if request.method == 'POST':
@@ -201,7 +221,6 @@ def add_user_ajax(request):
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
 
-
 def feedback_view(request):
     if request.method == 'POST':
         form = FeedbackForm(request.POST)
@@ -227,6 +246,7 @@ def feedback_comments_api(request):
         for f in feedback_comments
     ]
     return JsonResponse({'feedback_comments': data})
+
 
 def problem_reports_api(request):
     problem_reports = Feedback.objects.filter(category='Report a Problem').order_by('-submitted_at')
