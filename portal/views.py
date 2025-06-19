@@ -1,6 +1,6 @@
 import os
 import json
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
 from .models import AdminUser, Printer
 from django.conf import settings
@@ -207,6 +207,7 @@ def feedback_view(request):
         form = FeedbackForm(request.POST)
         if form.is_valid():
             form.save()
+            return redirect('thank')
     else:
         form = FeedbackForm()
     return render(request, 'index.html', {'form': form})
