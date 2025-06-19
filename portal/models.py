@@ -21,13 +21,28 @@ class AdminUser(models.Model):
         db_table = 'admin_users'
 
 class Printer(models.Model):
+    PAPER_SIZE_CHOICES = [
+        ('Long', 'Long'),
+        ('Short', 'Short'),
+        ('A4', 'A4'),
+    ]
+
+    GSM_CHOICES = [
+        ('70', '70 GSM'),
+        ('80', '80 GSM'),
+    ]
+
     printer_name = models.CharField(max_length=255)
+    model_name = models.CharField(max_length=255, null=True, blank=True)
     printer_status = models.CharField(max_length=50)
-    paper_assigned = models.CharField(max_length=50)
-    paper_quality = models.CharField(max_length=50)
+    paper_assigned = models.CharField(max_length=50, choices=PAPER_SIZE_CHOICES)
+    paper_quality = models.CharField(max_length=50, choices=GSM_CHOICES)
     last_checked = models.DateTimeField()
     printer_serialNumber = models.CharField(max_length=255)
 
+    def __str__(self):
+        return self.printer_name
+    
     class Meta:
         db_table = 'printers'
 
@@ -65,6 +80,9 @@ class Document(models.Model):
         db_column='printed_at'
     )
 
+    def __str__(self):
+        return f"{self.doc_id} - {self.filename}"
+    
     class Meta:
         db_table = 'documents'
 
@@ -75,6 +93,9 @@ class Payment(models.Model):
     approved_by = models.CharField(max_length=255, null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
 
+    def __str__(self):
+        return f"Payment for {self.doc.filename} - {self.price} ({self.payment_status})"
+    
     class Meta:
         db_table = 'payments'
 

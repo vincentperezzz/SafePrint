@@ -2,7 +2,7 @@ import os
 import json
 from django.shortcuts import render
 from portal.models import AdminUser, Feedback
-from .models import AdminUser
+from .models import AdminUser, Printer
 from django.conf import settings
 from django.http import JsonResponse
 from django.contrib.auth.hashers import make_password
@@ -43,7 +43,14 @@ def printer_status(request):
     user_id = request.session.get('admin_user_id')
     if not user_id:
         raise Http404("User not found in session")
-    return render(request, 'status.html')
+    printers = Printer.objects.all()
+    paper_size_choices = Printer.PAPER_SIZE_CHOICES
+    gsm_choices = Printer.GSM_CHOICES
+    return render(request, 'status.html', {
+        'printers': printers,
+        'paper_size_choices': paper_size_choices,
+        'gsm_choices': gsm_choices,
+    })
 
 
 def account_settings(request):
