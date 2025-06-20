@@ -14,6 +14,7 @@ Printer Status
 </div>
 
 <hr class="dashboard-divider">
+<div id="pageMessages"></div>
 
 <div class="printer-status-card">
     <div class="queue-search-bar">
@@ -58,9 +59,9 @@ Printer Status
             </div>
             <div class="paper-assigned">
                 <div class="dropdown">
-                    <select class="dropdown-select">
-                        {% for value, label in paper_size_choices %}
-                            <option value="{{ value }}" {% if printer.paper_assigned == value %}selected{% endif %}>{{ label }}</option>
+                    <select class="dropdown-select" data-printer-id="{{ printer.id }}" data-field="paper_assigned">
+                        {% for size, label in paper_size_choices %}
+                            <option value="{{ size }}" {% if printer.paper_assigned == size %}selected{% endif %}>{{ label }}</option>
                         {% endfor %}
                     </select>
                     <span class="dropdown-arrow">
@@ -72,9 +73,9 @@ Printer Status
             </div>
             <div class="gsm">
                 <div class="dropdown">
-                    <select class="dropdown-select">
-                        {% for value, label in gsm_choices %}
-                            <option value="{{ value }}" {% if printer.paper_quality == value %}selected{% endif %}>{{ label }}</option>
+                    <select class="dropdown-select" data-printer-id="{{ printer.id }}" data-field="gsm">
+                        {% for gsm, label in gsm_choices %}
+                            <option value="{{ gsm }}" {% if printer.gsm == gsm %}selected{% endif %}>{{ label }}</option>
                         {% endfor %}
                     </select>
                     <span class="dropdown-arrow">
@@ -96,4 +97,17 @@ Printer Status
     </div>
     <button class="add-printer-btn">Configure to Add Printer</button>
 </div>
+
+<script>
+    var changeImageUrl = "{% url 'change_image_ajax' %}";
+    var updateNameUrl = "{% url 'update_name' %}";
+    var updateUsernameUrl = "{% url 'update_username' %}";
+    var updatePasswordUrl = "{% url 'update_password' %}";
+    var updateUserPasswordUrl = "{% url 'update_user_password' %}";
+    var deleteUserUrl = "{% url 'delete_user_ajax' %}"; 
+    var updateFeebackUrl = "{% url 'feedback_comments_api' %}";
+    var updateProblemUrl = "{% url 'problem_reports_api' %}";
+    var updatePrinterUrl = "{% url 'update_printer_field' %}";
+    var csrfToken = "{{ csrf_token }}";
+</script>
 {% endblock %}

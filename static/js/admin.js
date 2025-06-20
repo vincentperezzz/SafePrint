@@ -117,13 +117,11 @@ document.addEventListener('DOMContentLoaded', () => {
             approvalButtons.style.display = 'flex';
 
             // Temporarily Completed Job Part
-            noJobsSection.style.display = 'none';
-            completedJobsTitle.style.display = 'flex';
-            jobsItem.style.display = 'flex';
+            if (noJobsSection) noJobsSection.style.display = 'none';
+            if (completedJobsTitle) completedJobsTitle.style.display = 'flex';
+            if (jobsItem) jobsItem.style.display = 'flex';
         });
-    } else {
-        console.error('One or more elements (search-btn, no-documents, document-results, approval-buttons) are missing in the DOM.');
-    }
+    } 
 
     // Clear Button Functionality
     const clearButton = document.querySelector('.clear-btn');
@@ -141,41 +139,44 @@ document.addEventListener('DOMContentLoaded', () => {
             if (completedJobsTitle) completedJobsTitle.style.display = 'none';
             if (jobsItem) jobsItem.style.display = 'none';
         });
-    } else {
-        console.error('Clear button is missing in the DOM.');
+    } 
+
+    const imageUpload = document.getElementById('image-upload');
+    if (imageUpload) {
+        imageUpload.addEventListener('change', function() {
+            var fileInput = this;
+            if (fileInput.files.length > 0) {
+                var formData = new FormData();
+                formData.append('profile_image', fileInput.files[0]);
+                fetch(changeImageUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    var img = document.getElementById('profile-img');
+                    if (data.success) {
+                        var img = document.getElementById('profile-img');
+                        if (img) {
+                            img.src = data.image_url + '?t=' + new Date().getTime();
+                        };
+                        createAlert('Success', 'Image Updated', 'Your profile image has been successfully updated.', 'success', true, true, 'pageMessages');
+                        location.reload();
+                    } else {
+                        createAlert('Error', 'Image Upload Failed', data.error || 'An error occurred while uploading the image.', 'danger', true, true, 'pageMessages');
+                    }
+                });
+            }
+        });
     }
 
-    document.getElementById('image-upload').addEventListener('change', function() {
-        var fileInput = this;
-        if (fileInput.files.length > 0) {
-            var formData = new FormData();
-            formData.append('profile_image', fileInput.files[0]);
-            fetch(changeImageUrl, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': csrfToken
-                },
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                var img = document.getElementById('profile-img');
-                if (data.success) {
-                    var img = document.getElementById('profile-img');
-                    if (img) {
-                        img.src = data.image_url + '?t=' + new Date().getTime();
-                    };
-                    createAlert('Success', 'Image Updated', 'Your profile image has been successfully updated.', 'success', true, true, 'pageMessages');
-                    location.reload();
-                } else {
-                    createAlert('Error', 'Image Upload Failed', data.error || 'An error occurred while uploading the image.', 'danger', true, true, 'pageMessages');
-                }
-            });
-        }
-    });
-
     // Edit Name
-    document.getElementById('edit-name-form').onsubmit = function(e) {
+    const editNameForm = document.getElementById('edit-name-form');
+    if (editNameForm) {
+        editNameForm.onsubmit = function(e) {
         e.preventDefault();
         var formData = new FormData(this);
         fetch(updateNameUrl, {
@@ -196,10 +197,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating your name.', 'danger', true, true, 'pageMessages');
             }
         });
-    };
+        };
+    }
     
     // Edit Username
-    document.getElementById('edit-username-form').onsubmit = function(e) {
+    const editUsernameForm = document.getElementById('edit-username-form');
+    if (editUsernameForm) {
+        editUsernameForm.onsubmit = function(e) {
         e.preventDefault();
         var formData = new FormData(this);
         fetch(updateUsernameUrl, {
@@ -220,11 +224,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating your username.','danger',true,false,'pageMessages');
             }
         });
-    };
+        };
+    }
     
     // Edit Password
-    document.getElementById('edit-password-form').onsubmit = function(e) {
-        e.preventDefault();
+    const editPasswordForm = document.getElementById('edit-password-form');
+    if (editPasswordForm) {
+        editPasswordForm.onsubmit = function(e) {
+         e.preventDefault();
         var formData = new FormData(this);
         fetch(updatePasswordUrl, {
             method: 'POST',
@@ -243,10 +250,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating your password.', 'danger', true, true, 'pageMessages');
             }
         });
-    };
+        };
+    }
+
+    // Search User Accounts
+    const searchUserInput = document.getElementById('searchUserInput');
+    if (searchUserInput) {
+        searchUserInput.addEventListener('input', function() {
+            const filter = this.value.toLowerCase();
+            const rows = document.querySelectorAll('.user-account-row');
+            let visibleCount = 0;
+            rows.forEach(row => {
+                const usernameDiv = row.querySelector('.user-username');
+                const nameDiv = row.querySelector('.user-name');
+                if (usernameDiv && nameDiv) {
+                    const username = usernameDiv.textContent.toLowerCase();
+                    const name = nameDiv.textContent.toLowerCase();
+                    const match = username.includes(filter) || name.includes(filter);
+                    row.style.display = match ? '' : 'none';
+                    if (match) visibleCount++;
+                }
+            });
+            // Show "No match found" only if there are no visible user rows
+            document.getElementById('no-match-row').style.display = visibleCount === 0 ? 'flex' : 'none';
+        });    
+    } 
 
     // Edit User Password
-    document.getElementById('edit-user-password-form').onsubmit = function(e) {
+    const editUserPasswordForm = document.getElementById('edit-user-password-form');
+    if (editUserPasswordForm) {
+        editUserPasswordForm.onsubmit = function(e) {
         e.preventDefault();
         var formData = new FormData(this);
         fetch(updateUserPasswordUrl, {
@@ -266,7 +299,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating the user password.', 'danger', true, true, 'pageMessages');
             }
         });
-    };
+        };
+    }
 
     // Delete User
     var deleteBtn = document.getElementById('deleteConfirmBtn');
@@ -302,9 +336,39 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    // Get all checkboxes and the delete button
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+    const userAccountsTable = document.querySelector('.user-accounts-table');
+    if (deleteSelectedBtn && userAccountsTable) {
+        // Delegate event to the container for dynamic rows
+        userAccountsTable.addEventListener('change', function(e) {
+            if (e.target.type === 'checkbox') {
+                updateDeleteButton();
+            }
+        });
+
+        // Define updateDeleteButton function within the scope
+        function updateDeleteButton() {
+            const checkedBoxes = document.querySelectorAll('.user-account-row input[type="checkbox"]:checked');
+            deleteSelectedBtn.style.display = checkedBoxes.length > 0 ? 'inline-block' : 'none';
+        }
+        
+        deleteSelectedBtn.addEventListener('click', function() {
+            const checkedBoxes = document.querySelectorAll('.user-account-row input[type="checkbox"]:checked');
+            const selectedIds = Array.from(checkedBoxes).map(cb => {
+                const row = cb.closest('.user-account-row');
+                return parseInt(row.id.replace('user-account-row-', ''), 10);
+            });
+            const label = selectedIds.length > 1 ? `${selectedIds.length} users` : `${selectedIds.length} user`;
+            showDeleteUserOverlay(selectedIds, label);
+        });
+    }
+
     // Create Admin User Account
-    document.getElementById('create-account-form').onsubmit = function(e) {
-        e.preventDefault();
+    const createAccountForm = document.getElementById('create-account-form');
+    if (createAccountForm) {
+        createAccountForm.onsubmit = function(e) {
+         e.preventDefault();
         var form = this;
         var formData = new FormData(form);
 
@@ -342,9 +406,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 location.reload();
             }
         });
-    };
+        };
+    }
 
-    document.querySelector('.settings-feedback-btn').addEventListener('click', function(e) {
+    // Feedback Modals Post to Backend
+    const feedbackBtn = document.querySelector('.settings-feedback-btn');
+    if (feedbackBtn) {
+        feedbackBtn.addEventListener('click', function(e) {
         e.preventDefault();
         document.getElementById('feedbackModal').style.display = 'block';
         fetch(updateFeebackUrl)
@@ -371,10 +439,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
             });
-    });
-    
-    document.querySelector('.settings-problem-btn').addEventListener('click', function(e) {
-        e.preventDefault();
+        });
+    }
+
+    // Problem Reports Modal Post to Backend
+    const problemBtn = document.querySelector('.settings-problem-btn');
+    if (problemBtn) {
+        problemBtn.addEventListener('click', function(e) {
+         e.preventDefault();
         document.getElementById('problemModal').style.display = 'block';
         fetch(updateProblemUrl)
             .then(response => response.json())
@@ -400,7 +472,93 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
             });
-    });
+        });
+    }
+
+    // Feedback Comments Modal
+    if (feedbackBtn) {
+        feedbackBtn.onclick = function(e) {
+        e.preventDefault();
+        document.getElementById('feedbackModal').style.display = 'block';
+        };
+    }
+
+    var closeFeedbackBtn = document.getElementById('closeFeedbackModal');
+    if (closeFeedbackBtn) {
+        closeFeedbackBtn.onclick = function() {
+        document.getElementById('feedbackModal').style.display = 'none';
+        };
+    }
+
+    // Problem Reports Modal
+    if (problemBtn) {
+        problemBtn.onclick = function(e) {
+        e.preventDefault();
+        document.getElementById('problemModal').style.display = 'block';
+        };
+    }
+
+    var closeProblemBtn = document.getElementById('closeProblemModal');
+    if (closeProblemBtn) {
+        closeProblemBtn.onclick = function() {
+        document.getElementById('problemModal').style.display = 'none';
+        };
+    }
+
+    // Close modals when clicking outside modal content
+    window.onclick = function(event) {
+        var feedbackModal = document.getElementById('feedbackModal');
+        var problemModal = document.getElementById('problemModal');
+        if (event.target == feedbackModal) {
+        feedbackModal.style.display = 'none';
+        }
+        if (event.target == problemModal) {
+        problemModal.style.display = 'none';
+        }
+    }
+
+    // Printer Status Dropdowns Update Database
+    const dropdownSelects = document.querySelectorAll('.dropdown-select');
+    if (dropdownSelects.length > 0) {
+        dropdownSelects.forEach(function(select) {
+            select.addEventListener('change', function() {
+                const printerId = this.dataset.printerId;
+                const field = this.dataset.field;
+                const value = this.value;
+                
+                // Form data for the request
+                const formData = new FormData();
+                formData.append('printer_id', printerId);
+                formData.append('field', field);
+                formData.append('value', value);
+                
+                fetch(updatePrinterUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => {
+                            console.error('Server response:', text);
+                            throw new Error(`Server error: ${response.status}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    createAlert('Success', 'Status Updated', 'Printer status has been updated successfully.', 'success', true, true, 'pageMessages');
+                })
+                .catch(error => {
+                    console.error('Error updating printer status:', error);
+                    createAlert('Error', 'Update Failed', 'Failed to update printer status. Please try again or contact support.', 'danger', true, true, 'pageMessages');
+                });
+            });
+        });
+    }
+
 
 
 }); // End of DOMContentLoaded event listener
@@ -432,97 +590,5 @@ function showDeleteUserOverlay(userId, userName) {
     }
     showPopupOverlay('deleteUserOverlay');
 }
-
-document.getElementById('searchUserInput').addEventListener('input', function() {
-    const filter = this.value.toLowerCase();
-    const rows = document.querySelectorAll('.user-account-row');
-    let visibleCount = 0;
-    rows.forEach(row => {
-        const usernameDiv = row.querySelector('.user-username');
-        const nameDiv = row.querySelector('.user-name');
-        if (usernameDiv && nameDiv) {
-            const username = usernameDiv.textContent.toLowerCase();
-            const name = nameDiv.textContent.toLowerCase();
-            const match = username.includes(filter) || name.includes(filter);
-            row.style.display = match ? '' : 'none';
-            if (match) visibleCount++;
-        }
-    });
-    // Show "No match found" only if there are no visible user rows
-    document.getElementById('no-match-row').style.display = visibleCount === 0 ? 'flex' : 'none';
-});
-
-document.addEventListener('DOMContentLoaded', function() {
-  // Feedback Comments Modal
-  var feedbackBtn = document.querySelector('.settings-feedback-btn');
-  if (feedbackBtn) {
-    feedbackBtn.onclick = function(e) {
-      e.preventDefault();
-      document.getElementById('feedbackModal').style.display = 'block';
-    };
-  }
-
-  var closeFeedbackBtn = document.getElementById('closeFeedbackModal');
-  if (closeFeedbackBtn) {
-    closeFeedbackBtn.onclick = function() {
-      document.getElementById('feedbackModal').style.display = 'none';
-    };
-  }
-
-  // Problem Reports Modal
-  var problemBtn = document.querySelector('.settings-problem-btn');
-  if (problemBtn) {
-    problemBtn.onclick = function(e) {
-      e.preventDefault();
-      document.getElementById('problemModal').style.display = 'block';
-    };
-  }
-
-  var closeProblemBtn = document.getElementById('closeProblemModal');
-  if (closeProblemBtn) {
-    closeProblemBtn.onclick = function() {
-      document.getElementById('problemModal').style.display = 'none';
-    };
-  }
-
-  // Close modals when clicking outside modal content
-  window.onclick = function(event) {
-    var feedbackModal = document.getElementById('feedbackModal');
-    var problemModal = document.getElementById('problemModal');
-    if (event.target == feedbackModal) {
-      feedbackModal.style.display = 'none';
-    }
-    if (event.target == problemModal) {
-      problemModal.style.display = 'none';
-    }
-  }
-});
-
-
-// Get all checkboxes and the delete button
-const deleteBtn = document.getElementById('deleteSelectedBtn');
-
-// Delegate event to the container for dynamic rows
-document.querySelector('.user-accounts-table').addEventListener('change', function(e) {
-    if (e.target.type === 'checkbox') {
-        updateDeleteButton();
-    }
-});
-
-function updateDeleteButton() {
-    const checkedBoxes = document.querySelectorAll('.user-account-row input[type="checkbox"]:checked');
-    deleteBtn.style.display = checkedBoxes.length > 0 ? 'inline-block' : 'none';
-}
-
-// When the button is clicked, collect selected user IDs and show popup
-deleteBtn.addEventListener('click', function() {
-    const checkedBoxes = document.querySelectorAll('.user-account-row input[type="checkbox"]:checked');
-    const selectedIds = Array.from(checkedBoxes).map(cb => {
-        const row = cb.closest('.user-account-row');
-        return parseInt(row.id.replace('user-account-row-', ''), 10);
-    });
-    const label = selectedIds.length > 1 ? `${selectedIds.length} users` : `${selectedIds.length} user`;
-    showDeleteUserOverlay(selectedIds, label);
-});
 
 
