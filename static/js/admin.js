@@ -98,48 +98,35 @@ window.onload = function() {
 let selectedIds = [];
 
 document.addEventListener('DOMContentLoaded', () => {
-    // TEMPORARILY make the no-documents section hidden and document-results section visible
-    const searchButton = document.querySelector('.search-btn');
-    const noDocuments = document.getElementById('no-documents');
-    const approvalButtons = document.querySelector('.approval-buttons');
-    const documentResults = document.getElementById('document-results');
+    // // TEMPORARILY make the no-documents section hidden and document-results section visible
+    // const searchButton = document.querySelector('.search-btn');
+    // const noDocuments = document.getElementById('no-documents');
+    // const approvalButtons = document.querySelector('.approval-buttons');
+    // const documentResults = document.getElementById('document-results');
+    // const totalPrice = document.getElementById('total-price');
 
-     // Temporarily Completed Job Part
-    const noJobsSection = document.querySelector('.no-jobs');
-    const completedJobsTitle = document.querySelector('.completedJobs-item-title');
-    const jobsItem = document.querySelector('.jobs-item');
+    // if (searchButton && noDocuments && documentResults && approvalButtons) {
+    //     searchButton.addEventListener('click', () => {
+    //         noDocuments.style.display = 'none';
+    //         searchButton.style.display = 'none';
+    //         documentResults.style.display = 'flex';
+    //         approvalButtons.style.display = 'flex';
+    //     });
+    // } 
 
-    if (searchButton && noDocuments && documentResults && approvalButtons) {
-        searchButton.addEventListener('click', () => {
-            noDocuments.style.display = 'none';
-            searchButton.style.display = 'none';
-            documentResults.style.display = 'flex';
-            approvalButtons.style.display = 'flex';
-
-            // Temporarily Completed Job Part
-            if (noJobsSection) noJobsSection.style.display = 'none';
-            if (completedJobsTitle) completedJobsTitle.style.display = 'flex';
-            if (jobsItem) jobsItem.style.display = 'flex';
-        });
-    } 
-
-    // Clear Button Functionality
-    const clearButton = document.querySelector('.clear-btn');
-    if (clearButton) {
-        clearButton.addEventListener('click', () => {
-            const searchInput = document.querySelector('.search-input');
-            if (searchInput) searchInput.value = '';
-            if (documentResults) documentResults.style.display = 'none';
-            if (approvalButtons) approvalButtons.style.display = 'none';
-            if (noDocuments) noDocuments.style.display = 'block';
-            searchButton.style.display = 'block';
-
-            // Temporarily Completed Job Part
-            if (noJobsSection) noJobsSection.style.display = 'block';
-            if (completedJobsTitle) completedJobsTitle.style.display = 'none';
-            if (jobsItem) jobsItem.style.display = 'none';
-        });
-    } 
+    // // Clear Button Functionality
+    // const clearButton = document.querySelector('.clear-btn');
+    // if (clearButton) {
+    //     clearButton.addEventListener('click', () => {
+    //         const searchInput = document.querySelector('.search-input');
+    //         if (searchInput) searchInput.value = '';
+    //         if (documentResults) documentResults.style.display = 'none';
+    //         if (approvalButtons) approvalButtons.style.display = 'none';
+    //         if (noDocuments) noDocuments.style.display = 'block';
+    //         if (totalPrice) totalPrice.textContent = '₱0.00';
+    //         searchButton.style.display = 'block';
+    //     });
+    // } 
 
     const imageUpload = document.getElementById('image-upload');
     if (imageUpload) {
@@ -674,5 +661,38 @@ function showDeleteUserOverlay(userId, userName) {
     }
     showPopupOverlay('deleteUserOverlay');
 }
+
+document.querySelector('.search-btn').addEventListener('click', function() {
+    const customerId = document.getElementById('customer-id-input').value.trim();
+    
+    if (!customerId) {
+        alert('Please enter a Customer ID');
+        return;
+    }
+    
+    fetch('/portal/search_customer/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify({
+            customer_id: customerId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displayDocuments(data.documents, data.total_price);
+        } else {
+            alert(data.error || 'Error searching for documents');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while searching');
+    });
+});
+
 
 

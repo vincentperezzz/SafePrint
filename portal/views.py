@@ -19,11 +19,103 @@ def dashboard(request):
     user_id = request.session.get('admin_user_id')
     if not user_id:
         raise Http404("User not found in session")
-    user = None
-    if user_id:
+    
+    try:
         user = AdminUser.objects.get(id=user_id)
-    return render(request, 'dashboard.html', {'user': user})
+    except AdminUser.DoesNotExist:
+        raise Http404("User not found")
+    
+    # Dashboard Stats
+    completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
+    printer_errors_count = Printer.objects.filter(printer_status='Error').count()
+    pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
+    
+    # Get recent completed documents with payment info and printed_at timestamp
+    completed_documents = Document.objects.filter(
+        doc_status='Finished', 
+    ).select_related('printer_assigned').prefetch_related('payment_set').order_by('-printed_at')[:5]  # Order by printed_at instead of time_submitted
+    
+    # Handle customer ID search
+    searched_documents = []
+    customer_id = None
+    total_price = 0.0
+    
+    if request.method == 'POST':
+        customer_id = request.POST.get('customer_id', '').strip()
+        if customer_id:
+            searched_documents = Document.objects.filter(
+                customer_id=customer_id,
+                doc_status='Pending'
+            ).select_related().prefetch_related('payment_set').order_by('-time_submitted')
+            
+            # Calculate total price
+            for doc in searched_documents:
+                try:
+                    payment = Payment.objects.get(doc=doc)
+                    total_price += float(payment.price)
+                except Payment.DoesNotExist:
+                    total_price += 0.0
+                except (ValueError, TypeError):
+                    total_price += 0.0
+    
+    context = {
+        'user': user,
+        'completed_jobs_count': completed_jobs_count,
+        'printer_errors_count': printer_errors_count,
+        'pending_customers_count': pending_customers_count,
+        'completed_documents': completed_documents,
+        'searched_documents': searched_documents,
+        'customer_id': customer_id,
+        'total_price': round(total_price, 2),
+    }
+    print("Dashboard context:", context)
+    return render(request, 'dashboard.html', context)
 
+@csrf_exempt
+def search_customer(request):
+    if request.method == 'POST':
+        import json
+        data = json.loads(request.body)
+        customer_id = data.get('customer_id', '').strip()
+        
+        if not customer_id:
+            return JsonResponse({'success': False, 'error': 'Customer ID is required'})
+        
+        try:
+            documents = Document.objects.filter(
+                customer_id=customer_id,
+                doc_status='Pending'
+            ).order_by('-time_submitted')
+            
+            documents_data = []
+            total_price = 0
+            
+            for doc in documents:
+                try:
+                    payment = Payment.objects.get(doc=doc)
+                    price = float(payment.price)
+                except Payment.DoesNotExist:
+                    price = 0.0
+                
+                documents_data.append({
+                    'doc_id': doc.doc_id,
+                    'filename': doc.filename,
+                    'price': price,
+                    'time_submitted': doc.time_submitted.strftime('%Y-%m-%d %H:%M:%S')
+                })
+                total_price += price
+            
+            return JsonResponse({
+                'success': True,
+                'documents': documents_data,
+                'total_price': total_price,
+                'customer_id': customer_id
+            })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 def printing_queue(request):
     user_id = request.session.get('admin_user_id')
