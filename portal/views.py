@@ -2,7 +2,6 @@ import os
 import json
 from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
-from .models import AdminUser, Printer
 from django.conf import settings
 from django.http import JsonResponse
 from django.contrib.auth.hashers import make_password
@@ -11,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from .forms import FeedbackForm
 from django.http import JsonResponse
 from django.utils.timezone import localtime
+from .models import AdminUser, Printer, Document, Payment
 
 
 
@@ -29,7 +29,12 @@ def printing_queue(request):
     user_id = request.session.get('admin_user_id')
     if not user_id:
         raise Http404("User not found in session")
-    return render(request, 'queue.html')
+    pending_documents = Document.objects.filter(doc_status='pending').order_by('-time_submitted')
+    payments = {p.doc.doc_id: p for p in Payment.objects.filter(doc__in=pending_documents)}
+    return render(request, 'queue.html', {
+        'pending_documents': pending_documents,
+        'payments': payments,
+    })
 
 
 def print_completed(request):
