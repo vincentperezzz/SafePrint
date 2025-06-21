@@ -31,7 +31,8 @@ class Printer(models.Model):
         ('70', '70 GSM'),
         ('80', '80 GSM'),
     ]
-
+    
+    id = models.CharField(max_length=50, primary_key=True)
     printer_name = models.CharField(max_length=255)
     model_name = models.CharField(max_length=255, null=True, blank=True)
     printer_status = models.CharField(max_length=50)
@@ -85,6 +86,21 @@ class Document(models.Model):
     
     class Meta:
         db_table = 'documents'
+
+class RerouteHistory(models.Model):
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='reroute_history')
+    printer = models.ForeignKey(Printer, to_field='id', on_delete=models.SET_NULL, null=True)
+    status = models.CharField(max_length=50)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'reroute_history'
+        ordering = ['timestamp']
+        verbose_name = "Reroute history"
+        verbose_name_plural = "Reroute history"
+
+    def __str__(self):
+        return f"{self.document.doc_id} - {self.printer} ({self.status} at {self.timestamp})"
 
 class Payment(models.Model):
     doc = models.ForeignKey(Document, to_field='doc_id', on_delete=models.CASCADE)
