@@ -29,11 +29,27 @@ def printing_queue(request):
     user_id = request.session.get('admin_user_id')
     if not user_id:
         raise Http404("User not found in session")
+    
+    # Pending Documents
     pending_documents = Document.objects.filter(doc_status='pending').order_by('-time_submitted')
-    payments = {p.doc.doc_id: p for p in Payment.objects.filter(doc__in=pending_documents)}
+
+    # Queue Documents
+    on_queue_documents = Document.objects.filter(doc_status__in=['Queued', 'Printing']).select_related('printer_assigned')
+
+    # Combine all documents to fetch all related payments
+    all_documents = list(pending_documents) + list(on_queue_documents)
+    payments = {p.doc.doc_id: p for p in Payment.objects.filter(doc__in=all_documents)}
+
+    # Reroute histories for on-queue documents
+    reroute_histories = {}
+    for doc in on_queue_documents:
+        reroute_histories[doc.doc_id] = list(doc.reroute_history.select_related('printer').all())
+
     return render(request, 'queue.html', {
         'pending_documents': pending_documents,
+        'on_queue_documents': on_queue_documents,
         'payments': payments,
+        'reroute_histories': reroute_histories,
     })
 
 
