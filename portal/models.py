@@ -48,6 +48,14 @@ class Printer(models.Model):
         db_table = 'printers'
 
 class Document(models.Model):
+    # add category choices for doc_status
+    DOC_STATUS_CHOICES = [
+        ('Pending', 'Pending'),
+        ('Queued', 'Queued'),
+        ('Printing', 'Printing'),
+        ('Finished', 'Finished'),
+    ]
+
     doc_id = models.CharField(max_length=255, primary_key=True)
     customer_id = models.CharField(max_length=255)
     filename = models.CharField(max_length=255)
@@ -62,7 +70,7 @@ class Document(models.Model):
     file_name = models.CharField(max_length=255)
     file_type = models.CharField(max_length=50)
     file_size = models.IntegerField()
-    doc_status = models.CharField(max_length=50)
+    doc_status = models.CharField(max_length=50, choices=DOC_STATUS_CHOICES, default='Pending')
     time_submitted = models.DateTimeField()
     printer_assigned = models.ForeignKey(
         Printer,
@@ -110,7 +118,7 @@ class Payment(models.Model):
     approved_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"Payment for {self.doc.filename} - {self.price} ({self.payment_status})"
+        return f"{self.doc} - {self.price} ({self.payment_status})"
     
     class Meta:
         db_table = 'payments'

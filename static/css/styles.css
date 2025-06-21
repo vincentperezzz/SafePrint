@@ -3151,8 +3151,12 @@ input:focus::placeholder {
     margin-right: 6px;
 }
 
-.printer-online {
+.printer-printing {
     background: #16A163;
+}
+
+.printer-queued {
+    background: #dd9c11;
 }
 
 .printer-error {

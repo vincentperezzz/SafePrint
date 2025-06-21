@@ -52,11 +52,13 @@ Printing Queue
                         <div class="doc-info">
                             <div class="doc-title" title="{{ doc.filename }}">{{ doc.filename }}</div>
                             <div class="doc-price">
-                                {% if payments|default_if_none:'' and payments|get_item:doc.doc_id %}
-                                    ₱{{ payments|get_item:doc.doc_id.price }}
-                                {% else %}
-                                    ₱0.00
-                                {% endif %}
+                                {% with payment=payments|get_item:doc.doc_id %}
+                                    {% if payment %}
+                                        ₱{{ payment.price }}
+                                    {% else %}
+                                        ₱0.00
+                                    {% endif %}
+                                {% endwith %}
                             </div>
                         </div>
                     </div>
@@ -73,40 +75,6 @@ Printing Queue
                     <div class="queue-col" colspan="5">No pending documents.</div>
                 </div>
                 {% endfor %}
-
-                <div class="queue-row">
-                    <div class="queue-col doc-name">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
-                        <div class="doc-info">
-                            <div class="doc-title" title="School ID.pdf">School ID.pdf</div>
-                            <div class="doc-price">₱15.00</div>
-                        </div>
-                    </div>
-                    <div class="queue-col doc-customer">#CID-4405</div>
-                    <div class="queue-col doc-date">2025-04-10 08:33:55</div>
-                    <div class="queue-col doc-id">#DOC-1002</div>
-                    <div class="queue-col doc-actions">
-                        <button class="queue-deny-btn">Deny</button>
-                        <button class="queue-approve-btn">Approve</button>
-                    </div>
-                </div>
-
-                <div class="queue-row">
-                    <div class="queue-col doc-name">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
-                        <div class="doc-info">
-                            <div class="doc-title" title="English Essay.pdf">English Essay.pdf</div>
-                            <div class="doc-price">₱5.00</div>
-                        </div>
-                    </div>
-                    <div class="queue-col doc-customer">#CID-3298</div>
-                    <div class="queue-col doc-date">2025-04-10 08:25:11</div>
-                    <div class="queue-col doc-id">#DOC-1027</div>
-                    <div class="queue-col doc-actions">
-                        <button class="queue-deny-btn">Deny</button>
-                        <button class="queue-approve-btn">Approve</button>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -136,44 +104,66 @@ Printing Queue
                     </div>
                 </div>
 
-                <div class="on-queue-row">
-                    <div class="queue-col doc-name">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
-                        <div class="doc-info">
-                            <div class="doc-title">Document 1.pdf</div>
-                            <div class="doc-price">₱30.00</div>
+                {% for doc in on_queue_documents %}
+                    <div class="on-queue-row">
+                        <div class="queue-col doc-name">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
+                            <div class="doc-info">
+                                <div class="doc-title" title="{{ doc.filename }}">{{ doc.filename }}</div>
+                                <div class="doc-price">
+                                {% with payment=payments|get_item:doc.doc_id %}
+                                    {% if payment %}
+                                        ₱{{ payment.price }}
+                                    {% else %}
+                                        ₱0.00
+                                    {% endif %}
+                                {% endwith %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="queue-col doc-printer">
+                            {% if reroute_histories|get_item:doc.doc_id and reroute_histories|get_item:doc.doc_id|length > 0 %}
+                                {% for rh in reroute_histories|get_item:doc.doc_id %}
+                                    <div>
+                                        <span class="printer-status printer-{{ rh.status|lower }}"></span>
+                                        {% if rh.printer %}
+                                            {{ rh.printer.printer_name }}
+                                        {% else %}
+                                            Unknown Printer
+                                        {% endif %}
+                                        ({{ rh.status }})
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                            <div>
+                                <span class="printer-status printer-{{ doc.doc_status|lower }}"></span>
+                                {% if doc.printer_assigned %}
+                                    {{ doc.printer_assigned.printer_name }}
+                                {% else %}
+                                    No Printer Assigned
+                                {% endif %}
+                                ({{ doc.doc_status }})
+                            </div>
+                        </div>
+                        <div class="queue-col doc-approved">
+                            {% with payment=payments|get_item:doc.doc_id %}
+                                {% if payment and payment.approved_by %}
+                                    {{ payment.approved_by }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            {% endwith %}
+                        </div>
+                        <div class="queue-col doc-id">#{{ doc.doc_id }}</div>
+                        <div class="queue-col doc-actions">
+                            <button class="queue-cancel-btn">Cancel</button>
                         </div>
                     </div>
-                    <div class="queue-col doc-printer">
-                        <div><span class="printer-status printer-online"></span> Printer 2 (Printing)</div>
+                    {% empty %}
+                    <div class="on-queue-row">
+                        <div class="queue-col" colspan="5">No documents in queue.</div>
                     </div>
-                    <div class="queue-col doc-approved">Charles Gavino</div>
-                    <div class="queue-col doc-id">#DOC-1001</div>
-                    <div class="queue-col doc-actions">
-                        <button class="queue-cancel-btn">Cancel</button>
-                    </div>
-                </div>
-
-                <div class="on-queue-row">
-                    <div class="queue-col doc-name">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
-                        <div class="doc-info">
-                            <div class="doc-title">STS Assignment.pdf</div>
-                            <div class="doc-price">₱15.00</div>
-                        </div>
-                    </div>
-                    <div class="queue-col doc-printer">
-                        <div><span class="printer-status printer-error"></span> Printer 3 (Error)</div>
-                        <div><span class="printer-status printer-online"></span> Printer 1 (Printing)</div>
-                    </div>
-                    <div class="queue-col doc-approved">Vincent Perez</div>
-                    <div class="queue-col doc-id">#DOC-1002</div>
-                    <div class="queue-col doc-actions">
-                        <button class="queue-cancel-btn">Cancel</button>
-                    </div>
-                </div>
-
-            
+                    {% endfor %}
             </div>
         </div>
     </div>
