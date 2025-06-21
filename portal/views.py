@@ -57,7 +57,39 @@ def print_completed(request):
     user_id = request.session.get('admin_user_id')
     if not user_id:
         raise Http404("User not found in session")
-    return render(request, 'completed.html')
+    
+    # Get all completed documents grouped by printer - filter by doc_status='finished'
+    completed_documents = Document.objects.filter(doc_status='Finished').select_related('printer_assigned').order_by('printer_assigned__id', '-time_submitted')
+    
+    # Group documents by printer
+    printers_with_completed = {}
+    for doc in completed_documents:
+        printer_id = doc.printer_assigned.id if doc.printer_assigned else 'unassigned'
+        # Check what the actual field name is - it might be 'printer_name', 'model', etc.
+        printer_name = str(doc.printer_assigned) if doc.printer_assigned else 'Unassigned'
+        
+        if printer_id not in printers_with_completed:
+            printers_with_completed[printer_id] = {
+                'printer': doc.printer_assigned,
+                'printer_name': printer_name,
+                'documents': []
+            }
+        printers_with_completed[printer_id]['documents'].append(doc)
+    
+    # Get all printers to show even those without completed jobs
+    all_printers = Printer.objects.all()
+    for printer in all_printers:
+        if printer.id not in printers_with_completed:
+            printers_with_completed[printer.id] = {
+                'printer': printer,
+                'printer_name': str(printer),  # Use __str__ method of the printer
+                'documents': []
+            }
+    
+    context = {
+        'printers_with_completed': printers_with_completed,
+    }
+    return render(request, 'completed.html', context)
 
 
 def printer_status(request):

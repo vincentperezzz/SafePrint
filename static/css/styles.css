@@ -1888,7 +1888,8 @@ input:focus::placeholder {
     flex-direction: column;
     gap: 20px;
     padding: 1.5%;
-    overflow-y: auto;   
+    overflow-y: auto;  
+    min-width: 1300px;
 }
 
 .dashboard-rows {
