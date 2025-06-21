@@ -2318,6 +2318,7 @@ input:focus::placeholder {
 .search-btn {
     line-height: 1.5;
     font-size: 1.5rem;
+    width: 100%;
 }
 
 .clear-btn:hover,
@@ -2354,25 +2355,20 @@ input:focus::placeholder {
     margin: 0;
 }
 
-.completed-jobs img {
-    width: 100px;
-    margin-bottom: 10px;
-}
-
 .completed-jobs p {
     font-size: 1.2rem;
     font-weight: bold;
 }
 
 .jobs-item {
-    display: none;
+    display: flex;
     flex-direction: column;
     gap: 10px;
     width: 100%;
 }
 
 .completedJobs-item-title{
-    display: none;
+    display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
@@ -2752,7 +2748,7 @@ input:focus::placeholder {
     border: 1px solid var(--Accent-Mid-Gray, #A19F9F);
     border-radius: 12px;
     background: #FFF;
-    margin-top: 8px;
+    margin-top: 20px;
 }
 
 .queue-row {
@@ -3005,7 +3001,7 @@ input:focus::placeholder {
     border: 1px solid var(--mid-gray-color, #A19F9F);
     border-radius: 12px;
     background: #FFF;
-    margin-top: 8px;
+    margin-top: 20px;
 }
 
 .on-queue-row {

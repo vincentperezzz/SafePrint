@@ -22,15 +22,15 @@ Dashboard
 <div class="dashboard-stats">
     <div class="stat-card green">
         <h3>Print Jobs <br>Completed</h3>
-        <p>2</p>
+        <p>{{ completed_jobs_count }}</p>
     </div>
     <div class="stat-card red">
-        <h3>Printing <br>Errors</h3>
-        <p>1</p>
+        <h3>Printer <br>Errors</h3>
+        <p>{{ printer_errors_count }}</p>
     </div>
     <div class="stat-card yellow">
         <h3>Pending <br>Customers</h3>
-        <p>2</p>
+        <p>{{ pending_customers_count }}</p>
     </div>
 </div>
 
@@ -107,21 +107,23 @@ Dashboard
     <div class="dashboard-right">
         <div class="customer-info">
             <div class='price-display'>
-                <p>₱45.00</p>
+                <p>₱{{ total_price|floatformat:2 }}</p>
                 <h2>Price to Pay</h2>
             </div>
             <div class='dashboard-rows'>  
                 <h2>Enter Customer ID</h2>
                 <button class="clear-btn">Clear</button>
             </div>
-            <input type="text" placeholder="CST-XXXX">
+            <form method="POST" id="customer-search-form">
+                {% csrf_token %}
+                <input type="text" name="customer_id" placeholder="CST-XXXX" required>
+                <button type="submit" class="search-btn">Search by Customer ID</button>
+            </form>
 
             <div class="approval-buttons">
                 <button class="deny-btn">Deny All</button>
                 <button class="approve-btn">Approve All</button>
             </div>
-
-            <button class="search-btn">Search by Customer ID</button>
         </div>
 
         <div class="completed-jobs">
@@ -129,33 +131,44 @@ Dashboard
                 <h2>Completed Jobs</h2>
                 <button onclick="window.location.href='{% url 'print_completed' %}'" class="view-all-btn specific-view-all-btn">View All</button>
             </div>
-            <div class="no-jobs">
-                <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
-                <p>All Completed!</p>
-            </div>
-
+            
+            {% if completed_documents %}
             <div class="completedJobs-item-title">
                 <span>Document Name</span>
                 <p>Printer Assigned</p>
             </div>
-
+        
             <div class="jobs-item">
-                <div class="jobs-item-wrapper">
-                    <h6 title="Abstract.pdf">Abstract.pdf</h6>
-                    <div class="Printer-Assigned">Printer 1</div>
-                    <button class="jobs-done-btn">Done</button>
-                </div>
-            
-                <div class="jobs-item-wrapper">
-                    <h6 title="This is a very long title in a pdf that would consume all the textbox.pdf">
-                        This is a very long title in a pdf that would consume all the textbox.pdf
-                    </h6>
-                    <div class="Printer-Assigned">Printer 2</div>
-                    <button class="jobs-done-btn">Done</button>
-                </div>
+                {% for doc in completed_documents %}
+                        <div class="jobs-item-wrapper">
+                            <h6 title="{{ doc.filename }}">{{ doc.filename }}</h6>
+                            <div class="Printer-Assigned">
+                                {% if doc.printer_assigned %}
+                                    {{ doc.printer_assigned.printer_name }}
+                                {% else %}
+                                    No Printer
+                                {% endif %}
+                            </div>
+                            <button class="jobs-done-btn">Done</button>
+                        </div>
+                {% empty %}
+                    <div class="no-jobs">
+                        <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
+                        <p>All Completed!</p>
+                    </div>
+                {% endfor %}
             </div>
-            
+        {% else %}
+            <div class="no-jobs">
+                <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
+                <p>All Completed!</p>
+            </div>
+        {% endif %}
         </div>
     </div>
 </div>
+
+<script>
+    var csrfToken = "{{ csrf_token }}";
+</script>
 {% endblock %}
