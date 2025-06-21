@@ -19,66 +19,51 @@ Print Completed
     <div class="completed-section">
         <h2 class="completed-title">All Printers</h2>
 
+         {% for printer_id, printer_data in printers_with_completed.items %}
         <div class="completed-printer-card">
-            <div class="completed-printer-header">Printer 1 Jobs Completed</div>
+            <div class="completed-printer-header">{{ printer_data.printer_name }} Jobs Completed</div>
             <div class="completed-table-header">
                 <div class="completed-col doc-name">Document Name</div>
                 <div class="completed-col doc-id">Document ID</div>
-                <div class="completed-col doc-printer">Printer Assigned</div>
+                <div class="completed-col doc-printer">Printed At</div>
                 <div class="completed-col doc-action"></div>
             </div>
-            <div class="completed-row">
-                <div class="completed-col doc-name">
-                    <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
-                    <div class="doc-info">
-                        <div class="doc-title">Document 1.pdf</div>
+            
+            {% if printer_data.documents %}
+                {% for document in printer_data.documents %}
+                <div class="completed-row" data-doc-id="{{ document.doc_id }}">
+                    <div class="completed-col doc-name">
+                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
+                        <div class="doc-info">
+                            <div class="doc-title">{{ document.filename }}</div>
+                        </div>
+                    </div>
+                    <div class="completed-col doc-id">#{{ document.doc_id }}</div>
+                    <div class="completed-col doc-printer">{{ printer_data.printer_name }}</div>
+                    <div class="completed-col doc-action">
+                        {% if document.handed_over %}
+                            <span class="handed-over-status">✓ Handed Over</span>
+                        {% else %}
+                            <button class="handed-over-btn" onclick="markAsHandedOver('{{ document.doc_id }}')">Mark as Handed Over</button>
+                        {% endif %}
                     </div>
                 </div>
-                <div class="completed-col doc-id">#DOC-2099</div>
-                <div class="completed-col doc-printer">Printer 1</div>
-                <div class="completed-col doc-action">
-                    <button class="handed-over-btn">Handed Over</button>
+                {% endfor %}
+            {% else %}
+                <div class="completed-row completed-empty">
+                    <img src="{% static 'assets/all-completed.png' %}" alt="All Completed" class="all-completed">
+                    <div class="completed-empty-text">All jobs handed over!</div>
                 </div>
-            </div>
+            {% endif %}
         </div>
-
+        {% empty %}
         <div class="completed-printer-card">
-            <div class="completed-printer-header">Printer 2 Jobs Completed</div>
-            <div class="completed-table-header">
-                <div class="completed-col doc-name">Document Name</div>
-                <div class="completed-col doc-id">Document ID</div>
-                <div class="completed-col doc-printer">Printer Assigned</div>
-                <div class="completed-col doc-action"></div>
-            </div>
-            <div class="completed-row">
-                <div class="completed-col doc-name">
-                    <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
-                    <div class="doc-info">
-                        <div class="doc-title">Document 1.pdf</div>
-                    </div>
-                </div>
-                <div class="completed-col doc-id">#DOC-2098</div>
-                <div class="completed-col doc-printer">Printer 2</div>
-                <div class="completed-col doc-action">
-                    <button class="handed-over-btn">Handed Over</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="completed-printer-card">
-            <div class="completed-printer-header">Printer 3 Jobs Completed</div>
-            <div class="completed-table-header">
-                <div class="completed-col doc-name">Document Name</div>
-                <div class="completed-col doc-id">Document ID</div>
-                <div class="completed-col doc-printer">Printer Assigned</div>
-                <div class="completed-col doc-action"></div>
-            </div>
             <div class="completed-row completed-empty">
                 <img src="{% static 'assets/all-completed.png' %}" alt="All Completed" class="all-completed">
-                <div class="completed-empty-text">All Completed!</div>
+                <div class="completed-empty-text">No finished jobs found!</div>
             </div>
         </div>
+        {% endfor %}
     </div>
-
 </div>
 {% endblock %}
