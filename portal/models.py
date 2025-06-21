@@ -31,6 +31,16 @@ class Printer(models.Model):
         ('70', '70 GSM'),
         ('80', '80 GSM'),
     ]
+
+    ORIENTATION_CHOICES = [
+        ('Portrait', 'Portrait'),
+        ('Landscape', 'Landscape'),
+    ]
+
+    COLOR_MODE_CHOICES = [
+        ('Black and White', 'Black and White'),
+        ('Color', 'Color'),
+    ]
     
     id = models.CharField(max_length=50, primary_key=True)
     printer_name = models.CharField(max_length=255)
@@ -48,7 +58,13 @@ class Printer(models.Model):
         db_table = 'printers'
 
 class Document(models.Model):
-    # add category choices for doc_status
+    # Import choices from Printer model to ensure consistency
+    PAPER_SIZE_CHOICES = Printer.PAPER_SIZE_CHOICES
+    GSM_CHOICES = Printer.GSM_CHOICES
+    ORIENTATION_CHOICES = Printer.ORIENTATION_CHOICES
+    COLOR_MODE_CHOICES = Printer.COLOR_MODE_CHOICES
+
+    # Document status choices
     DOC_STATUS_CHOICES = [
         ('Pending', 'Pending'),
         ('Queued', 'Queued'),
@@ -60,11 +76,11 @@ class Document(models.Model):
     customer_id = models.CharField(max_length=255)
     filename = models.CharField(max_length=255)
     num_copies = models.IntegerField()
-    pages_num = models.IntegerField()
-    orientation = models.CharField(max_length=50)
-    color_mode = models.CharField(max_length=50)
-    paper_size = models.CharField(max_length=50)
-    paper_quality = models.CharField(max_length=50)
+    pages_num = models.CharField(max_length=255) 
+    orientation = models.CharField(max_length=50, choices=ORIENTATION_CHOICES)
+    color_mode = models.CharField(max_length=50, choices=COLOR_MODE_CHOICES)
+    paper_size = models.CharField(max_length=50, choices=PAPER_SIZE_CHOICES)
+    paper_quality = models.CharField(max_length=50, choices=GSM_CHOICES)
     original_name = models.CharField(max_length=255)
     stored_name = models.CharField(max_length=255)
     file_name = models.CharField(max_length=255)
@@ -88,6 +104,52 @@ class Document(models.Model):
         on_delete=models.SET_NULL,
         db_column='printed_at'
     )
+
+    def get_total_pages(self):
+        """
+        Calculate total number of pages from page range string
+        Examples: "1-5" = 5 pages, "1,3,5-7" = 5 pages, "1,2,3" = 3 pages
+        """
+        if not self.pages_num:
+            return 0
+        
+        total_pages = 0
+        page_parts = self.pages_num.split(',')
+        
+        for part in page_parts:
+            part = part.strip()
+            if '-' in part:
+                # Handle range like "1-5"
+                start, end = map(int, part.split('-'))
+                total_pages += (end - start + 1)
+            else:
+                # Handle single page like "3"
+                total_pages += 1
+        
+        return total_pages
+
+    def get_page_list(self):
+        """
+        Convert page range string to list of page numbers
+        Examples: "1-5" = [1,2,3,4,5], "1,3,5-7" = [1,3,5,6,7]
+        """
+        if not self.pages_num:
+            return []
+        
+        pages = []
+        page_parts = self.pages_num.split(',')
+        
+        for part in page_parts:
+            part = part.strip()
+            if '-' in part:
+                # Handle range like "1-5"
+                start, end = map(int, part.split('-'))
+                pages.extend(range(start, end + 1))
+            else:
+                # Handle single page like "3"
+                pages.append(int(part))
+        
+        return sorted(list(set(pages)))  # Remove duplicates and sort
 
     def __str__(self):
         return f"{self.doc_id} - {self.filename}"
