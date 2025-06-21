@@ -2697,7 +2697,7 @@ input:focus::placeholder {
     margin-top: 15px;
     border: 2px solid black;
     border-radius: 16px;
-    padding: 16px;
+    padding: 0 16px 16px 16px;
     height: 475px; 
     background-color: #f9f9fb;
     box-shadow: 0px 6px 0px 0px #18191F;
@@ -2713,6 +2713,22 @@ input:focus::placeholder {
     border: 2px solid #000;
     height: 52px;
     background: #FFF;
+}
+
+.list-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    align-items: center;
+    width: 100%;
+    border-radius: 16px;
+    gap: 10px;
+    background: #f9f9fb;
+    padding: 16px 0 0 0;
+}
+
+.on-queue-documents-list .list-header{
+    background: #e9fee4;
 }
 
 .queue-search-bar input {
@@ -2735,6 +2751,7 @@ input:focus::placeholder {
     border: 1px solid var(--Accent-Mid-Gray, #A19F9F);
     border-radius: 12px;
     background: #FFF;
+    margin-top: 8px;
 }
 
 .queue-row {
@@ -2866,6 +2883,12 @@ input:focus::placeholder {
     font-family: 'Montserrat', sans-serif;
 }
 
+.pending-document-list,
+.on-queue-documents-list {
+    max-height: 400px;   
+    overflow-y: auto;
+}
+
 /* PRINTER STATUS */
 
 .printer-status-section {
@@ -2964,7 +2987,7 @@ input:focus::placeholder {
     margin-top: 15px;
     border: 2px solid black;
     border-radius: 16px;
-    padding: 16px;
+    padding: 0 16px 16px 16px;
     height: 475px;
     background: #E9FEE4; 
     box-shadow: 0px 6px 0px 0px #18191F;
@@ -2981,6 +3004,7 @@ input:focus::placeholder {
     border: 1px solid var(--mid-gray-color, #A19F9F);
     border-radius: 12px;
     background: #FFF;
+    margin-top: 8px;
 }
 
 .on-queue-row {
