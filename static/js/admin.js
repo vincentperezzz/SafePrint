@@ -559,6 +559,90 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Search Functionality of Pending-Document-List
+    const searchInput = document.getElementById('pending-search');
+    const noDocsRow = document.getElementById('no-pending-documents-row');
+    let noMatchRow = document.getElementById('no-match-row');
+    if (!noMatchRow && document.getElementById('pending-list')) {
+        noMatchRow = document.createElement('div');
+        noMatchRow.className = 'queue-row';
+        noMatchRow.id = 'no-match-row';
+        noMatchRow.style.display = 'none';
+        noMatchRow.innerHTML = `<div class="queue-col" style="width: 100%; text-align: center;">No match found.</div>`;
+        const pendingList = document.getElementById('pending-list');
+        pendingList.appendChild(noMatchRow);
+    }
+    
+    if (searchInput && document.getElementById('pending-list')) {
+        searchInput.addEventListener('input', function() {
+            const query = this.value.toLowerCase();
+            let anyVisible = false;
+            // Get all document rows, excluding special rows
+            const rows = document.querySelectorAll('#pending-list .queue-row:not(#no-pending-documents-row):not(#no-match-row)');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(query)) {
+                    row.style.display = '';
+                    anyVisible = true;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+            
+            // Handle empty state and no match state
+            if (query === '') {
+                if (noDocsRow) noDocsRow.style.display = rows.length === 0 ? '' : 'none';
+                if (noMatchRow) noMatchRow.style.display = 'none';
+            } else {
+                if (noDocsRow) noDocsRow.style.display = 'none';
+                if (noMatchRow) noMatchRow.style.display = anyVisible ? 'none' : '';
+            }
+        });
+    }
+    
+    // Search Functionality for On-Queue-Documents-List
+    const onqueueSearchInput = document.getElementById('onqueue-search');
+    const noOnqueueDocsRow = document.getElementById('no-onqueue-documents-row');
+    let noOnqueueMatchRow = document.getElementById('no-onqueue-match-row');
+    if (!noOnqueueMatchRow && document.querySelector('.on-queue-documents-list')) {
+        noOnqueueMatchRow = document.createElement('div');
+        noOnqueueMatchRow.className = 'on-queue-row';
+        noOnqueueMatchRow.id = 'no-onqueue-match-row';
+        noOnqueueMatchRow.style.display = 'none';
+        noOnqueueMatchRow.innerHTML = `<div class="queue-col" style="width: 100%; text-align: center;">No match found.</div>`;
+        const onqueueList = document.querySelector('.on-queue-documents-list');
+        onqueueList.appendChild(noOnqueueMatchRow);
+    }
+    
+    if (onqueueSearchInput && document.querySelector('.on-queue-documents-list')) {
+        onqueueSearchInput.addEventListener('input', function() {
+            const query = this.value.toLowerCase();
+            let anyVisible = false;
+            // Get all on-queue document rows, excluding special rows
+            const onqueueRows = document.querySelectorAll('.on-queue-documents-list .on-queue-row:not(#no-onqueue-documents-row):not(#no-onqueue-match-row)');
+            
+            onqueueRows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(query)) {
+                    row.style.display = '';
+                    anyVisible = true;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+            
+            // Handle empty state and no match state
+            if (query === '') {
+                if (noOnqueueDocsRow) noOnqueueDocsRow.style.display = onqueueRows.length === 0 ? '' : 'none';
+                if (noOnqueueMatchRow) noOnqueueMatchRow.style.display = 'none';
+            } else {
+                if (noOnqueueDocsRow) noOnqueueDocsRow.style.display = 'none';
+                if (noOnqueueMatchRow) noOnqueueMatchRow.style.display = anyVisible ? 'none' : '';
+            }
+        });
+    }
+
 
 
 }); // End of DOMContentLoaded event listener

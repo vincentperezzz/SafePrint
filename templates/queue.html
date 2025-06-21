@@ -24,10 +24,10 @@ Printing Queue
                 <h2>Pending Document Approvals</h2>
             </div>
             
-            <div class="pending-document-list">
+            <div class="pending-document-list" id="pending-list">
                 <div class="list-header">
                     <div class="queue-search-bar">
-                        <input type="text" placeholder="Search by Name, Document ID, or Customer ID">
+                        <input type="text" id="pending-search" placeholder="Search by Name, Document ID, or Customer ID">
                         <span class="search-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
                                 <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -46,7 +46,7 @@ Printing Queue
                 </div>
 
                 {% for doc in pending_documents %}
-                <div class="queue-row">
+                <div class="queue-row" id ="pending-doc-{{ doc.doc_id }}">
                     <div class="queue-col doc-name">
                         <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
                         <div class="doc-info">
@@ -71,9 +71,9 @@ Printing Queue
                     </div>
                 </div>
                 {% empty %}
-                <div class="queue-row">
-                    <div class="queue-col" colspan="5">No pending documents.</div>
-                </div>
+                    <div class="queue-row" id="no-pending-documents-row">
+                        <div class="queue-col" colspan="5">No pending documents.</div>
+                    </div>
                 {% endfor %}
             </div>
         </div>
@@ -86,7 +86,7 @@ Printing Queue
             <div class="on-queue-documents-list">
                 <div class="list-header">
                     <div class="queue-search-bar">
-                        <input type="text" placeholder="Search by Name, Document ID, or Customer ID">
+                        <input type="text" id="onqueue-search" placeholder="Search by Name, Document ID, or Customer ID">
                         <span class="search-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
                                 <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -105,7 +105,7 @@ Printing Queue
                 </div>
 
                 {% for doc in on_queue_documents %}
-                    <div class="on-queue-row">
+                    <div class="on-queue-row" id="onqueue-doc-{{ doc.doc_id }}">
                         <div class="queue-col doc-name">
                             <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
                             <div class="doc-info">
@@ -160,9 +160,9 @@ Printing Queue
                         </div>
                     </div>
                     {% empty %}
-                    <div class="on-queue-row">
-                        <div class="queue-col" colspan="5">No documents in queue.</div>
-                    </div>
+                        <div class="on-queue-row" id="no-onqueue-documents-row">
+                            <div class="queue-col" colspan="5">No documents in queue.</div>
+                        </div>
                     {% endfor %}
             </div>
         </div>
