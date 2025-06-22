@@ -38,52 +38,8 @@ def dashboard(request):
     
     # Handle customer ID search
     searched_documents = []
-    customer_id = None
     total_price = 0.0
     customer_id_display = ''
-    not_found = False
-    searched = False
-
-    if request.method == 'POST':
-        searched = True
-        customer_id = request.POST.get('customer_id', '').strip()
-        if customer_id:
-            # Normalize input: accept both 'CID-9999' and '9999'
-            if customer_id.upper().startswith('CID-'):
-                normalized_id = customer_id[4:]
-                cid_with_prefix = customer_id.upper()
-                customer_id_display = cid_with_prefix
-            else:
-                normalized_id = customer_id
-                cid_with_prefix = f'CID-{customer_id}'
-                customer_id_display = cid_with_prefix
-    
-            # Search for both formats
-            searched_documents = Document.objects.filter(
-                doc_status='Pending'
-            ).filter(
-                Q(customer_id__iexact=normalized_id) | Q(customer_id__iexact=cid_with_prefix)
-            ).select_related().prefetch_related('payment_set').order_by('-time_submitted')
-    
-            # Attach price to each document and calculate total
-            total_price = 0.0
-            for doc in searched_documents:
-                try:
-                    payment = Payment.objects.get(doc=doc)
-                    doc.price = float(payment.price)
-                except Payment.DoesNotExist:
-                    doc.price = 0.0
-                except (ValueError, TypeError):
-                    doc.price = 0.0
-                total_price += doc.price
-
-            if not searched_documents.exists():
-                not_found = True
-
-        else:
-            not_found = False
-    else:
-        not_found = False
 
     context = {
         'user': user,
@@ -92,12 +48,9 @@ def dashboard(request):
         'pending_customers_count': pending_customers_count,
         'completed_documents': completed_documents,
         'searched_documents': searched_documents,
-        'customer_id': customer_id_display,
+        'customer_id_display': customer_id_display,
         'total_price': round(total_price, 2),
-        'not_found': not_found,
-        'searched': searched,
     }
-    print("Dashboard context:", context)
     return render(request, 'dashboard.html', context)
 
 @csrf_exempt
@@ -110,10 +63,19 @@ def search_customer(request):
         if not customer_id:
             return JsonResponse({'success': False, 'error': 'Customer ID is required'})
         
+        # Normalize input: accept both 'CID-9999' and '9999'
+        if customer_id.upper().startswith('CID-'):
+            normalized_id = customer_id[4:]
+            cid_with_prefix = customer_id.upper()
+        else:
+            normalized_id = customer_id
+            cid_with_prefix = f'CID-{customer_id}'
+
         try:
             documents = Document.objects.filter(
-                customer_id=customer_id,
                 doc_status='Pending'
+            ).filter(
+                Q(customer_id__iexact=normalized_id) | Q(customer_id__iexact=cid_with_prefix)
             ).order_by('-time_submitted')
             
             documents_data = []
@@ -134,12 +96,15 @@ def search_customer(request):
                 })
                 total_price += price
             
-            return JsonResponse({
-                'success': True,
-                'documents': documents_data,
-                'total_price': total_price,
-                'customer_id': customer_id
-            })
+            if documents_data:
+                return JsonResponse({
+                    'success': True,
+                    'documents': documents_data,
+                    'total_price': total_price,
+                    'customer_id': cid_with_prefix 
+                })
+            else:
+                return JsonResponse({'success': False, 'error': 'No documents found for the provided Customer ID.'})
             
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})

@@ -98,19 +98,43 @@ window.onload = function() {
 let selectedIds = [];
 
 document.addEventListener('DOMContentLoaded', () => {
-    const clearBtn = document.getElementById('clear-btn');
+
+    //Customer ID Enter key Functionality
     const customerIdInput = document.getElementById('customer-id-input');
+    const searchBtn = document.getElementById('search-btn');
+    if (customerIdInput && searchBtn) {
+        customerIdInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                searchBtn.click();
+            }
+        });
+    }
+
+    // Clear Button Functionality in Dashboard to clear price and CID
+    const clearBtn = document.getElementById('clear-btn');
     const priceToPay = document.getElementById('price-to-pay');
     if (clearBtn && customerIdInput && priceToPay) {
         clearBtn.onclick = function() {
-            window.location.href = window.location.pathname;
-        };
-    }
+            customerIdInput.value = '';
+            priceToPay.textContent = '₱0.00';
+            toggleActionButtons(false);
 
-    if (window.dashboardNotFound === true) {
-        if (typeof createAlert === 'function') {
-            createAlert('Error', 'Customer Not Found', 'No documents found for this Customer ID.', 'danger', true, true, 'pageMessages');
-        }
+            const resultsDiv = document.getElementById('document-results');
+            if (resultsDiv) {
+                const searchBar = resultsDiv.querySelector('.search-bar');
+                const docTitle = resultsDiv.querySelector('.document-item-title');
+                if (searchBar) searchBar.style.display = 'none';
+                if (docTitle) docTitle.style.display = 'none';
+                Array.from(resultsDiv.querySelectorAll('.document-item, .no-documents')).forEach(el => el.remove());
+                resultsDiv.innerHTML += `
+                    <div class="no-documents">
+                        <img src="/static/assets/no-documents.png" alt="No Documents">
+                        <p>No documents found, Please enter a Customer ID</p>
+                    </div>
+                `;
+            }
+        };
     }
 
     const imageUpload = document.getElementById('image-upload');
@@ -619,6 +643,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
 }); // End of DOMContentLoaded event listener
 
+
+function toggleActionButtons(showActions) {
+    var searchBtn = document.getElementById('search-btn');
+    var approvalActions = document.getElementById('approval-actions');
+    if (showActions) {
+        if (searchBtn) searchBtn.style.display = 'none';
+        if (approvalActions) approvalActions.style.display = 'flex';
+    } else {
+        if (searchBtn) searchBtn.style.display = '';
+        if (approvalActions) approvalActions.style.display = 'none';
+    }
+}
+
 function showPopupOverlay(id) {
     var overlay = document.getElementById(id);
     if (overlay) overlay.style.display = 'flex';
@@ -647,30 +684,71 @@ function showDeleteUserOverlay(userId, userName) {
     showPopupOverlay('deleteUserOverlay');
 }
 
-document.querySelector('.search-btn').addEventListener('click', function() {
+function displayDocuments(documents, total_price) {
+    // Update the price
+    document.getElementById('price-to-pay').textContent = '₱' + (total_price || 0).toFixed(2);
+
+    // Update the document list
+    const resultsDiv = document.getElementById('document-results');
+    if (!resultsDiv) return;
+
+    // Get the elements to show/hide
+    const searchBar = resultsDiv.querySelector('.search-bar');
+    const docTitle = resultsDiv.querySelector('.document-item-title');
+
+
+    // Show the search bar and document title
+    if (searchBar) searchBar.style.display = 'flex';
+    if (docTitle) docTitle.style.display = 'flex';
+
+    let html = '';
+    documents.forEach(doc => {
+        html += `
+        <div class="document-item">
+            <div class="document-item-wrapper">
+                <img src="/static/assets/pdf-icon.svg" alt="PDF Icon">
+                <div class="document-info">
+                    <h6 title="${doc.filename}">${doc.filename}</h6>
+                    <span>₱${parseFloat(doc.price).toFixed(2)}</span>
+                </div>
+            </div>
+            <div class="document-id">${doc.doc_id}</div>
+            <div class="actions">
+                <button class="deny-btn">Deny</button>
+                <button class="approve-btn">Approve</button>
+            </div>
+        </div>
+        `;
+    });
+    // Remove previous document items and no-documents message
+    Array.from(resultsDiv.querySelectorAll('.document-item, .no-documents')).forEach(el => el.remove());
+    // Append new document items
+    resultsDiv.innerHTML += html;
+}
+
+document.getElementById('search-btn').addEventListener('click', function() {
     const customerId = document.getElementById('customer-id-input').value.trim();
-    
     if (!customerId) {
         createAlert('Error', 'Customer ID Required', 'Please enter a Customer ID to search for documents.', 'danger', true, true, 'pageMessages');
         return;
     }
-    
     fetch('/portal/search_customer/', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRFToken': csrfToken,
         },
-        body: JSON.stringify({
-            customer_id: customerId
-        })
+        body: JSON.stringify({ customer_id: customerId })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
             displayDocuments(data.documents, data.total_price);
+            document.getElementById('customer-id-input').value = data.customer_id;
+            toggleActionButtons(true);
         } else {
             createAlert('Error', 'Search Failed', data.error || 'No documents found for the provided Customer ID.', 'danger', true, true, 'pageMessages');
+            toggleActionButtons(false);
         }
     })
     .catch(error => {
@@ -678,6 +756,4 @@ document.querySelector('.search-btn').addEventListener('click', function() {
         createAlert('Error', 'Search Failed', 'An error occurred while searching for documents. Please try again later.', 'danger', true, true, 'pageMessages');
     });
 });
-
-
 

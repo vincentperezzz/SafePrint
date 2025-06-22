@@ -46,45 +46,28 @@ Dashboard
             </div>
                 
             <div class="document-list-container">
-                {% if searched_documents and searched_documents|length > 0 %}
                 <div id="document-results" class="document-results">
-                    <div class="search-bar">
-                        <input type="text" placeholder="Search by Name or Document ID">
-                        <span class="search-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </span>
-                    </div>
-                    <div class="document-item-title">
-                        <span>Document Name</span>
-                        <p>Document ID</p>
+                    <div class="list-header">
+                        <div class="search-bar">
+                            <input type="text" placeholder="Search by Name or Document ID">
+                            <span class="search-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </span>
+                        </div>
+                        <div class="document-item-title">
+                            <span>Document Name</span>
+                            <p>Document ID</p>
+                        </div>
                     </div>
                     
-                    {% for doc in searched_documents %}
-                        <div class="document-item">
-                            <div class="document-item-wrapper">
-                                <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                                <div class="document-info">
-                                    <h6 title="{{ doc.filename }}">{{ doc.filename }}</h6>
-                                    <span>₱{{ doc.price|floatformat:2 }}</span>
-                                </div>
-                            </div>
-                            <div class="document-id">{{ doc.doc_id }}</div>
-                            <div class="actions">
-                                <button class="deny-btn">Deny</button>
-                                <button class="approve-btn">Approve</button>
-                            </div>
-                        </div>
-                    {% endfor %}
-                </div>  
-                {% else %}
                     <div class="no-documents">
                         <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
                         <p>No documents found, Please enter a Customer ID</p>
                     </div>
-                {% endif %}
+                </div>  
             </div>
         </div>
     </div>
@@ -99,15 +82,13 @@ Dashboard
                 <h2>Enter Customer ID</h2>
                 <button class="clear-btn" class="clear-btn" id="clear-btn">Clear</button>
             </div>
-            <form method="POST" id="customer-search-form">
                 {% csrf_token %}
                 <input type="text" name="customer_id" id="customer-id-input" placeholder="CID-XXXX" value="{% if customer_id %}{{ customer_id }}{% else %}{% endif %}" required>
-                <button type="submit" class="search-btn">Search by Customer ID</button>
-                <div class="approval-buttons">
+                <button type="submit" class="search-btn" id="search-btn">Search by Customer ID</button>
+                <div class="approval-buttons" id="approval-actions">
                     <button class="deny-btn">Deny All</button>
                     <button class="approve-btn">Approve All</button>
                 </div>
-            </form>
         </div>
 
         <div class="completed-jobs">
@@ -155,10 +136,4 @@ Dashboard
 <script>
     var csrfToken = "{{ csrf_token }}";
 </script>
-
-{% if not_found and searched %}
-<script>
-    window.dashboardNotFound = {{ not_found|yesno:"true,false" }};
-</script>
-{% endif %}
 {% endblock %}
