@@ -11,6 +11,7 @@ from .forms import FeedbackForm
 from django.http import JsonResponse
 from django.utils.timezone import localtime
 from .models import AdminUser, Printer, Document, Payment
+from django.db.models import Q
 
 
 
@@ -33,31 +34,42 @@ def dashboard(request):
     # Get recent completed documents with payment info and printed_at timestamp
     completed_documents = Document.objects.filter(
         doc_status='Finished', 
-    ).select_related('printer_assigned').prefetch_related('payment_set').order_by('-printed_at')[:5]  # Order by printed_at instead of time_submitted
+    ).select_related('printer_assigned').prefetch_related('payment_set').order_by('-printed_at')[:5]
     
     # Handle customer ID search
     searched_documents = []
     customer_id = None
     total_price = 0.0
-    
+
     if request.method == 'POST':
         customer_id = request.POST.get('customer_id', '').strip()
         if customer_id:
+            # Normalize input: accept both 'CID-9999' and '9999'
+            if customer_id.upper().startswith('CID-'):
+                normalized_id = customer_id[4:]
+                cid_with_prefix = customer_id.upper()
+            else:
+                normalized_id = customer_id
+                cid_with_prefix = f'CID-{customer_id}'
+    
+            # Search for both formats
             searched_documents = Document.objects.filter(
-                customer_id=customer_id,
                 doc_status='Pending'
+            ).filter(
+                Q(customer_id__iexact=normalized_id) | Q(customer_id__iexact=cid_with_prefix)
             ).select_related().prefetch_related('payment_set').order_by('-time_submitted')
-            
-            # Calculate total price
+    
+            # Attach price to each document and calculate total
+            total_price = 0.0
             for doc in searched_documents:
                 try:
                     payment = Payment.objects.get(doc=doc)
-                    total_price += float(payment.price)
+                    doc.price = float(payment.price)
                 except Payment.DoesNotExist:
-                    total_price += 0.0
+                    doc.price = 0.0
                 except (ValueError, TypeError):
-                    total_price += 0.0
-    
+                    doc.price = 0.0
+                total_price += doc.price
     context = {
         'user': user,
         'completed_jobs_count': completed_jobs_count,
