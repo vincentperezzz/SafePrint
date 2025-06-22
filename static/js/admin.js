@@ -684,15 +684,19 @@ function showDeleteUserOverlay(userId, userName) {
     showPopupOverlay('deleteUserOverlay');
 }
 
+let lastDocuments = [];
+
 function displayDocuments(documents, total_price) {
-    // Update the price
+    lastDocuments = documents; // Store for filtering
+
     document.getElementById('price-to-pay').textContent = '₱' + (total_price || 0).toFixed(2);
 
-    // Update the document list
     const resultsDiv = document.getElementById('document-results');
     if (!resultsDiv) return;
 
-    // Get the elements to show/hide
+    // Remove previous document items and no-documents message
+    Array.from(resultsDiv.querySelectorAll('.document-item, .no-documents')).forEach(el => el.remove());
+
     const searchBar = resultsDiv.querySelector('.search-bar');
     const docTitle = resultsDiv.querySelector('.document-item-title');
 
@@ -701,6 +705,27 @@ function displayDocuments(documents, total_price) {
     if (searchBar) searchBar.style.display = 'flex';
     if (docTitle) docTitle.style.display = 'flex';
 
+    // Render all documents initially
+    renderDocumentItems(documents, resultsDiv);
+
+    // Attach filter event to the dashboard search input
+    const dashboardSearchInput = document.getElementById('dashboard-search');
+    if (dashboardSearchInput) {
+        dashboardSearchInput.value = '';
+        dashboardSearchInput.oninput = function() {
+            const filter = dashboardSearchInput.value.trim().toLowerCase();
+            const filteredDocs = lastDocuments.filter(doc =>
+                doc.filename.toLowerCase().includes(filter) ||
+                doc.doc_id.toLowerCase().includes(filter)
+            );
+            renderDocumentItems(filteredDocs, resultsDiv);
+        };
+    }
+}
+
+function renderDocumentItems(documents, resultsDiv) {
+    // Remove previous document items and no-documents message
+    Array.from(resultsDiv.querySelectorAll('.document-item, .no-documents')).forEach(el => el.remove());
     let html = '';
     documents.forEach(doc => {
         html += `
@@ -720,11 +745,18 @@ function displayDocuments(documents, total_price) {
         </div>
         `;
     });
-    // Remove previous document items and no-documents message
-    Array.from(resultsDiv.querySelectorAll('.document-item, .no-documents')).forEach(el => el.remove());
-    // Append new document items
-    resultsDiv.innerHTML += html;
+    if (documents.length === 0) {
+        html = `
+            <div class="no-documents">
+                <img src="/static/assets/no-documents.png" alt="No Documents">
+                <p>No documents found for this search.</p>
+            </div>
+        `;
+    }
+    // Instead of +=, use insertAdjacentHTML or set innerHTML directly
+    resultsDiv.insertAdjacentHTML('beforeend', html);
 }
+
 
 document.getElementById('search-btn').addEventListener('click', function() {
     const customerId = document.getElementById('customer-id-input').value.trim();
