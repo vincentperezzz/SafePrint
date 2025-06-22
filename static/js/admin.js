@@ -111,6 +111,40 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // CID Post to Backend
+    if (searchBtn) {
+    searchBtn.addEventListener('click', function() {
+        const customerId = document.getElementById('customer-id-input').value.trim();
+        if (!customerId) {
+            createAlert('Error', 'Customer ID Required', 'Please enter a Customer ID to search for documents.', 'danger', true, true, 'pageMessages');
+            return;
+        }
+        fetch('/portal/search_customer/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({ customer_id: customerId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayDocuments(data.documents, data.total_price);
+                document.getElementById('customer-id-input').value = data.customer_id;
+                toggleActionButtons(true);
+            } else {
+                createAlert('Error', 'Search Failed', data.error || 'No documents found for the provided Customer ID.', 'danger', true, true, 'pageMessages');
+                toggleActionButtons(false);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            createAlert('Error', 'Search Failed', 'An error occurred while searching for documents. Please try again later.', 'danger', true, true, 'pageMessages');
+            });
+        });
+    }
+
     // Clear Button Functionality in Dashboard to clear price and CID
     const clearBtn = document.getElementById('clear-btn');
     const priceToPay = document.getElementById('price-to-pay');
@@ -137,6 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    // Change Profile Image
     const imageUpload = document.getElementById('image-upload');
     if (imageUpload) {
         imageUpload.addEventListener('change', function() {
@@ -787,36 +822,4 @@ function renderDocumentItems(documents, resultsDiv) {
     // Instead of +=, use insertAdjacentHTML or set innerHTML directly
     resultsDiv.insertAdjacentHTML('beforeend', html);
 }
-
-
-document.getElementById('search-btn').addEventListener('click', function() {
-    const customerId = document.getElementById('customer-id-input').value.trim();
-    if (!customerId) {
-        createAlert('Error', 'Customer ID Required', 'Please enter a Customer ID to search for documents.', 'danger', true, true, 'pageMessages');
-        return;
-    }
-    fetch('/portal/search_customer/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrfToken,
-        },
-        body: JSON.stringify({ customer_id: customerId })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            displayDocuments(data.documents, data.total_price);
-            document.getElementById('customer-id-input').value = data.customer_id;
-            toggleActionButtons(true);
-        } else {
-            createAlert('Error', 'Search Failed', data.error || 'No documents found for the provided Customer ID.', 'danger', true, true, 'pageMessages');
-            toggleActionButtons(false);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        createAlert('Error', 'Search Failed', 'An error occurred while searching for documents. Please try again later.', 'danger', true, true, 'pageMessages');
-    });
-});
 
