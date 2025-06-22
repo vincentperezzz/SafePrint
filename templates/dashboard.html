@@ -43,12 +43,9 @@ Dashboard
                 <h2>Pending Document Approvals</h2>
                 <a href="{% url 'printing_queue' %}" class="view-all-btn">View all Pending Documents</a>
             </div>
-            
+                
             <div class="document-list-container">
-                <div id="no-documents" class="no-documents">
-                    <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
-                    <p>No documents, please enter Customer ID</p>
-                </div>
+                {% if searched_documents and searched_documents|length > 0 %}
                 <div id="document-results" class="document-results">
                     <div class="search-bar">
                         <input type="text" placeholder="Search by Name or Document ID">
@@ -59,47 +56,34 @@ Dashboard
                             </svg>
                         </span>
                     </div>
-                     <div class="document-item-title">
+                    <div class="document-item-title">
                         <span>Document Name</span>
                         <p>Document ID</p>
                     </div>
-                        
-                    {% comment %} Document items will be dynamically inserted here {% endcomment %}
-                    <div class="document-item">
-                        <div class="document-item-wrapper">
-                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                            <div class="document-info">
-                                <h6 title="This is a very long title in a pdf that would consume all the textbox.pdf">
-                                    This is a very long title in a pdf that would consume all the textbox.pdf
-                                </h6>
-                                <span>₱30.00</span>
+                    
+                    {% for doc in searched_documents %}
+                        <div class="document-item">
+                            <div class="document-item-wrapper">
+                                <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                                <div class="document-info">
+                                    <h6 title="{{ doc.filename }}">{{ doc.filename }}</h6>
+                                    <span>₱{{ doc.price|floatformat:2 }}</span>
+                                </div>
+                            </div>
+                            <div class="document-id">{{ doc.doc_id }}</div>
+                            <div class="actions">
+                                <button class="deny-btn">Deny</button>
+                                <button class="approve-btn">Approve</button>
                             </div>
                         </div>
-                        <div class="document-id">#DOC-1001</div>
-                        <div class="actions">
-                            <button class="deny-btn">Deny</button>
-                            <button class="approve-btn">Approve</button>
-                        </div>
+                    {% endfor %}
+                </div>  
+                {% else %}
+                    <div class="no-documents">
+                        <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
+                        <p>No documents found, Please enter a Customer ID</p>
                     </div>
-
-
-                    <div class="document-item">
-                        <div class="document-item-wrapper">
-                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                            <div class="document-info">
-                                <h6 title="Abstract.pdf">
-                                    Abstract.pdf
-                                </h6>
-                                <span>₱30.00</span>
-                            </div>
-                        </div>
-                        <div class="document-id">#DOC-1002</div>
-                        <div class="actions">
-                            <button class="deny-btn">Deny</button>
-                            <button class="approve-btn">Approve</button>
-                        </div>
-                    </div>
-                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -116,7 +100,7 @@ Dashboard
             </div>
             <form method="POST" id="customer-search-form">
                 {% csrf_token %}
-                <input type="text" name="customer_id" placeholder="CST-XXXX" required>
+                <input type="text" name="customer_id" placeholder="CID-XXXX" value="{% if customer_id %}CID-{{ customer_id }}{% else %}{% endif %}" required>
                 <button type="submit" class="search-btn">Search by Customer ID</button>
             </form>
 

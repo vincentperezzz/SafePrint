@@ -2156,7 +2156,7 @@ input:focus::placeholder {
 }
 
 .document-results {
-    display: none;
+    display: flex;
     flex-direction: column;
     gap: 10px;
     width: 100%;
@@ -2176,6 +2176,7 @@ input:focus::placeholder {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+    width: 100%;
 }
 
 .document-item-title p{
@@ -2186,6 +2187,7 @@ input:focus::placeholder {
     display: flex;
     align-items: center;
     gap: 10px;
+    width: 100%;
 }
 
 .actions {
