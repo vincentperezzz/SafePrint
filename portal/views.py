@@ -41,8 +41,11 @@ def dashboard(request):
     customer_id = None
     total_price = 0.0
     customer_id_display = ''
+    not_found = False
+    searched = False
 
     if request.method == 'POST':
+        searched = True
         customer_id = request.POST.get('customer_id', '').strip()
         if customer_id:
             # Normalize input: accept both 'CID-9999' and '9999'
@@ -73,6 +76,15 @@ def dashboard(request):
                 except (ValueError, TypeError):
                     doc.price = 0.0
                 total_price += doc.price
+
+            if not searched_documents.exists():
+                not_found = True
+
+        else:
+            not_found = False
+    else:
+        not_found = False
+
     context = {
         'user': user,
         'completed_jobs_count': completed_jobs_count,
@@ -82,6 +94,8 @@ def dashboard(request):
         'searched_documents': searched_documents,
         'customer_id': customer_id_display,
         'total_price': round(total_price, 2),
+        'not_found': not_found,
+        'searched': searched,
     }
     print("Dashboard context:", context)
     return render(request, 'dashboard.html', context)
