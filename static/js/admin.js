@@ -639,6 +639,37 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Printer Search Functionality
+    const printerSearchInput = document.getElementById('printer-search');
+    const tableRows = document.querySelectorAll('.printer-table-row');
+    if (!printerSearchInput || !tableRows.length) return;
+
+    // Optional: Add a "no match" row if not present
+    let printerNoMatchRow = document.getElementById('no-printer-match-row');
+    if (!printerNoMatchRow) {
+        printerNoMatchRow = document.createElement('div');
+        printerNoMatchRow.className = 'printer-table-row';
+        printerNoMatchRow.id = 'no-printer-match-row';
+        printerNoMatchRow.style.display = 'none';
+        printerNoMatchRow.innerHTML = `<div style="width: 100%; text-align: center; grid-column: 1 / -1;">No match found.</div>`;
+        document.querySelector('.printer-table').appendChild(printerNoMatchRow);
+    }
+
+    printerSearchInput.addEventListener('input', function() {
+        const query = this.value.trim().toLowerCase();
+        let anyVisible = false;
+        tableRows.forEach(row => {
+            const name = row.querySelector('.printer-name')?.textContent.toLowerCase() || '';
+            const serial = row.children[1]?.textContent.toLowerCase() || '';
+            if (name.includes(query) || serial.includes(query)) {
+                row.style.display = '';
+                anyVisible = true;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        printerNoMatchRow.style.display = (query && !anyVisible) ? '' : 'none';
+    });
 
 
 }); // End of DOMContentLoaded event listener
