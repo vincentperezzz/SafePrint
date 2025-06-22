@@ -35,22 +35,22 @@ Account Settings
 
         <div class="settings-field-row">
             <div class="settings-field">
-                <label>Name</label>
-                <input type="text" id="Name" value="{{ user.name }}" readonly>
+                <label for="Name">Name</label>
+                <input type="text" id="Name" value="{{ user.name }}" readonly autocomplete="name">
             </div>
             <button class="general-btn" onclick="showPopupOverlay('editNameOverlay')">Edit</button>
         </div>
         <div class="settings-field-row">
             <div class="settings-field">
-                <label>Username</label>
-                <input type="text" id="Username" value="{{ user.username }}" readonly>
+                <label for="Username">Username</label>
+                <input type="text" id="Username" value="{{ user.username }}" readonly autocomplete="username">
             </div>
             <button class="general-btn" onclick="showPopupOverlay('editUsernameOverlay')">Edit</button>
         </div>
         <div class="settings-field-row">
             <div class="settings-field">
-                <label>Password</label>
-                <input type="password" value="*************" readonly>
+                <label for="Password">Password</label>
+                <input type="password" id="Password" value="*************" readonly autocomplete="current-password">
             </div>
             <button class="general-btn" onclick="showPopupOverlay('editPasswordOverlay')">Change Password</button>
         </div>
@@ -79,7 +79,7 @@ Account Settings
             {% for user in users %}
                 {% if user.role != "Manager" %}
                 <div class="user-account-row" id="user-account-row-{{user.id}}">
-                    <input type="checkbox">
+                    <input type="checkbox" id="checkbox-{{user.id}}">
                     <div class="user-info">
                         <div class="user-name">{{ user.name }}</div>
                         <div class="user-username">{{ user.username }}</div>
@@ -196,8 +196,8 @@ Account Settings
     <hr class="popup-divider">
     <form id="edit-name-form" method="post">
       {% csrf_token %}
-      <input type="text" name="new_name" class="popup-input" placeholder="Enter new Name" required>
-      <input type="text" name="confirm_name" class="popup-input" placeholder="Re-enter new Name" required>
+      <input type="text" name="new_name" class="popup-input" placeholder="Enter new Name" required autocomplete="name">
+      <input type="text" name="confirm_name" class="popup-input" placeholder="Re-enter new Name" required autocomplete="name">
       <button type="submit" class="popup-done-btn">Done</button>
     </form>
   </div>
@@ -212,8 +212,8 @@ Account Settings
     <hr class="popup-divider">
     <form id="edit-username-form" method="post">
       {% csrf_token %}
-      <input type="text" name="new_username" class="popup-input" placeholder="Enter new Username" required>
-      <input type="text" name="confirm_username" class="popup-input" placeholder="Re-enter new Username" required>
+      <input type="text" name="new_username" class="popup-input" placeholder="Enter new Username" required autocomplete="username">
+      <input type="text" name="confirm_username" class="popup-input" placeholder="Re-enter new Username" required autocomplete="username">
       <button type="submit" class="popup-done-btn">Done</button>
     </form>
   </div>
@@ -228,6 +228,7 @@ Account Settings
     <hr class="popup-divider">
     <form id="edit-password-form" method="post">
       {% csrf_token %}
+      <input type="text" name="username" autocomplete="username" style="display:none;">
       <input type="password" name="current_password" class="popup-input" placeholder="Current Password" required autocomplete="current-password">
       <input type="password" name="new_password" class="popup-input" placeholder="Enter new Password" required autocomplete="new-password">
       <input type="password" name="confirm_password" class="popup-input" placeholder="Re-enter new Password" required  autocomplete="new-password">
@@ -247,6 +248,7 @@ Account Settings
     <form id="edit-user-password-form" method="post">
       {% csrf_token %}
       <input type="hidden" name="user_id" id="edit-user-password-id">
+      <input type="text" name="username" id="edit-user-password-username" style="display:none;" autocomplete="username">
       <label for="new_user_password">New Password</label>
       <input type="password" name="new_user_password" id="new_user_password" class="popup-input" placeholder="Enter new password" required autocomplete="new-password">
       <label for="confirm_user_password">Re-enter New Password</label>
@@ -280,8 +282,8 @@ Account Settings
     <hr class="popup-divider">
     <form id="create-account-form" method="post">
       {% csrf_token %}
-      <input type="text" name="name" class="popup-input" placeholder="Enter Name" required>
-      <input type="text" name="username" class="popup-input" placeholder="Enter Username" required>
+      <input type="text" name="name" class="popup-input" placeholder="Enter Name" required autocomplete="name">
+      <input type="text" name="username" class="popup-input" placeholder="Enter Username" required autocomplete="username">
       <input type="password" name="password" class="popup-input" placeholder="Enter Password" required autocomplete="new-password">
       <input type="password" name="confirm_password" class="popup-input" placeholder="Re-enter Password" required autocomplete="new-password">
       <button type="submit" class="popup-done-btn">Create Account</button>
