@@ -4,7 +4,7 @@ from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
 from django.conf import settings
 from django.http import JsonResponse
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import make_password, check_password
 from django.http import Http404
 from django.views.decorators.csrf import csrf_exempt
 from .forms import FeedbackForm
@@ -270,8 +270,9 @@ def update_password(request):
         new_password = request.POST.get('new_password')
         confirm_password = request.POST.get('confirm_password')
         user = AdminUser.objects.get(id=user_id)
-        if user.password == current_password and new_password == confirm_password:
-            user.password = make_password(new_password) # For real apps, hash the password!
+        # Use check_password to verify the current password
+        if check_password(current_password, user.password) and new_password == confirm_password:
+            user.password = make_password(new_password)
             user.save()
             return JsonResponse({'success': True})
         return JsonResponse({'success': False, 'error': 'Password incorrect or does not match.'})
