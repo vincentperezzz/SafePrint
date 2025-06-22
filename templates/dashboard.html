@@ -155,4 +155,10 @@ Dashboard
 <script>
     var csrfToken = "{{ csrf_token }}";
 </script>
+
+{% if not_found and searched %}
+<script>
+    window.dashboardNotFound = {{ not_found|yesno:"true,false" }};
+</script>
+{% endif %}
 {% endblock %}

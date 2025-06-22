@@ -107,6 +107,12 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    if (window.dashboardNotFound === true) {
+        if (typeof createAlert === 'function') {
+            createAlert('Error', 'Customer Not Found', 'No documents found for this Customer ID.', 'danger', true, true, 'pageMessages');
+        }
+    }
+
     const imageUpload = document.getElementById('image-upload');
     if (imageUpload) {
         imageUpload.addEventListener('change', function() {
