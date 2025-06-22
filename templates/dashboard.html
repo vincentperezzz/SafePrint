@@ -17,6 +17,7 @@ Dashboard
         <h1>Welcome, {{ user.name }}</h1>
     </div>
     <button class="need-assistance-btn">Need Assistance?</button>
+    <div id="pageMessages"></div>
 </div>
 
 <div class="dashboard-stats">
@@ -91,23 +92,22 @@ Dashboard
     <div class="dashboard-right">
         <div class="customer-info">
             <div class='price-display'>
-                <p>₱{{ total_price|floatformat:2 }}</p>
+                <p id="price-to-pay">₱{{ total_price|floatformat:2 }}</p>
                 <h2>Price to Pay</h2>
             </div>
             <div class='dashboard-rows'>  
                 <h2>Enter Customer ID</h2>
-                <button class="clear-btn">Clear</button>
+                <button class="clear-btn" class="clear-btn" id="clear-btn">Clear</button>
             </div>
             <form method="POST" id="customer-search-form">
                 {% csrf_token %}
-                <input type="text" name="customer_id" placeholder="CID-XXXX" value="{% if customer_id %}CID-{{ customer_id }}{% else %}{% endif %}" required>
+                <input type="text" name="customer_id" id="customer-id-input" placeholder="CID-XXXX" value="{% if customer_id %}{{ customer_id }}{% else %}{% endif %}" required>
                 <button type="submit" class="search-btn">Search by Customer ID</button>
+                <div class="approval-buttons">
+                    <button class="deny-btn">Deny All</button>
+                    <button class="approve-btn">Approve All</button>
+                </div>
             </form>
-
-            <div class="approval-buttons">
-                <button class="deny-btn">Deny All</button>
-                <button class="approve-btn">Approve All</button>
-            </div>
         </div>
 
         <div class="completed-jobs">

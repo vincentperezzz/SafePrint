@@ -40,6 +40,7 @@ def dashboard(request):
     searched_documents = []
     customer_id = None
     total_price = 0.0
+    customer_id_display = ''
 
     if request.method == 'POST':
         customer_id = request.POST.get('customer_id', '').strip()
@@ -48,9 +49,11 @@ def dashboard(request):
             if customer_id.upper().startswith('CID-'):
                 normalized_id = customer_id[4:]
                 cid_with_prefix = customer_id.upper()
+                customer_id_display = cid_with_prefix
             else:
                 normalized_id = customer_id
                 cid_with_prefix = f'CID-{customer_id}'
+                customer_id_display = cid_with_prefix
     
             # Search for both formats
             searched_documents = Document.objects.filter(
@@ -77,7 +80,7 @@ def dashboard(request):
         'pending_customers_count': pending_customers_count,
         'completed_documents': completed_documents,
         'searched_documents': searched_documents,
-        'customer_id': customer_id,
+        'customer_id': customer_id_display,
         'total_price': round(total_price, 2),
     }
     print("Dashboard context:", context)

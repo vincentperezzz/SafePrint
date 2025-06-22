@@ -98,35 +98,14 @@ window.onload = function() {
 let selectedIds = [];
 
 document.addEventListener('DOMContentLoaded', () => {
-    // // TEMPORARILY make the no-documents section hidden and document-results section visible
-    // const searchButton = document.querySelector('.search-btn');
-    // const noDocuments = document.getElementById('no-documents');
-    // const approvalButtons = document.querySelector('.approval-buttons');
-    // const documentResults = document.getElementById('document-results');
-    // const totalPrice = document.getElementById('total-price');
-
-    // if (searchButton && noDocuments && documentResults && approvalButtons) {
-    //     searchButton.addEventListener('click', () => {
-    //         noDocuments.style.display = 'none';
-    //         searchButton.style.display = 'none';
-    //         documentResults.style.display = 'flex';
-    //         approvalButtons.style.display = 'flex';
-    //     });
-    // } 
-
-    // // Clear Button Functionality
-    // const clearButton = document.querySelector('.clear-btn');
-    // if (clearButton) {
-    //     clearButton.addEventListener('click', () => {
-    //         const searchInput = document.querySelector('.search-input');
-    //         if (searchInput) searchInput.value = '';
-    //         if (documentResults) documentResults.style.display = 'none';
-    //         if (approvalButtons) approvalButtons.style.display = 'none';
-    //         if (noDocuments) noDocuments.style.display = 'block';
-    //         if (totalPrice) totalPrice.textContent = '₱0.00';
-    //         searchButton.style.display = 'block';
-    //     });
-    // } 
+    const clearBtn = document.getElementById('clear-btn');
+    const customerIdInput = document.getElementById('customer-id-input');
+    const priceToPay = document.getElementById('price-to-pay');
+    if (clearBtn && customerIdInput && priceToPay) {
+        clearBtn.onclick = function() {
+            window.location.href = window.location.pathname;
+        };
+    }
 
     const imageUpload = document.getElementById('image-upload');
     if (imageUpload) {
@@ -666,7 +645,7 @@ document.querySelector('.search-btn').addEventListener('click', function() {
     const customerId = document.getElementById('customer-id-input').value.trim();
     
     if (!customerId) {
-        alert('Please enter a Customer ID');
+        createAlert('Error', 'Customer ID Required', 'Please enter a Customer ID to search for documents.', 'danger', true, true, 'pageMessages');
         return;
     }
     
@@ -685,12 +664,12 @@ document.querySelector('.search-btn').addEventListener('click', function() {
         if (data.success) {
             displayDocuments(data.documents, data.total_price);
         } else {
-            alert(data.error || 'Error searching for documents');
+            createAlert('Error', 'Search Failed', data.error || 'No documents found for the provided Customer ID.', 'danger', true, true, 'pageMessages');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('An error occurred while searching');
+        createAlert('Error', 'Search Failed', 'An error occurred while searching for documents. Please try again later.', 'danger', true, true, 'pageMessages');
     });
 });
 
