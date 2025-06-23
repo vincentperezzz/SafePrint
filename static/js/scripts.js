@@ -1,4 +1,52 @@
 document.addEventListener('DOMContentLoaded', () => {
+    //Drag and Drop File Upload Functionality
+    const dragArea = document.getElementById('drag-area');
+    const fileInput = document.getElementById('file-input');
+    const browseBtn = document.getElementById('browse-btn');
+
+    // Highlight drag area on dragover
+    dragArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        dragArea.classList.add('dragover');
+    });
+
+    dragArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        dragArea.classList.remove('dragover');
+    });
+
+    dragArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dragArea.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        handleFiles(files);
+    });
+
+    browseBtn.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', function() {
+        handleFiles(fileInput.files);
+    });
+
+    function handleFiles(files) {
+        // Only accept PDFs
+        for (let file of files) {
+            if (file.type !== "application/pdf") {
+                alert("Only PDF files are allowed.");
+                continue;
+            }
+            // You can now upload the file via AJAX or show a preview
+            // Example: show file name
+            const fileList = document.createElement('div');
+            fileList.textContent = `Selected: ${file.name}`;
+            dragArea.parentNode.appendChild(fileList);
+        }
+    }
+
+
+
     // Make the navbar sticky on top when scrolling
     const navbar = document.querySelector(".navbar");
     
