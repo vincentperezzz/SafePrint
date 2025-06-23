@@ -24,4 +24,5 @@ urlpatterns = [
     path('deny-all-documents/', views.deny_all_documents, name='deny_all_documents'),
     path('approve-all-documents/', views.approve_all_documents, name='approve_all_documents'),
     path('deny-document/', views.deny_document, name='deny_document'),
+    path('approve-document/', views.approve_document, name='approve_document'),
 ]

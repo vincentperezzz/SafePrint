@@ -446,3 +446,14 @@ def deny_document(request):
         deleted, _ = Document.objects.filter(doc_id=doc_id).delete()
         return JsonResponse({'success': True, 'deleted_count': deleted})
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+@csrf_exempt
+def approve_document(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        doc_id = data.get('doc_id')
+        if not doc_id:
+            return JsonResponse({'success': False, 'error': 'Document ID is required'})
+        updated = Document.objects.filter(doc_id=doc_id, doc_status='Pending').update(doc_status='Queued')
+        return JsonResponse({'success': True, 'updated_count': updated})
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
