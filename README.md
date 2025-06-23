@@ -49,7 +49,6 @@ SafePrint is a Django web application designed to provide a secure and efficient
    Activate the virtual environment and install the required Python packages:
    ```
    python -m venv venv
-
    ```
    ```
    venv\Scripts\activate
