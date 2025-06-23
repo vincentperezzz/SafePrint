@@ -21,4 +21,5 @@ urlpatterns = [
     path('api/problem-reports/', views.problem_reports_api, name='problem_reports_api'),
     path('update_printer_field/', views.update_printer_field, name='update_printer_field'),
     path('search_customer/', views.search_customer, name='search_customer'),
+    path('deny-all-documents/', views.deny_all_documents, name='deny_all_documents'),
 ]
