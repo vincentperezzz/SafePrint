@@ -920,5 +920,33 @@ function renderDocumentItems(documents, resultsDiv) {
             });
         });
     });
+
+    // Attach event listeners to each approve button
+resultsDiv.querySelectorAll('.document-item .approve-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const docItem = btn.closest('.document-item');
+        const docId = docItem.getAttribute('data-doc-id');
+        fetch(approveDocumentUrl, {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": csrfToken,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ doc_id: docId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                createAlert('Success', 'Approved', 'Document approved.', 'success', true, true, 'pageMessages');
+                docItem.remove();
+            } else {
+                createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
+            }
+        })
+        .catch(error => {
+            createAlert('Error', 'Approve Failed', 'An error occurred while approving the document.', 'danger', true, true, 'pageMessages');
+        });
+    });
+});
 }
 
