@@ -399,3 +399,21 @@ def problem_reports_api(request):
         for p in problem_reports
     ]
     return JsonResponse({'problem_reports': data})
+
+@csrf_exempt
+def deny_all_documents(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        customer_id = data.get('customer_id', '').strip()
+        if not customer_id:
+            return JsonResponse({'success': False, 'error': 'Customer ID is required'})
+
+        # Always use CID- prefix for matching
+        if not customer_id.upper().startswith('CID-'):
+            customer_id = f'CID-{customer_id}'
+        # Only delete pending documents
+        qs = Document.objects.filter(customer_id__iexact=customer_id, doc_status='Pending')
+        deleted, _ = qs.delete()
+        return JsonResponse({'success': True, 'deleted_count': deleted})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})

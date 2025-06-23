@@ -171,6 +171,42 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    // Deny All Documents
+    const denyAllBtn = document.getElementById('deny-all-btn');
+    if (denyAllBtn) {
+        denyAllBtn.addEventListener('click', function() {
+            const customerId = document.getElementById('customer-id-input').value.trim();
+            if (!customerId) {
+                createAlert('Error', 'Customer ID Required', 'Please enter a Customer ID to deny all documents.', 'danger', true, true, 'pageMessages');
+                return;
+            }
+
+            fetch(denyAllUrl, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ customer_id: customerId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    createAlert('Success', 'Denied', `Deleted ${data.deleted_count} documents.`, 'success', true, true, 'pageMessages');
+                    // Remove all document items from the UI
+                    document.querySelectorAll('.document-item').forEach(row => row.remove());
+                    document.getElementById('price-to-pay').textContent = '₱0.00';
+                    toggleActionButtons(false);
+                } else {
+                    createAlert('Error', 'Deny Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
+                }
+            })
+            .catch(error => {
+                createAlert('Error', 'Deny Failed', 'An error occurred while denying documents.', 'danger', true, true, 'pageMessages');
+            });
+        });
+    }
+
     // Change Profile Image
     const imageUpload = document.getElementById('image-upload');
     if (imageUpload) {
