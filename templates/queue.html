@@ -12,6 +12,7 @@ Printing Queue
         <h1>Print Queue</h1>
     </div>
     <button class="need-assistance-btn">Need Assistance?</button>
+    <div id="pageMessages"></div>
 </div>
 
 <hr class="dashboard-divider">
@@ -169,4 +170,10 @@ Printing Queue
     </div>
 
 </div>
+
+<script>
+    var csrfToken = "{{ csrf_token }}";
+    var denyDocumentUrl = "{% url 'deny_document' %}";
+    var approveDocumentUrl = "{% url 'approve_document' %}";
+</script>
 {% endblock %}
