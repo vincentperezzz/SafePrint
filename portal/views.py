@@ -417,3 +417,21 @@ def deny_all_documents(request):
         return JsonResponse({'success': True, 'deleted_count': deleted})
 
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+@csrf_exempt
+def approve_all_documents(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        customer_id = data.get('customer_id', '').strip()
+        if not customer_id:
+            return JsonResponse({'success': False, 'error': 'Customer ID is required'})
+
+        # Always use CID- prefix for matching
+        if not customer_id.upper().startswith('CID-'):
+            customer_id = f'CID-{customer_id}'
+        # Only update pending documents
+        qs = Document.objects.filter(customer_id__iexact=customer_id, doc_status='Pending')
+        updated = qs.update(doc_status='Queued')
+        return JsonResponse({'success': True, 'updated_count': updated})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})

@@ -22,4 +22,5 @@ urlpatterns = [
     path('update_printer_field/', views.update_printer_field, name='update_printer_field'),
     path('search_customer/', views.search_customer, name='search_customer'),
     path('deny-all-documents/', views.deny_all_documents, name='deny_all_documents'),
+    path('approve-all-documents/', views.approve_all_documents, name='approve_all_documents'),
 ]

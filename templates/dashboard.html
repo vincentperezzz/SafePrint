@@ -87,7 +87,7 @@ Dashboard
                 <button type="submit" class="search-btn" id="search-btn">Search by Customer ID</button>
                 <div class="approval-buttons" id="approval-actions">
                     <button class="deny-btn" id="deny-all-btn">Deny All</button>
-                    <button class="approve-btn">Approve All</button>
+                    <button class="approve-btn" id="approve-all-btn">Approve All</button>
                 </div>
         </div>
 
@@ -136,6 +136,6 @@ Dashboard
 <script>
     var csrfToken = "{{ csrf_token }}";
     var denyAllUrl = "{% url 'deny_all_documents' %}";
+    var approveAllUrl = "{% url 'approve_all_documents' %}";
 </script>
-<script src="{% static 'js/admin.js' %}"></script>
 {% endblock %}
