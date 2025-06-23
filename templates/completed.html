@@ -11,6 +11,7 @@ Print Completed
         <h1>Print Completed</h1>
     </div>
     <button class="need-assistance-btn">Need Assistance?</button>
+    <div id="pageMessages"></div>
 </div>
 
 <hr class="dashboard-divider">
@@ -66,4 +67,8 @@ Print Completed
         {% endfor %}
     </div>
 </div>
+<script>
+    var csrfToken = "{{ csrf_token }}";
+    var denyDocumentUrl = "{% url 'deny_document' %}";
+</script>
 {% endblock %}

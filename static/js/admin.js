@@ -1042,12 +1042,104 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                         `;
                         onQueueList.appendChild(newRow);
+                        const cancelBtn = newRow.querySelector('.queue-cancel-btn');
+                        if (cancelBtn) {
+                            cancelBtn.addEventListener('click', function() {
+                                const row = cancelBtn.closest('.on-queue-row');
+                                let docId = null;
+                                if (row && row.id.startsWith('onqueue-doc-')) {
+                                    docId = row.id.replace('onqueue-doc-', '');
+                                }
+                                if (!docId) return;
+                                fetch(denyDocumentUrl, {
+                                    method: "POST",
+                                    headers: {
+                                        "X-CSRFToken": csrfToken,
+                                        "Content-Type": "application/json"
+                                    },
+                                    body: JSON.stringify({ doc_id: docId })
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        row.remove();
+                                        if (typeof createAlert === "function") {
+                                            createAlert('Success', 'Cancelled', 'Document cancelled.', 'success', true, true, 'pageMessages');
+                                        }
+                                    } else {
+                                        alert('Cancel failed: ' + (data.error || 'Unknown error.'));
+                                    }
+                                })
+                                .catch(() => alert('An error occurred while cancelling the document.'));
+                            });
+                        }
                     }
                 } else {
                     alert('Approve failed: ' + (data.error || 'Unknown error.'));
                 }
             })
             .catch(() => alert('An error occurred while approving the document.'));
+        });
+    });
+
+    // Cancel button for on-queue documents
+    document.querySelectorAll('.queue-cancel-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const row = btn.closest('.on-queue-row');
+            let docId = null;
+            if (row && row.id.startsWith('onqueue-doc-')) {
+                docId = row.id.replace('onqueue-doc-', '');
+            }
+            if (!docId) return;
+            fetch(denyDocumentUrl, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ doc_id: docId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    row.remove();
+                    if (typeof createAlert === "function") {
+                        createAlert('Success', 'Cancelled', 'Document cancelled.', 'success', true, true, 'pageMessages');
+                    }
+                } else {
+                    alert('Cancel failed: ' + (data.error || 'Unknown error.'));
+                }
+            })
+            .catch(() => alert('An error occurred while cancelling the document.'));
+        });
+    });
+
+    // Handed Over button for completed documents
+    document.querySelectorAll('.handed-over-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const row = btn.closest('.completed-row');
+            const docId = row ? row.getAttribute('data-doc-id') : null;
+            if (!docId) return;
+            fetch(denyDocumentUrl, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ doc_id: docId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    row.remove();
+                    if (typeof createAlert === "function") {
+                        createAlert('Success', 'Handed Over', 'Document handed over.', 'success', true, true, 'pageMessages');
+                    }
+                } else {
+                    alert('Failed: ' + (data.error || 'Unknown error.'));
+                }
+            })
+            .catch(() => alert('An error occurred while marking as handed over.'));
         });
     });
 });
