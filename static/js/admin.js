@@ -867,7 +867,7 @@ function renderDocumentItems(documents, resultsDiv) {
     let html = '';
     documents.forEach(doc => {
         html += `
-        <div class="document-item">
+        <div class="document-item" data-doc-id="${doc.doc_id}">
             <div class="document-item-wrapper">
                 <img src="/static/assets/pdf-icon.svg" alt="PDF Icon">
                 <div class="document-info">
@@ -891,7 +891,34 @@ function renderDocumentItems(documents, resultsDiv) {
             </div>
         `;
     }
-    // Instead of +=, use insertAdjacentHTML or set innerHTML directly
     resultsDiv.insertAdjacentHTML('beforeend', html);
+
+    // Attach event listeners to each deny button
+    resultsDiv.querySelectorAll('.document-item .deny-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const docItem = btn.closest('.document-item');
+            const docId = docItem.getAttribute('data-doc-id');
+            fetch(denyDocumentUrl, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ doc_id: docId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    createAlert('Success', 'Denied', 'Document denied.', 'success', true, true, 'pageMessages');
+                    docItem.remove();
+                } else {
+                    createAlert('Error', 'Deny Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
+                }
+            })
+            .catch(error => {
+                createAlert('Error', 'Deny Failed', 'An error occurred while denying the document.', 'danger', true, true, 'pageMessages');
+            });
+        });
+    });
 }
 
