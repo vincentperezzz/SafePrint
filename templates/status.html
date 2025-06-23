@@ -73,9 +73,9 @@ Printer Status
             </div>
             <div class="gsm">
                 <div class="dropdown">
-                    <select class="dropdown-select" data-printer-id="{{ printer.id }}" data-field="gsm">
+                    <select class="dropdown-select" data-printer-id="{{ printer.id }}" data-field="paper_quality">
                         {% for gsm, label in gsm_choices %}
-                            <option value="{{ gsm }}" {% if printer.gsm == gsm %}selected{% endif %}>{{ label }}</option>
+                            <option value="{{ gsm }}" {% if printer.paper_quality == gsm %}selected{% endif %}>{{ label }}</option>
                         {% endfor %}
                     </select>
                     <span class="dropdown-arrow">
