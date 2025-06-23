@@ -192,7 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    createAlert('Success', 'Denied', `Denied ${data.deleted_count} documents.`, 'success', true, true, 'pageMessages');
+                    createAlert('Success', 'Denied', `All documents denied.`, 'success', true, true, 'pageMessages');
                     // Remove all document items from the UI
                     document.querySelectorAll('.document-item').forEach(row => row.remove());
                     document.getElementById('price-to-pay').textContent = '₱0.00';
@@ -228,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    createAlert('Success', 'Approved', `Approved ${data.updated_count} documents.`, 'success', true, true, 'pageMessages');
+                    createAlert('Success', 'Approved', `All documents approved.`, 'success', true, true, 'pageMessages');
                     // Remove all document items from the UI
                     document.querySelectorAll('.document-item').forEach(row => row.remove());
                     document.getElementById('price-to-pay').textContent = '₱0.00';
@@ -950,3 +950,104 @@ resultsDiv.querySelectorAll('.document-item .approve-btn').forEach(btn => {
 });
 }
 
+document.addEventListener('DOMContentLoaded', function() {
+    // Deny button for pending documents
+    document.querySelectorAll('.queue-deny-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const row = btn.closest('.queue-row');
+            let docId = null;
+            if (row.id.startsWith('pending-doc-')) {
+                docId = row.id.replace('pending-doc-', '');
+            } else if (row.id.startsWith('onqueue-doc-')) {
+                docId = row.id.replace('onqueue-doc-', '');
+            }
+            fetch(denyDocumentUrl, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ doc_id: docId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    row.remove();
+                    if (typeof createAlert === "function") {
+                        createAlert('Success', 'Denied', 'Document denied.', 'success', true, true, 'pageMessages');
+                    }
+                } else {
+                    alert('Deny failed: ' + (data.error || 'Unknown error.'));
+                }
+            })
+            .catch(() => alert('An error occurred while denying the document.'));
+        });
+    });
+
+    // Approve button for pending documents
+    document.querySelectorAll('.queue-approve-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const row = btn.closest('.queue-row');
+            let docId = null;
+            if (row.id.startsWith('pending-doc-')) {
+                docId = row.id.replace('pending-doc-', '');
+            } else if (row.id.startsWith('onqueue-doc-')) {
+                docId = row.id.replace('onqueue-doc-', '');
+            }
+            fetch(approveDocumentUrl, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ doc_id: docId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Remove from pending
+                    row.remove();
+                    if (typeof createAlert === "function") {
+                        createAlert('Success', 'Approved', 'Document approved.', 'success', true, true, 'pageMessages');
+                    }
+
+                    // Get info from the old row
+                    const filename = row.querySelector('.doc-title').textContent;
+                    const price = row.querySelector('.doc-price').textContent;
+                    const docIdText = row.querySelector('.queue-col.doc-id').textContent;
+
+                    // Build new row for On Queue Documents
+                    const onQueueList = document.querySelector('.on-queue-documents-list');
+                    if (onQueueList) {
+                        const newRow = document.createElement('div');
+                        newRow.className = 'on-queue-row';
+                        newRow.id = 'onqueue-doc-' + docId;
+
+                        newRow.innerHTML = `
+                            <div class="queue-col doc-name">
+                                <img src="/static/assets/pdf-icon.svg" alt="PDF Icon" class="pdf-icon">
+                                <div class="doc-info">
+                                    <div class="doc-title" title="${filename}">${filename}</div>
+                                    <div class="doc-price">${price}</div>
+                                </div>
+                            </div>
+                            <div class="queue-col doc-printer">
+                                <span class="printer-status printer-queued"></span>
+                                No Printer Assigned (Queued)
+                            </div>
+                            <div class="queue-col doc-approved">-</div>
+                            <div class="queue-col doc-id">${docIdText}</div>
+                            <div class="queue-col doc-actions">
+                                <button class="queue-cancel-btn">Cancel</button>
+                            </div>
+                        `;
+                        onQueueList.appendChild(newRow);
+                    }
+                } else {
+                    alert('Approve failed: ' + (data.error || 'Unknown error.'));
+                }
+            })
+            .catch(() => alert('An error occurred while approving the document.'));
+        });
+    });
+});
