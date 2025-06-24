@@ -6,6 +6,7 @@ SafePrint
 {% endblock %}
 
 {% block content %}
+{% csrf_token %}
 <div class="file-upload">
     <div class="upload-title-wrapper">
         <div class="file-upload-title">File Upload</div>
@@ -17,18 +18,18 @@ SafePrint
             <p>Drag your file(s)</p>
             <p>Upload in PDF format</p>
         </div>
-        <input type="file" id="file-input" accept="application/pdf" multiple style="display:none;">
-        <div class="or-divider">
+        <input type="file" id="file-input" accept="application/pdf" multiple style="display:none;">        <div class="or-divider">
             <span class="line"></span>
             <span>OR</span>
             <span class="line"></span>
         </div>
         <div class="browse-area">
             <span class="browse-text">Upload from Files</span>
-            <button class="browse-btn temporary-link" data-url="{% url 'upload' %}">Browse Files</button>
+            <button class="browse-btn" id="browse-btn">Browse Files</button>
         </div>
     </div>
-    <div class="file upload-completed">
+    <!-- Example file elements (hidden by default, shown for demo purposes) -->
+    <div class="file upload-completed" style="display: none;">
         <div class="file-rows">
             <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
             <div class="file-title">
@@ -38,7 +39,7 @@ SafePrint
             <img src="{% static 'assets/delete-icon.svg' %}" alt="Delete Icon" class="delete-icon">
         </div>
     </div>
-        <div class="file upload-error">
+        <div class="file upload-error" style="display: none;">
         <div class="file-rows">
             <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
             <div class="file-title">
@@ -49,7 +50,7 @@ SafePrint
             <img src="{% static 'assets/repeat-icon.svg' %}" alt="Repeat Icon" class="repeat-icon">
         </div>
     </div>
-    <div class="file uploading">
+    <div class="file uploading" style="display: none;">
         <div class="file-rows">
             <div class="file-title">
                 <span class="file-name">Uploading...</span>
@@ -57,12 +58,14 @@ SafePrint
             </div> 
             <img src="{% static 'assets/pause-icon.svg' %}" alt="Pause Icon" class="pause-icon">
             <img src="{% static 'assets/delete-icon.svg' %}" alt="Delete Icon" class="delete-icon">
-        </div>
+        </div>        
         <div class="progress-bar">
             <div class="progress" style="width: 24%;"></div>
         </div>
     </div>
-    <button class="proceed-btn" disabled>Proceed</button>
+    
+    <!-- Proceed button - always at the bottom, hidden when no files uploaded -->
+    <button class="proceed-btn" data-url="{% url 'upload' %}" style="display: none;">Proceed</button>
 </div>
 
 <div class="section-container" id="help">

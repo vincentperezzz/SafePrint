@@ -1,8 +1,23 @@
 document.addEventListener('DOMContentLoaded', () => {
     //Drag and Drop File Upload Functionality
     const dragArea = document.getElementById('drag-area');
-    const fileInput = document.getElementById('file-input');
-    const browseBtn = document.getElementById('browse-btn');
+    const fileInput = document.getElementById('file-input');    const browseBtn = document.querySelector('.browse-btn');
+    const proceedBtn = document.querySelector('.proceed-btn');
+    let uploadedFiles = [];
+
+    // Function to update proceed button visibility and state
+    function updateProceedButton() {
+        if (uploadedFiles.length > 0) {
+            proceedBtn.style.display = 'block';
+            proceedBtn.disabled = false;
+        } else {
+            proceedBtn.style.display = 'none';
+            proceedBtn.disabled = true;
+        }
+    }
+
+    // Initialize proceed button state
+    updateProceedButton();
 
     // Highlight drag area on dragover
     dragArea.addEventListener('dragover', function(e) {
@@ -31,19 +46,242 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function handleFiles(files) {
+        // Clear existing example files
+        clearExampleFiles();
+        
         // Only accept PDFs
         for (let file of files) {
             if (file.type !== "application/pdf") {
                 alert("Only PDF files are allowed.");
                 continue;
             }
-            // You can now upload the file via AJAX or show a preview
-            // Example: show file name
-            const fileList = document.createElement('div');
-            fileList.textContent = `Selected: ${file.name}`;
-            dragArea.parentNode.appendChild(fileList);
+            uploadFile(file);
         }
     }
+
+    function clearExampleFiles() {
+        // Remove example file elements
+        const exampleFiles = document.querySelectorAll('.file.upload-completed, .file.upload-error, .file.uploading');
+        exampleFiles.forEach(file => file.remove());
+    }
+
+    function uploadFile(file) {
+        const fileId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          // Create file element for uploading state
+        const fileElement = createFileElement(file, fileId, 'uploading');
+        
+        // Insert the file element before the proceed button
+        const fileUploadContainer = document.querySelector('.file-upload');
+        const proceedButton = fileUploadContainer.querySelector('.proceed-btn');
+        fileUploadContainer.insertBefore(fileElement, proceedButton);
+        
+        // Create FormData for upload
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // Get CSRF token
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                         document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        if (csrfToken) {
+            formData.append('csrfmiddlewaretoken', csrfToken);
+        }
+
+        // Create XMLHttpRequest for progress tracking
+        const xhr = new XMLHttpRequest();
+        
+        // Track upload progress
+        xhr.upload.addEventListener('progress', function(e) {
+            if (e.lengthComputable) {
+                const percentComplete = (e.loaded / e.total) * 100;
+                updateUploadProgress(fileId, percentComplete);
+            }
+        });
+
+        xhr.addEventListener('load', function() {
+            if (xhr.status === 200) {
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    if (response.success) {
+                        // Upload successful
+                        updateFileStatus(fileId, 'completed', file.name, formatFileSize(file.size));
+                        uploadedFiles.push({
+                            id: fileId,
+                            name: file.name,
+                            size: file.size,
+                            serverPath: response.file_path
+                        });
+                        updateProceedButton();
+                    } else {
+                        // Upload failed
+                        updateFileStatus(fileId, 'error', file.name);
+                    }
+                } catch (e) {
+                    updateFileStatus(fileId, 'error', file.name);
+                }
+            } else {
+                updateFileStatus(fileId, 'error', file.name);
+            }
+        });
+
+        xhr.addEventListener('error', function() {
+            updateFileStatus(fileId, 'error', file.name);
+        });
+
+        // Send the request
+        xhr.open('POST', '/upload-file/', true);
+        xhr.send(formData);
+    }
+
+    function createFileElement(file, fileId, status) {
+        const fileDiv = document.createElement('div');
+        fileDiv.className = `file ${status}`;
+        fileDiv.setAttribute('data-file-id', fileId);
+
+        if (status === 'uploading') {
+            fileDiv.innerHTML = `
+                <div class="file-rows">
+                    <div class="file-title">
+                        <span class="file-name">Uploading ${file.name}...</span>
+                        <span class="file-size">0% • Calculating...</span>
+                    </div>
+                    <img src="/static/assets/pause-icon.svg" alt="Pause Icon" class="pause-icon">
+                    <img src="/static/assets/delete-icon.svg" alt="Delete Icon" class="delete-icon" onclick="cancelUpload('${fileId}')">
+                </div>
+                <div class="progress-bar">
+                    <div class="progress" style="width: 0%;"></div>
+                </div>
+            `;
+        }
+
+        return fileDiv;
+    }
+
+    function updateUploadProgress(fileId, percentComplete) {
+        const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileElement) {
+            const progressBar = fileElement.querySelector('.progress');
+            const sizeSpan = fileElement.querySelector('.file-size');
+            const remainingTime = Math.max(0, Math.round((100 - percentComplete) * 0.3)); // Rough estimate
+            
+            progressBar.style.width = percentComplete + '%';
+            sizeSpan.textContent = `${Math.round(percentComplete)}% • ${remainingTime} seconds remaining`;
+        }
+    }
+
+    function updateFileStatus(fileId, status, fileName, fileSize = '') {
+        const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileElement) {
+            fileElement.className = `file upload-${status}`;
+            
+            if (status === 'completed') {
+                fileElement.innerHTML = `
+                    <div class="file-rows">
+                        <img src="/static/assets/pdf-icon.svg" alt="PDF Icon" class="file-icon">
+                        <div class="file-title">
+                            <span class="file-name">${fileName}</span>
+                            <span class="file-size">${fileSize}</span>
+                        </div>
+                        <img src="/static/assets/delete-icon.svg" alt="Delete Icon" class="delete-icon" onclick="removeFile('${fileId}')">
+                    </div>
+                `;
+            } else if (status === 'error') {
+                fileElement.innerHTML = `
+                    <div class="file-rows">
+                        <img src="/static/assets/pdf-icon.svg" alt="PDF Icon" class="file-icon">
+                        <div class="file-title">
+                            <span class="file-name">${fileName}</span>
+                            <span class="file-failed">Upload Failed</span>
+                        </div>
+                        <img src="/static/assets/trash-icon.svg" alt="Trash Icon" class="trash-icon" onclick="removeFile('${fileId}')">
+                        <img src="/static/assets/repeat-icon.svg" alt="Repeat Icon" class="repeat-icon" onclick="retryUpload('${fileId}')">
+                    </div>
+                `;
+            }
+        }
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }    // Global functions for file management
+    window.removeFile = function(fileId) {
+        const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileElement) {
+            // Find the file in uploadedFiles array to get the server path
+            const fileToRemove = uploadedFiles.find(file => file.id === fileId);
+            
+            if (fileToRemove && fileToRemove.serverPath) {
+                // Get CSRF token
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                                 document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                
+                const headers = {
+                    'Content-Type': 'application/json',
+                };
+                
+                if (csrfToken) {
+                    headers['X-CSRFToken'] = csrfToken;
+                }
+                
+                // Call backend to delete the file from server
+                fetch('/delete-file/', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        file_path: fileToRemove.serverPath
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('File deleted from server successfully');
+                    } else {
+                        console.error('Failed to delete file from server:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting file from server:', error);
+                });
+            }
+            
+            // Remove from UI and local array
+            fileElement.remove();
+            uploadedFiles = uploadedFiles.filter(file => file.id !== fileId);
+            updateProceedButton();
+        }
+    };
+
+    window.retryUpload = function(fileId) {
+        // For retry, we would need to store the original file object
+        // This is a simplified implementation
+        const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileElement) {
+            fileElement.remove();
+            // Would need to re-trigger file selection or store file reference
+            alert('Please select the file again to retry upload.');
+        }
+    };
+
+    window.cancelUpload = function(fileId) {
+        // Cancel ongoing upload
+        const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileElement) {
+            fileElement.remove();
+        }
+    };
+
+    // Handle proceed button click
+    proceedBtn.addEventListener('click', function() {
+        if (uploadedFiles.length > 0) {
+            // Store uploaded files in session storage for the upload page
+            sessionStorage.setItem('uploadedFiles', JSON.stringify(uploadedFiles));
+            // Navigate to upload page
+            window.location.href = proceedBtn.getAttribute('data-url');
+        }
+    });
 
 
 
@@ -150,9 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Grayscale Toggle Functionality
-    const grayscaleToggle = document.getElementById('grayscale-toggle');
-
-    // Add keydown event listener for toggling the switch with Enter key
+    const grayscaleToggle = document.getElementById('grayscale-toggle');    // Add keydown event listener for toggling the switch with Enter key
     grayscaleToggle.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
             grayscaleToggle.checked = !grayscaleToggle.checked; // Toggle the checked state
@@ -174,15 +410,6 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
                 behavior: 'smooth'
             });
         }
-    });
-});
-
-//TEMPORARILY BROWSE BUTTON FUNCTIONALITY TO LINK TO UPLOAD.HTML
-document.addEventListener('DOMContentLoaded', () => {
-    const browseButton = document.querySelector('.temporary-link');
-    browseButton.addEventListener('click', () => {
-        const url = browseButton.getAttribute('data-url');
-        window.location.href = url;
     });
 });
 
