@@ -42,18 +42,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     fileInput.addEventListener('change', function() {
-        handleFiles(fileInput.files);
+        // Accept unlimited number of PDF files, add to existing
+        const files = Array.from(fileInput.files);
+        handleFiles(files);
+        // Reset file input so the same file can be selected again if needed
+        fileInput.value = '';
     });    function handleFiles(files) {
-        // Clear existing example files
-        clearExampleFiles();
-        
-        // Accept unlimited number of PDF files
+        // Accept unlimited number of PDF files, add to existing
         for (let file of files) {
             if (file.type !== "application/pdf") {
                 alert(`"${file.name}" is not a PDF file. Only PDF files are allowed.`);
                 continue;
             }
-            // No file size restrictions - upload any size
+            // Prevent duplicate uploads by name and size
+            if (uploadedFiles.some(f => f.name === file.name && f.size === file.size)) {
+                continue;
+            }
             uploadFile(file);
         }
     }
@@ -398,7 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
             grayscaleToggle.checked = !grayscaleToggle.checked; // Toggle the checked state
             grayscaleToggle.dispatchEvent(new Event('change')); // Trigger change event if needed
         }
-    });
+   });
 
 }); // END OF DOMContentLoaded
 
@@ -534,4 +538,15 @@ document.getElementById('feedback-form').addEventListener('submit', function(e) 
             window.location.reload();
         }
     });
+});
+
+// Warn user about losing uploads on reload/close
+window.addEventListener('beforeunload', function (e) {
+    if (typeof uploadedFiles !== 'undefined' && uploadedFiles.length > 0) {
+        // Modern browsers ignore return value, but setting returnValue triggers the dialog
+        e.preventDefault();
+        e.returnValue = '';
+        // Optionally, you can set a custom message, but most browsers will not display it
+        // e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
+    }
 });
