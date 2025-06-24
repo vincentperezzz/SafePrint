@@ -610,6 +610,8 @@ window.addEventListener('beforeunload', function (e) {
     const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
     if (docs.length > 0 && !hasProceeded) {
         navigator.sendBeacon('/delete-all-uploads/');
+        sessionStorage.removeItem('documents');
+        window.location.href = '/'; 
         e.preventDefault();
         e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
     }
@@ -620,6 +622,12 @@ function renderUploadedDocumentsPreview() {
     if (!uploadedFilesDiv) return;
 
     const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
+    if (!docs || docs.length === 0) {
+        sessionStorage.removeItem('documents');
+        window.location.href = '/';
+        return;
+    }
+
     uploadedFilesDiv.innerHTML = '';
 
     docs.forEach(doc => {
