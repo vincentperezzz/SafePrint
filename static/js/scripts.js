@@ -1,5 +1,6 @@
 let uploadedFiles = [];
 let hasProceeded = false;
+const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
 
 document.addEventListener('DOMContentLoaded', () => {
     //Drag and Drop File Upload Functionality
@@ -381,6 +382,77 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Handle confirmation button click (save all current settings to backend)
+    const confirmBtn = document.getElementById('to-confirmation');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', function() {
+            hasProceeded = true;
+            const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
+            const uploadedFilesDiv = document.querySelector('.uploaded-files');
+            if (!uploadedFilesDiv || !docs.length) return;
+            const docDivs = uploadedFilesDiv.querySelectorAll('.file');
+            let updates = [];
+            docDivs.forEach((fileDiv, idx) => {
+                const doc = docs[idx];
+                // Quantity
+                const quantityInput = fileDiv.querySelector('.quantity-input');
+                const quantity = quantityInput ? parseInt(quantityInput.value, 10) : 1;
+                // Pages to print
+                const allPagesRadio = fileDiv.querySelector('input[value="all"]');
+                const specificPagesRadio = fileDiv.querySelector('input[value="specific-pages"]');
+                let pages = '';
+                if (allPagesRadio && allPagesRadio.checked) {
+                    pages = `1-${doc.num_pages}`;
+                } else if (specificPagesRadio && specificPagesRadio.checked) {
+                    const pageInput = fileDiv.querySelector('.page-input');
+                    pages = pageInput ? pageInput.value : '';
+                }
+                // Orientation
+                const orientationRadio = fileDiv.querySelector('input[name="page-orientation-' + doc.doc_id + '"]:checked');
+                const orientation = orientationRadio ? orientationRadio.value : 'portrait';
+                // Grayscale/Color (from DB if available, else from UI)
+                let grayscale = doc.grayscale;
+                const grayscaleToggle = fileDiv.querySelector('.switch-input');
+                if (typeof grayscale === 'undefined' && grayscaleToggle) {
+                    grayscale = grayscaleToggle.checked ? 'Black and white' : 'Color';
+                }
+                // Paper size
+                const paperSizeSelect = fileDiv.querySelectorAll('.dropdown-select')[0];
+                const paperSize = paperSizeSelect ? paperSizeSelect.value : '';
+                // Paper quality
+                const paperQualitySelect = fileDiv.querySelectorAll('.dropdown-select')[1];
+                const paperQuality = paperQualitySelect ? paperQualitySelect.value : '';
+                updates.push({
+                    doc_id: doc.doc_id,
+                    quantity,
+                    pages,
+                    orientation,
+                    grayscale,
+                    paper_size: paperSize,
+                    paper_quality: paperQuality
+                });
+            });
+            // Send updates to backend
+            fetch('/update-document-settings/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                },
+                body: JSON.stringify({ updates })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Optionally update sessionStorage or redirect
+                    window.location.href = confirmBtn.getAttribute('data-url');
+                } else {
+                    alert('Failed to update settings: ' + (data.error || 'Unknown error'));
+                }
+            });
+        });
+    }
+
 
 
     // Make the navbar sticky on top when scrolling
@@ -536,9 +608,16 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     }
 
-    if (document.body.classList.contains('upload-page')) {
+    if (document.querySelector('.uploaded-files')) {
+        const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
+        if (docs.length === 0) {
+            window.location.href = '/';
+            return;
+        }
         renderUploadedDocumentsPreview();
     }
+
+
 
 }); // END OF DOMContentLoaded
 
@@ -655,13 +734,14 @@ window.addEventListener('beforeunload', function (e) {
         e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
     }
 
-    const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
     if (docs.length > 0 && !hasProceeded) {
-        navigator.sendBeacon('/delete-all-uploads/');
-        sessionStorage.removeItem('documents');
-        window.location.href = '/'; 
         e.preventDefault();
         e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
+        // Prepare data for deletion
+        const payload = JSON.stringify({
+            doc_id: docs.map(doc => doc.doc_id),
+            session_key: window.sessionKey
+        });
     }
 });
 
@@ -670,11 +750,6 @@ function renderUploadedDocumentsPreview() {
     if (!uploadedFilesDiv) return;
 
     const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
-    if (!docs || docs.length === 0) {
-        sessionStorage.removeItem('documents');
-        window.location.href = '/';
-        return;
-    }
 
     uploadedFilesDiv.innerHTML = '';
 
@@ -817,7 +892,7 @@ function renderUploadedDocumentsPreview() {
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-                                       document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                                       document.querySelector('meta[name=csrf-token]')?.getAttribute('content'),
                     },
                     body: JSON.stringify({
                         doc_id: doc.doc_id,
@@ -830,7 +905,11 @@ function renderUploadedDocumentsPreview() {
                         fileDiv.remove();
                         const updatedDocs = docs.filter(d => d.doc_id !== doc.doc_id);
                         sessionStorage.setItem('documents', JSON.stringify(updatedDocs));
-                        renderUploadedDocumentsPreview();
+                        if (updatedDocs.length === 0) {
+                            window.location.href = '/';
+                        } else {
+                            renderUploadedDocumentsPreview();
+                        }
                     } else {
                         alert('Failed to delete document: ' + (data.error || 'Unknown error'));
                     }
@@ -844,6 +923,12 @@ function renderUploadedDocumentsPreview() {
         const grayscaleToggle = fileDiv.querySelector('.switch-input');
         const switchLabel = fileDiv.querySelector('.switch-label');
         if (grayscaleToggle) {
+            // Set initial state based on doc.grayscale from DB
+            if (doc.grayscale === 'Black and white') {
+                grayscaleToggle.checked = true;
+            } else {
+                grayscaleToggle.checked = false;
+            }
             // Toggle on click (for accessibility)
             grayscaleToggle.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -882,6 +967,3 @@ function renderUploadedDocumentsPreview() {
         }
     });
 }
-
-// Call on DOMContentLoaded for upload page
-document.addEventListener('DOMContentLoaded', renderUploadedDocumentsPreview);

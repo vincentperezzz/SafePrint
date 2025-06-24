@@ -221,6 +221,33 @@ def delete_document(request):
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
     return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)
 
+@csrf_exempt
+def delete_all_documents(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            doc_ids = data.get('doc_id', [])
+            session_key = data.get('session_key')
+            if not doc_ids or not session_key:
+                return JsonResponse({'success': False, 'error': 'doc_id and session_key are required'}, status=400)
+            for doc_id in doc_ids:
+                # delete document from the database table in models.py
+                try:
+                    doc = Document.objects.get(doc_id=doc_id)
+                    # Attempt to delete the file from storage
+                    if hasattr(doc, 'stored_name') and doc.stored_name:
+                        file_path = f'uploads/{session_key}/{doc.stored_name}'
+                        from django.core.files.storage import default_storage
+                        if default_storage.exists(file_path):
+                            default_storage.delete(file_path)
+                    doc.delete()
+                except Document.DoesNotExist:
+                    continue  # Skip if document does not exist
+            return JsonResponse({'success': True})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    return JsonResponse({'success': False, 'error': 'Invalid method'})
+
 
 def get_paper_size(width, height):
     # Sizes in points (1 pt = 1/72 inch)
@@ -293,7 +320,7 @@ def finalize_uploads_view(request):
                 num_copies=1,
                 pages_num=str(num_pages),
                 orientation=orientation,
-                color_mode='Black and White',
+                color_mode='Colored',
                 paper_size=paper_size,
                 paper_quality='70',
                 original_name=original_name,
@@ -319,3 +346,38 @@ def finalize_uploads_view(request):
             print(doc)
         return JsonResponse({'success': True, 'documents': docs_data, 'customer_id': customer_id})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+
+@csrf_exempt
+def update_document_settings(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            updates = data.get('updates', [])
+            for upd in updates:
+                doc_id = upd.get('doc_id')
+                if not doc_id:
+                    continue
+                try:
+                    doc = Document.objects.get(doc_id=doc_id)
+                    # Update fields if present in update
+                    if 'quantity' in upd:
+                        doc.num_copies = upd['quantity']
+                    if 'pages' in upd:
+                        doc.pages_num = upd['pages']
+                    if 'orientation' in upd:
+                        doc.orientation = upd['orientation'].capitalize()
+                    if 'grayscale' in upd:
+                        # Map to your color_mode field
+                        doc.color_mode = 'Black and White' if upd['grayscale'] == 'Black and white' else 'Color'
+                    if 'paper_size' in upd:
+                        doc.paper_size = upd['paper_size']
+                    if 'paper_quality' in upd:
+                        doc.paper_quality = upd['paper_quality']
+                    doc.save()
+                except Document.DoesNotExist:
+                    continue
+            return JsonResponse({'success': True})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)

@@ -2,8 +2,10 @@ asgiref==3.8.1
 Django==5.2.1
 django-livereload-server==0.5.1
 mysqlclient==2.2.7
-pillow==11.2.1
+pillow
+PyMuPDF==1.26.1
 PyPDF2==3.0.1
+pdf2image
 python-decouple==3.8
 sqlparse==0.5.3
 tornado==6.5.1
