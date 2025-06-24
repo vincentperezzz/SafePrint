@@ -43,18 +43,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     fileInput.addEventListener('change', function() {
         handleFiles(fileInput.files);
-    });
-
-    function handleFiles(files) {
+    });    function handleFiles(files) {
         // Clear existing example files
         clearExampleFiles();
         
-        // Only accept PDFs
+        // Accept unlimited number of PDF files
         for (let file of files) {
             if (file.type !== "application/pdf") {
-                alert("Only PDF files are allowed.");
+                alert(`"${file.name}" is not a PDF file. Only PDF files are allowed.`);
                 continue;
             }
+            // No file size restrictions - upload any size
             uploadFile(file);
         }
     }
@@ -84,10 +83,11 @@ document.addEventListener('DOMContentLoaded', () => {
                          document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
         if (csrfToken) {
             formData.append('csrfmiddlewaretoken', csrfToken);
-        }
-
-        // Create XMLHttpRequest for progress tracking
+        }        // Create XMLHttpRequest for progress tracking
         const xhr = new XMLHttpRequest();
+        
+        // Set timeout for large file uploads (30 minutes)
+        xhr.timeout = 30 * 60 * 1000;
         
         // Track upload progress
         xhr.upload.addEventListener('progress', function(e) {
@@ -121,28 +121,30 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 updateFileStatus(fileId, 'error', file.name);
             }
+        });        xhr.addEventListener('error', function() {
+            updateFileStatus(fileId, 'error', file.name);
         });
 
-        xhr.addEventListener('error', function() {
+        xhr.addEventListener('timeout', function() {
             updateFileStatus(fileId, 'error', file.name);
+            alert(`Upload of "${file.name}" timed out. Please try again.`);
         });
 
         // Send the request
         xhr.open('POST', '/upload-file/', true);
         xhr.send(formData);
-    }
-
-    function createFileElement(file, fileId, status) {
+    }    function createFileElement(file, fileId, status) {
         const fileDiv = document.createElement('div');
         fileDiv.className = `file ${status}`;
         fileDiv.setAttribute('data-file-id', fileId);
 
         if (status === 'uploading') {
+            const fileSizeText = formatFileSize(file.size);
             fileDiv.innerHTML = `
                 <div class="file-rows">
                     <div class="file-title">
                         <span class="file-name">Uploading ${file.name}...</span>
-                        <span class="file-size">0% • Calculating...</span>
+                        <span class="file-size">0% • ${fileSizeText}</span>
                     </div>
                     <img src="/static/assets/pause-icon.svg" alt="Pause Icon" class="pause-icon">
                     <img src="/static/assets/delete-icon.svg" alt="Delete Icon" class="delete-icon" onclick="cancelUpload('${fileId}')">
@@ -154,9 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         return fileDiv;
-    }
-
-    function updateUploadProgress(fileId, percentComplete) {
+    }function updateUploadProgress(fileId, percentComplete) {
         const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
         if (fileElement) {
             const progressBar = fileElement.querySelector('.progress');
@@ -164,7 +164,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const remainingTime = Math.max(0, Math.round((100 - percentComplete) * 0.3)); // Rough estimate
             
             progressBar.style.width = percentComplete + '%';
-            sizeSpan.textContent = `${Math.round(percentComplete)}% • ${remainingTime} seconds remaining`;
+            if (percentComplete < 100) {
+                sizeSpan.textContent = `${Math.round(percentComplete)}% • ${remainingTime} seconds remaining`;
+            } else {
+                sizeSpan.textContent = `Upload complete`;
+            }
         }
     }
 
