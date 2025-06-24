@@ -1,9 +1,13 @@
+let uploadedFiles = [];
+let hasProceeded = false;
+
 document.addEventListener('DOMContentLoaded', () => {
     //Drag and Drop File Upload Functionality
     const dragArea = document.getElementById('drag-area');
-    const fileInput = document.getElementById('file-input');    const browseBtn = document.querySelector('.browse-btn');
+    const fileInput = document.getElementById('file-input');
+    const browseBtn = document.querySelector('.browse-btn');
     const proceedBtn = document.querySelector('.proceed-btn');
-    let uploadedFiles = [];
+
 
     // Function to update proceed button visibility and state
     function updateProceedButton() {
@@ -118,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         // Upload failed
                         updateFileStatus(fileId, 'error', file.name);
+                        console.error(`Upload failed for "${file.name}": ${response.error}`);
                     }
                 } catch (e) {
                     updateFileStatus(fileId, 'error', file.name);
@@ -136,8 +141,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Send the request
         xhr.open('POST', '/upload-file/', true);
+        // Ensure cookies (sessionid) are sent with the request
+        xhr.withCredentials = true;
         xhr.send(formData);
-    }    function createFileElement(file, fileId, status) {
+    }
+
+    function createFileElement(file, fileId, status) {
         const fileDiv = document.createElement('div');
         fileDiv.className = `file ${status}`;
         fileDiv.setAttribute('data-file-id', fileId);
@@ -283,6 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle proceed button click
     proceedBtn.addEventListener('click', function() {
+        hasProceeded = true;
         if (uploadedFiles.length > 0) {
             // Store uploaded files in session storage for the upload page
             sessionStorage.setItem('uploadedFiles', JSON.stringify(uploadedFiles));
@@ -550,11 +560,14 @@ function createAlert(title, summary, details, severity, dismissible, autoDismiss
 
 // Warn user about losing uploads on reload/close
 window.addEventListener('beforeunload', function (e) {
-    if (typeof uploadedFiles !== 'undefined' && uploadedFiles.length > 0) {
-        // Modern browsers ignore return value, but setting returnValue triggers the dialog
+    if (
+        typeof uploadedFiles !== 'undefined' &&
+        uploadedFiles.length > 0 &&
+        !hasProceeded
+    ) {
+        // Send a request to delete all uploaded files for this session
+        navigator.sendBeacon('/delete-all-uploads/');
         e.preventDefault();
-        e.returnValue = '';
-        // Optionally, you can set a custom message, but most browsers will not display it
-        // e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
+        e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
     }
 });
