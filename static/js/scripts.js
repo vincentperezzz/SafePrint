@@ -381,28 +381,70 @@ document.addEventListener('DOMContentLoaded', () => {
     const allPagesRadio = document.querySelector('input[value="all"]');
     const pageInput = document.querySelector('.page-input');
 
-    specificPagesRadio.addEventListener('change', () => {
-        if (specificPagesRadio.checked) {
-            pageInput.disabled = false; 
-            pageInput.focus();
-        }
-    });
+    if(specificPagesRadio){
+        specificPagesRadio.addEventListener('change', () => {
+            if (specificPagesRadio.checked) {
+                pageInput.disabled = false; 
+                pageInput.focus();
+            }
+        });
+    }
 
-    allPagesRadio.addEventListener('change', () => {
-        if (allPagesRadio.checked) {
-            pageInput.disabled = true; 
-            pageInput.value = ''; 
-        }
-    });
+    if (allPagesRadio) {
+        allPagesRadio.addEventListener('change', () => {
+            if (allPagesRadio.checked) {
+                pageInput.disabled = true; 
+                pageInput.value = ''; 
+            }
+        });
+    }
 
     // Grayscale Toggle Functionality
-    const grayscaleToggle = document.getElementById('grayscale-toggle');    // Add keydown event listener for toggling the switch with Enter key
-    grayscaleToggle.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-            grayscaleToggle.checked = !grayscaleToggle.checked; // Toggle the checked state
-            grayscaleToggle.dispatchEvent(new Event('change')); // Trigger change event if needed
-        }
-   });
+    const grayscaleToggle = document.getElementById('grayscale-toggle');
+    if (grayscaleToggle) {
+        grayscaleToggle.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                grayscaleToggle.checked = !grayscaleToggle.checked; 
+                grayscaleToggle.dispatchEvent(new Event('change')); 
+            }
+        });
+    }
+    
+    const feedbackForm = document.getElementById('feedback-form');
+    if (feedbackForm) {
+        feedbackForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const form = e.target;
+            const formData = new FormData(form);
+    
+            fetch("{% url 'feedback' %}", {
+                method: "POST",
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.reload();
+                }
+            });
+        });
+    }
+    
+    if (typeof LoginError !== 'undefined' && LoginError) {
+        createAlert(
+            "Error",           // title
+            "",                // summary
+            LoginError,        // details
+            "danger",          // severity
+            true,              // dismissible
+            true,              // autoDismiss
+            "pageMessages"
+        );
+    }
 
 }); // END OF DOMContentLoaded
 
@@ -505,40 +547,6 @@ function createAlert(title, summary, details, severity, dismissible, autoDismiss
     }
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    if (LoginError) {
-        createAlert(
-            "Error",           // title
-            "",                // summary
-            LoginError,     // details
-            "danger",          // severity
-            true,              // dismissible
-            true,              // autoDismiss
-            "pageMessages"
-        );
-    }
-});
-
-document.getElementById('feedback-form').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-
-    fetch("{% url 'feedback' %}", {
-        method: "POST",
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRFToken': formData.get('csrfmiddlewaretoken')
-        },
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            window.location.reload();
-        }
-    });
-});
 
 // Warn user about losing uploads on reload/close
 window.addEventListener('beforeunload', function (e) {
