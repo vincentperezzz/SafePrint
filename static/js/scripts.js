@@ -6,11 +6,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const dragArea = document.getElementById('drag-area');
     const fileInput = document.getElementById('file-input');
     const browseBtn = document.querySelector('.browse-btn');
-    const proceedBtn = document.querySelector('.proceed-btn');
+    const proceedBtn = document.getElementById('to-upload');
 
 
     // Function to update proceed button visibility and state
     function updateProceedButton() {
+        if (!proceedBtn) return; 
         if (uploadedFiles.length > 0) {
             proceedBtn.style.display = 'block';
             proceedBtn.disabled = false;
@@ -23,35 +24,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize proceed button state
     updateProceedButton();
 
-    // Highlight drag area on dragover
-    dragArea.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        dragArea.classList.add('dragover');
-    });
-
-    dragArea.addEventListener('dragleave', function(e) {
-        e.preventDefault();
-        dragArea.classList.remove('dragover');
-    });
-
-    dragArea.addEventListener('drop', function(e) {
-        e.preventDefault();
-        dragArea.classList.remove('dragover');
-        const files = e.dataTransfer.files;
-        handleFiles(files);
-    });
-
-    browseBtn.addEventListener('click', function() {
-        fileInput.click();
-    });
-
-    fileInput.addEventListener('change', function() {
-        // Accept unlimited number of PDF files, add to existing
-        const files = Array.from(fileInput.files);
-        handleFiles(files);
-        // Reset file input so the same file can be selected again if needed
-        fileInput.value = '';
-    });    function handleFiles(files) {
+    if (dragArea && fileInput && browseBtn) {
+        // Highlight drag area on dragover
+        dragArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            dragArea.classList.add('dragover');
+        });
+    
+        dragArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            dragArea.classList.remove('dragover');
+        });
+    
+        dragArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dragArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            handleFiles(files);
+        });
+    
+        browseBtn.addEventListener('click', function() {
+            fileInput.click();
+        });
+    
+        fileInput.addEventListener('change', function() {
+            const files = Array.from(fileInput.files);
+            handleFiles(files);
+            fileInput.value = '';
+        });
+    } 
+    
+    function handleFiles(files) {
         // Accept unlimited number of PDF files, add to existing
         for (let file of files) {
             if (file.type !== "application/pdf") {
@@ -169,7 +172,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         return fileDiv;
-    }function updateUploadProgress(fileId, percentComplete) {
+    }
+    
+    function updateUploadProgress(fileId, percentComplete) {
         const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
         if (fileElement) {
             const progressBar = fileElement.querySelector('.progress');
@@ -223,7 +228,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }    // Global functions for file management
+    }    
+    
+    // Global functions for file management
     window.removeFile = function(fileId) {
         const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
         if (fileElement) {
@@ -291,38 +298,40 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Handle proceed button click
-    proceedBtn.addEventListener('click', function() {
-        hasProceeded = true;
-        if (uploadedFiles.length > 0) {
-            // Gather server paths of uploaded files
-            const filePaths = uploadedFiles.map(f => f.serverPath || f.file_path || f.path || f.name);
-            const originalNames = {};
-            uploadedFiles.forEach(f => {
-                const path = f.serverPath || f.file_path || f.path || f.name;
-                originalNames[path] = f.name;
-            });
-            fetch('/finalize-uploads/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
-                },
-                body: JSON.stringify({ files: filePaths, original_names: originalNames })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    // Store document metadata in sessionStorage for preview
-                    sessionStorage.setItem('documents', JSON.stringify(data.documents));
-                    sessionStorage.setItem('customer_id', data.customer_id);
-                    // Redirect to upload.html for preview
-                    window.location.href = proceedBtn.getAttribute('data-url');
-                } else {
-                    alert('Failed to process documents: ' + data.error);
-                }
-            });
-        }
-    });
+    if (proceedBtn) {
+        proceedBtn.addEventListener('click', function() {
+            hasProceeded = true;
+            if (uploadedFiles.length > 0) {
+                // Gather server paths of uploaded files
+                const filePaths = uploadedFiles.map(f => f.serverPath || f.file_path || f.path || f.name);
+                const originalNames = {};
+                uploadedFiles.forEach(f => {
+                    const path = f.serverPath || f.file_path || f.path || f.name;
+                    originalNames[path] = f.name;
+                });
+                fetch('/finalize-uploads/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                    },
+                    body: JSON.stringify({ files: filePaths, original_names: originalNames })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        // Store document metadata in sessionStorage for preview
+                        sessionStorage.setItem('documents', JSON.stringify(data.documents));
+                        sessionStorage.setItem('customer_id', data.customer_id);
+                        // Redirect to upload.html for preview
+                        window.location.href = proceedBtn.getAttribute('data-url');
+                    } else {
+                        alert('Failed to process documents: ' + data.error);
+                    }
+                });
+            }
+        });
+    }
 
 
 
@@ -597,15 +606,20 @@ window.addEventListener('beforeunload', function (e) {
         e.preventDefault();
         e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
     }
+
+    const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
+    if (docs.length > 0 && !hasProceeded) {
+        navigator.sendBeacon('/delete-all-uploads/');
+        e.preventDefault();
+        e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
+    }
 });
 
 function renderUploadedDocumentsPreview() {
     const uploadedFilesDiv = document.querySelector('.uploaded-files');
-    const customerIdSpan = document.getElementById('customer-id-display');
-    if (!uploadedFilesDiv || !customerIdSpan) return;
+    if (!uploadedFilesDiv) return;
 
     const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
-    const customerId = sessionStorage.getItem('customer_id') || '';
     uploadedFilesDiv.innerHTML = '';
 
     docs.forEach(doc => {
@@ -620,7 +634,6 @@ function renderUploadedDocumentsPreview() {
                 </div> 
                 <img src="/static/assets/delete-icon.svg" alt="Delete Icon" class="delete-icon">
             </div>
-
             <div class="file-rows">
                 <h5>Copies</h5>
                 <div class="quantity-selector">
@@ -638,7 +651,6 @@ function renderUploadedDocumentsPreview() {
                     </button>
                 </div>
             </div>
-
             <div class="file-rows vertical-separator">
                 <h5>Pages to Print</h5>
                 <div class="radio-group">
@@ -653,9 +665,8 @@ function renderUploadedDocumentsPreview() {
                         <span class="radio-label">Specific Pages</span>
                     </label>
                 </div>
-                <input type="text" class="page-input" placeholder="1-5" disabled>
+                <input type="text" class="page-input" placeholder="1-${doc.num_pages}" disabled>
             </div>
-
             <div class="file-rows vertical-separator">
                 <h5>Page Orientation</h5>
                 <div class="radio-group">
@@ -671,7 +682,6 @@ function renderUploadedDocumentsPreview() {
                     </label>
                 </div>
             </div>
-
             <div class="file-rows">
                 <h5>Print in Grayscale</h5>
                 <div class="switch">
@@ -686,15 +696,13 @@ function renderUploadedDocumentsPreview() {
                     </label>
                 </div>
             </div>
-
             <div class="file-rows vertical-separator">
                 <h5>Paper Size</h5>
                 <div class="dropdown">
                     <select class="dropdown-select">
-                        <option value="auto" ${doc.paper_size === 'Long' ? 'selected' : ''}>Auto (8.5x13in)</option>
-                        <option value="letter" ${doc.paper_size === 'Letter' ? 'selected' : ''}>Letter (8.5x11in)</option>
-                        <option value="legal" ${doc.paper_size === 'Legal' ? 'selected' : ''}>Legal (8.5x14in)</option>
-                        <option value="a4" ${doc.paper_size === 'A4' ? 'selected' : ''}>A4 (8.3x11.7in)</option>
+                        <option value="Long" ${doc.paper_size === 'Long' ? 'selected' : ''}>Long (8.5x13in)</option>
+                        <option value="Letter" ${doc.paper_size === 'Letter' ? 'selected' : ''}>Letter (8.5x11in)</option>
+                        <option value="A4" ${doc.paper_size === 'A4' ? 'selected' : ''}>A4 (8.3x11.7in)</option>
                     </select>
                     <span class="dropdown-arrow">
                         <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
@@ -703,13 +711,12 @@ function renderUploadedDocumentsPreview() {
                     </span>
                 </div>
             </div>
-
             <div class="file-rows vertical-separator">
                 <h5>Quality of the Paper</h5>
                 <div class="dropdown">
                     <select class="dropdown-select">
-                        <option value="80gsm">80 GSM (thicker)</option>
-                        <option value="70gsm">70 GSM (thinner)</option>
+                        <option value="80" ${doc.paper_quality == '80' || doc.paper_quality == '80gsm' ? 'selected' : ''}>80 GSM (thicker)</option>
+                        <option value="70" ${doc.paper_quality == '70' || doc.paper_quality == '70gsm' ? 'selected' : ''}>70 GSM (thinner)</option>
                     </select>
                     <span class="dropdown-arrow">
                         <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
@@ -720,9 +727,104 @@ function renderUploadedDocumentsPreview() {
             </div>
         `;
         uploadedFilesDiv.appendChild(fileDiv);
-    });
 
-    customerIdSpan.textContent = customerId;
+        // --- Attach event listeners for dynamic controls ---
+        // Quantity selector
+        const decreaseBtn = fileDiv.querySelector('.decrease-btn');
+        const increaseBtn = fileDiv.querySelector('.increase-btn');
+        const quantityInput = fileDiv.querySelector('.quantity-input');
+        if (decreaseBtn && quantityInput) {
+            decreaseBtn.addEventListener('click', () => {
+                let currentValue = parseInt(quantityInput.value, 10);
+                const minValue = parseInt(quantityInput.min, 10);
+                if (currentValue > minValue) {
+                    quantityInput.value = currentValue - 1;
+                }
+            });
+        }
+        if (increaseBtn && quantityInput) {
+            increaseBtn.addEventListener('click', () => {
+                let currentValue = parseInt(quantityInput.value, 10);
+                const maxValue = parseInt(quantityInput.max, 10);
+                if (currentValue < maxValue) {
+                    quantityInput.value = currentValue + 1;
+                }
+            });
+        }
+
+        // Delete document from preview and sessionStorage
+        const deleteIcon = fileDiv.querySelector('.delete-icon');
+        if (deleteIcon) {
+            deleteIcon.addEventListener('click', () => {
+                fetch('/delete-document/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                                       document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                    },
+                    body: JSON.stringify({
+                        doc_id: doc.doc_id,
+                        session_key: window.sessionKey
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        fileDiv.remove();
+                        const updatedDocs = docs.filter(d => d.doc_id !== doc.doc_id);
+                        sessionStorage.setItem('documents', JSON.stringify(updatedDocs));
+                        renderUploadedDocumentsPreview();
+                    } else {
+                        alert('Failed to delete document: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(() => {
+                    alert('Failed to communicate with server.');
+                });
+            });
+        }
+        // Grayscale switch
+        const grayscaleToggle = fileDiv.querySelector('.switch-input');
+        const switchLabel = fileDiv.querySelector('.switch-label');
+        if (grayscaleToggle) {
+            // Toggle on click (for accessibility)
+            grayscaleToggle.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    grayscaleToggle.checked = !grayscaleToggle.checked;
+                    grayscaleToggle.dispatchEvent(new Event('change'));
+                }
+            });
+            // Toggle on label click
+            if (switchLabel) {
+                switchLabel.addEventListener('click', () => {
+                    grayscaleToggle.checked = !grayscaleToggle.checked;
+                    grayscaleToggle.dispatchEvent(new Event('change'));
+                });
+            }
+        }
+
+        // Specific pages radio/textbox
+        const specificPagesRadio = fileDiv.querySelector('input[value="specific-pages"]');
+        const allPagesRadio = fileDiv.querySelector('input[value="all"]');
+        const pageInput = fileDiv.querySelector('.page-input');
+        if (specificPagesRadio && pageInput) {
+            specificPagesRadio.addEventListener('change', () => {
+                if (specificPagesRadio.checked) {
+                    pageInput.disabled = false;
+                    pageInput.focus();
+                }
+            });
+        }
+        if (allPagesRadio && pageInput) {
+            allPagesRadio.addEventListener('change', () => {
+                if (allPagesRadio.checked) {
+                    pageInput.disabled = true;
+                    pageInput.value = '';
+                }
+            });
+        }
+    });
 }
 
 // Call on DOMContentLoaded for upload page

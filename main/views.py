@@ -196,6 +196,32 @@ def delete_all_uploads_view(request):
     return JsonResponse({'success': False, 'error': 'Session key missing'})
 
 
+@csrf_exempt  
+def delete_document(request):
+    if request.method == 'POST':
+        import json
+        data = json.loads(request.body)
+        doc_id = data.get('doc_id')
+        session_key = data.get('session_key')
+        if not doc_id or not session_key:
+            return JsonResponse({'success': False, 'error': 'doc_id and session_key are required'}, status=400)
+        try:
+            doc = Document.objects.get(doc_id=doc_id)
+            # Attempt to delete the file from storage
+            if hasattr(doc, 'stored_name') and doc.stored_name:
+                file_path = f'uploads/{session_key}/{doc.stored_name}'
+                from django.core.files.storage import default_storage
+                if default_storage.exists(file_path):
+                    default_storage.delete(file_path)
+            doc.delete()
+            return JsonResponse({'success': True})
+        except Document.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Document not found'}, status=404)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+    return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)
+
+
 def get_paper_size(width, height):
     # Sizes in points (1 pt = 1/72 inch)
     sizes = {
@@ -263,7 +289,7 @@ def finalize_uploads_view(request):
             doc = Document.objects.create(
                 doc_id=doc_id,
                 customer_id=customer_id,
-                filename=original_name,  # Save the original filename in the filename field
+                filename=original_name, 
                 num_copies=1,
                 pages_num=str(num_pages),
                 orientation=orientation,
@@ -272,7 +298,7 @@ def finalize_uploads_view(request):
                 paper_quality='70',
                 original_name=original_name,
                 stored_name=stored_name,
-                file_name=original_name,  # Save the original filename in file_name as well
+                file_name=original_name,  
                 file_type='pdf',
                 file_size=file_size,
                 doc_status='Pending',
@@ -280,12 +306,14 @@ def finalize_uploads_view(request):
             )
             docs_data.append({
                 'doc_id': doc_id,
-                'filename': original_name,  # Always original name
+                'filename': original_name,  
                 'num_pages': num_pages,
                 'file_size': file_size,
                 'orientation': orientation,
                 'paper_size': paper_size,
                 'stored_name': stored_name,
+                'paper_quality': doc.paper_quality,
+                'color_mode': doc.color_mode,
             })
             print(f"Document {doc_id} created for customer {customer_id}")
             print(doc)

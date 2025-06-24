@@ -11,9 +11,10 @@ SafePrint
     <div class="uploaded-files">
         <!-- JS will render each .file here -->
     </div>
-    <div class="customer-id-section">
-        <strong>Customer ID:</strong> <span id="customer-id-display"></span>
-    </div>
-    <button class="proceed-btn temporary-link" data-url="{% url 'confirmation' %}">Proceed</button>
+    <button class="proceed-btn" id="to-confirmation" data-url="{% url 'confirmation' %}">Proceed</button>   
 </div>
+
+<script>
+    window.sessionKey = "{{ session_key }}";
+</script>
 {% endblock %}

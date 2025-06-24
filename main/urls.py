@@ -12,6 +12,7 @@ urlpatterns = [
     path('login/', views.login_view, name='login'),
     path('list-uploads/', views.list_uploaded_files_view, name='list_uploads'),
     path('delete-all-uploads/', views.delete_all_uploads_view, name='delete_all_uploads'),
+    path('delete-document/', views.delete_document, name='delete_document'),
     path('finalize-uploads/', finalize_uploads_view, name='finalize_uploads'),
     path('', include('portal.urls')),
 ]
