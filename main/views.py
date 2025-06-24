@@ -6,16 +6,10 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
-import os
-import uuid
-import time
-import random
-import string
-import json
-import PyPDF2
 from django.utils import timezone
 from portal.models import Document
-import math
+import os, uuid, math, time, random, string, json, PyPDF2
+
 
 
 def index_view(request):
@@ -270,7 +264,7 @@ def finalize_uploads_view(request):
         if not session_key:
             return JsonResponse({'success': False, 'error': 'Session key missing.'})
         # Always generate a new CID for every proceed-btn click
-        customer_id = 'CID-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        customer_id = 'CID-' + ''.join(random.choices(string.digits, k=4))
         request.session['customer_id'] = customer_id
         try:
             data = json.loads(request.body)
