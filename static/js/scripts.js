@@ -294,10 +294,33 @@ document.addEventListener('DOMContentLoaded', () => {
     proceedBtn.addEventListener('click', function() {
         hasProceeded = true;
         if (uploadedFiles.length > 0) {
-            // Store uploaded files in session storage for the upload page
-            sessionStorage.setItem('uploadedFiles', JSON.stringify(uploadedFiles));
-            // Navigate to upload page
-            window.location.href = proceedBtn.getAttribute('data-url');
+            // Gather server paths of uploaded files
+            const filePaths = uploadedFiles.map(f => f.serverPath || f.file_path || f.path || f.name);
+            const originalNames = {};
+            uploadedFiles.forEach(f => {
+                const path = f.serverPath || f.file_path || f.path || f.name;
+                originalNames[path] = f.name;
+            });
+            fetch('/finalize-uploads/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                },
+                body: JSON.stringify({ files: filePaths, original_names: originalNames })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Store document metadata in sessionStorage for preview
+                    sessionStorage.setItem('documents', JSON.stringify(data.documents));
+                    sessionStorage.setItem('customer_id', data.customer_id);
+                    // Redirect to upload.html for preview
+                    window.location.href = proceedBtn.getAttribute('data-url');
+                } else {
+                    alert('Failed to process documents: ' + data.error);
+                }
+            });
         }
     });
 
@@ -456,6 +479,10 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     }
 
+    if (document.body.classList.contains('upload-page')) {
+        renderUploadedDocumentsPreview();
+    }
+
 }); // END OF DOMContentLoaded
 
 // Smooth scroll for anchor links
@@ -571,3 +598,132 @@ window.addEventListener('beforeunload', function (e) {
         e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
     }
 });
+
+function renderUploadedDocumentsPreview() {
+    const uploadedFilesDiv = document.querySelector('.uploaded-files');
+    const customerIdSpan = document.getElementById('customer-id-display');
+    if (!uploadedFilesDiv || !customerIdSpan) return;
+
+    const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
+    const customerId = sessionStorage.getItem('customer_id') || '';
+    uploadedFilesDiv.innerHTML = '';
+
+    docs.forEach(doc => {
+        const fileDiv = document.createElement('div');
+        fileDiv.className = 'file';
+        fileDiv.innerHTML = `
+            <div class="file-rows">
+                <img src="/static/assets/pdf-icon.svg" alt="PDF Icon" class="file-icon">
+                <div class="file-title">
+                    <span class="file-name">${doc.filename}</span>
+                    <span class="file-size">${(doc.file_size/1024).toFixed(1)} KB</span>
+                </div> 
+                <img src="/static/assets/delete-icon.svg" alt="Delete Icon" class="delete-icon">
+            </div>
+
+            <div class="file-rows">
+                <h5>Copies</h5>
+                <div class="quantity-selector">
+                    <button class="decrease-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="19" height="16" viewBox="0 0 19 16" fill="none">
+                            <path d="M4.50732 8H14.5372" stroke="#18191F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <input type="number" class="quantity-input" value="1" min="1" max="500">
+                    <button class="increase-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="19" height="16" viewBox="0 0 19 16" fill="none">
+                            <path d="M9.52246 3.625V12.375" stroke="#18191F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M4.50732 8H14.5372" stroke="#18191F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="file-rows vertical-separator">
+                <h5>Pages to Print</h5>
+                <div class="radio-group">
+                    <label class="radio-option">
+                        <input type="radio" name="page-selection-${doc.doc_id}" value="all" checked>
+                        <span class="radio-circle"></span>
+                        <span class="radio-label">All Pages</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="page-selection-${doc.doc_id}" value="specific-pages">
+                        <span class="radio-circle"></span>
+                        <span class="radio-label">Specific Pages</span>
+                    </label>
+                </div>
+                <input type="text" class="page-input" placeholder="1-5" disabled>
+            </div>
+
+            <div class="file-rows vertical-separator">
+                <h5>Page Orientation</h5>
+                <div class="radio-group">
+                    <label class="radio-option">
+                        <input type="radio" name="page-orientation-${doc.doc_id}" value="portrait" ${doc.orientation === 'Portrait' ? 'checked' : ''}>
+                        <span class="radio-circle"></span>
+                        <span class="radio-label">Portrait</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="page-orientation-${doc.doc_id}" value="landscape" ${doc.orientation === 'Landscape' ? 'checked' : ''}>
+                        <span class="radio-circle"></span>
+                        <span class="radio-label">Landscape</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="file-rows">
+                <h5>Print in Grayscale</h5>
+                <div class="switch">
+                    <input type="checkbox" class="switch-input" tabindex="0">
+                    <label class="switch-label">
+                        <span class="switch-circle">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none">
+                                <rect x="1" y="1" width="34" height="34" rx="17" fill="white" stroke="#18191F" stroke-width="2"/>
+                                <rect x="11" y="11" width="14" height="14" rx="7" stroke="#18191F" stroke-width="2"/>
+                            </svg>
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="file-rows vertical-separator">
+                <h5>Paper Size</h5>
+                <div class="dropdown">
+                    <select class="dropdown-select">
+                        <option value="auto" ${doc.paper_size === 'Long' ? 'selected' : ''}>Auto (8.5x13in)</option>
+                        <option value="letter" ${doc.paper_size === 'Letter' ? 'selected' : ''}>Letter (8.5x11in)</option>
+                        <option value="legal" ${doc.paper_size === 'Legal' ? 'selected' : ''}>Legal (8.5x14in)</option>
+                        <option value="a4" ${doc.paper_size === 'A4' ? 'selected' : ''}>A4 (8.3x11.7in)</option>
+                    </select>
+                    <span class="dropdown-arrow">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
+                            <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span>
+                </div>
+            </div>
+
+            <div class="file-rows vertical-separator">
+                <h5>Quality of the Paper</h5>
+                <div class="dropdown">
+                    <select class="dropdown-select">
+                        <option value="80gsm">80 GSM (thicker)</option>
+                        <option value="70gsm">70 GSM (thinner)</option>
+                    </select>
+                    <span class="dropdown-arrow">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
+                            <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span>
+                </div>
+            </div>
+        `;
+        uploadedFilesDiv.appendChild(fileDiv);
+    });
+
+    customerIdSpan.textContent = customerId;
+}
+
+// Call on DOMContentLoaded for upload page
+document.addEventListener('DOMContentLoaded', renderUploadedDocumentsPreview);

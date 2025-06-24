@@ -9,6 +9,13 @@ from django.core.files.base import ContentFile
 import os
 import uuid
 import time
+import random
+import string
+import json
+import PyPDF2
+from django.utils import timezone
+from portal.models import Document
+import math
 
 
 def index_view(request):
@@ -187,3 +194,102 @@ def delete_all_uploads_view(request):
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})
     return JsonResponse({'success': False, 'error': 'Session key missing'})
+
+
+def get_paper_size(width, height):
+    # Sizes in points (1 pt = 1/72 inch)
+    sizes = {
+        'A4': (595, 842),
+        'Letter': (612, 792),
+        'Legal': (612, 1008),
+        'Long': (612, 936),  # Example, adjust as needed
+    }
+    for name, (w, h) in sizes.items():
+        if math.isclose(width, w, abs_tol=10) and math.isclose(height, h, abs_tol=10):
+            return name
+    return 'Custom'
+
+
+@csrf_exempt
+def finalize_uploads_view(request):
+    if request.method == 'POST':
+        session_key = request.session.get('upload_session_key')
+        if not session_key:
+            return JsonResponse({'success': False, 'error': 'Session key missing.'})
+        customer_id = request.session.get('customer_id')
+        # Always generate as CID-XXXX (4 chars)
+        if not customer_id or not customer_id.startswith('CID-') or len(customer_id) != 8:
+            customer_id = 'CID-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+            request.session['customer_id'] = customer_id
+        try:
+            data = json.loads(request.body)
+            files = data.get('files', [])
+            original_names = data.get('original_names', {})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': f'Invalid data: {str(e)}'})
+        docs_data = []
+        for file_path in files:
+            abs_path = default_storage.path(file_path)
+            try:
+                with default_storage.open(file_path, 'rb') as f:
+                    reader = PyPDF2.PdfReader(f)
+                    num_pages = len(reader.pages)
+                    if num_pages > 0:
+                        page = reader.pages[0]
+                        width = float(page.mediabox.width)
+                        height = float(page.mediabox.height)
+                        orientation = 'Landscape' if width > height else 'Portrait'
+                        paper_size = get_paper_size(width, height)
+                    else:
+                        orientation = 'Portrait'
+                        paper_size = 'Custom'
+            except Exception:
+                num_pages = 0
+                orientation = 'Portrait'
+                paper_size = 'Custom'
+            file_size = default_storage.size(file_path)
+            stored_name = os.path.basename(file_path)
+            # Always use original name from mapping, fallback to stored_name
+            original_name = original_names.get(file_path, stored_name)
+
+            # Generate unique DOC_ID
+            while True:
+                doc_id = 'DOC-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+                if not Document.objects.filter(doc_id=doc_id).exists():
+                    break
+
+            # Prevent duplicate stored_name
+            if Document.objects.filter(stored_name=stored_name).exists():
+                continue  # Skip this file
+
+            doc = Document.objects.create(
+                doc_id=doc_id,
+                customer_id=customer_id,
+                filename=original_name,  # Save the original filename in the filename field
+                num_copies=1,
+                pages_num=str(num_pages),
+                orientation=orientation,
+                color_mode='Black and White',
+                paper_size=paper_size,
+                paper_quality='70',
+                original_name=original_name,
+                stored_name=stored_name,
+                file_name=original_name,  # Save the original filename in file_name as well
+                file_type='pdf',
+                file_size=file_size,
+                doc_status='Pending',
+                time_submitted=timezone.now(),
+            )
+            docs_data.append({
+                'doc_id': doc_id,
+                'filename': original_name,  # Always original name
+                'num_pages': num_pages,
+                'file_size': file_size,
+                'orientation': orientation,
+                'paper_size': paper_size,
+                'stored_name': stored_name,
+            })
+            print(f"Document {doc_id} created for customer {customer_id}")
+            print(doc)
+        return JsonResponse({'success': True, 'documents': docs_data, 'customer_id': customer_id})
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
