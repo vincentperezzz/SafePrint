@@ -208,37 +208,48 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Approve All Documents
-    const approveAllBtn = document.querySelector('.approve-btn#approve-all-btn') || document.getElementById('approve-all-btn');
-    if (approveAllBtn) {
-        approveAllBtn.addEventListener('click', function() {
-            const customerId = document.getElementById('customer-id-input').value.trim();
-            if (!customerId) {
-                createAlert('Error', 'Customer ID Required', 'Please enter a Customer ID to approve all documents.', 'danger', true, true, 'pageMessages');
-                return;
-            }
+const approveAllBtn = document.querySelector('.approve-btn#approve-all-btn') || document.getElementById('approve-all-btn');
+if (approveAllBtn) {
+    approveAllBtn.addEventListener('click', function() {
+        const customerId = document.getElementById('customer-id-input').value.trim();
+        if (!customerId) {
+            createAlert('Error', 'Customer ID Required', 'Please enter a Customer ID to approve all documents.', 'danger', true, true, 'pageMessages');
+            return;
+        }
 
-            fetch(approveAllUrl, {
-                method: "POST",
-                headers: {
-                    "X-CSRFToken": csrfToken,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ customer_id: customerId })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    createAlert('Success', 'Approved', `All documents approved.`, 'success', true, true, 'pageMessages');
-                    // Remove all document items from the UI
-                    document.querySelectorAll('.document-item').forEach(row => row.remove());
-                    document.getElementById('price-to-pay').textContent = '₱0.00';
-                    toggleActionButtons(false);
-                } else {
-                    createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
+        fetch(approveAllUrl, {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": csrfToken,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ customer_id: customerId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                createAlert('Success', 'Approved', `All documents approved.`, 'success', true, true, 'pageMessages');
+                // Update "Approved by" only for affected documents
+                if (data.approved_doc_ids) {
+                    data.approved_doc_ids.forEach(docId => {
+                        // Place this line here:
+                        const approvedCol = document.querySelector(`#onqueue-doc-${docId.toString()} .doc-approved`);
+                        if (approvedCol) {
+                            approvedCol.textContent = data.admin_name ? data.admin_name : '-';
+                        }
+                    });
                 }
-            })
-            .catch(error => {
-                createAlert('Error', 'Approve Failed', 'An error occurred while approving documents.', 'danger', true, true, 'pageMessages');
+
+                // Remove all document items from the UI
+                document.querySelectorAll('.document-item').forEach(row => row.remove());
+                document.getElementById('price-to-pay').textContent = '₱0.00';
+                toggleActionButtons(false);
+            } else {
+                createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
+            }
+        })
+        .catch(error => {
+            createAlert('Error', 'Approve Failed', 'An error occurred while approving documents.', 'danger', true, true, 'pageMessages');
             });
         });
     }
@@ -922,32 +933,32 @@ function renderDocumentItems(documents, resultsDiv) {
     });
 
     // Attach event listeners to each approve button
-resultsDiv.querySelectorAll('.document-item .approve-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const docItem = btn.closest('.document-item');
-        const docId = docItem.getAttribute('data-doc-id');
-        fetch(approveDocumentUrl, {
-            method: "POST",
-            headers: {
-                "X-CSRFToken": csrfToken,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ doc_id: docId })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                createAlert('Success', 'Approved', 'Document approved.', 'success', true, true, 'pageMessages');
-                docItem.remove();
-            } else {
-                createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
-            }
-        })
-        .catch(error => {
-            createAlert('Error', 'Approve Failed', 'An error occurred while approving the document.', 'danger', true, true, 'pageMessages');
+    resultsDiv.querySelectorAll('.document-item .approve-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const docItem = btn.closest('.document-item');
+            const docId = docItem.getAttribute('data-doc-id');
+            fetch(approveDocumentUrl, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ doc_id: docId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    createAlert('Success', 'Approved', 'Document approved.', 'success', true, true, 'pageMessages');
+                    docItem.remove();
+                } else {
+                    createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
+                }
+            })
+            .catch(error => {
+                createAlert('Error', 'Approve Failed', 'An error occurred while approving the document.', 'danger', true, true, 'pageMessages');
+            });
         });
     });
-});
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1016,9 +1027,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     const price = row.querySelector('.doc-price').textContent;
                     const docIdText = row.querySelector('.queue-col.doc-id').textContent;
 
-                    // Build new row for On Queue Documents
+                    // On Queue Documents
                     const onQueueList = document.querySelector('.on-queue-documents-list');
                     if (onQueueList) {
+                        const existingRow = document.getElementById('onqueue-doc-' + docId);
+                        if (existingRow) {
+                            existingRow.remove();
+                        }
+
                         const newRow = document.createElement('div');
                         newRow.className = 'on-queue-row';
                         newRow.id = 'onqueue-doc-' + docId;
@@ -1035,13 +1051,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <span class="printer-status printer-queued"></span>
                                 No Printer Assigned (Queued)
                             </div>
-                            <div class="queue-col doc-approved">-</div>
+                            <div class="queue-col doc-approved">${data.admin_name ? data.admin_name : '-'}</div>
                             <div class="queue-col doc-id">${docIdText}</div>
                             <div class="queue-col doc-actions">
                                 <button class="queue-cancel-btn">Cancel</button>
                             </div>
                         `;
                         onQueueList.appendChild(newRow);
+
+                        // Attach cancel event to the new cancel button
                         const cancelBtn = newRow.querySelector('.queue-cancel-btn');
                         if (cancelBtn) {
                             cancelBtn.addEventListener('click', function() {
