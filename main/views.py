@@ -216,11 +216,9 @@ def finalize_uploads_view(request):
         session_key = request.session.get('upload_session_key')
         if not session_key:
             return JsonResponse({'success': False, 'error': 'Session key missing.'})
-        customer_id = request.session.get('customer_id')
-        # Always generate as CID-XXXX (4 chars)
-        if not customer_id or not customer_id.startswith('CID-') or len(customer_id) != 8:
-            customer_id = 'CID-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-            request.session['customer_id'] = customer_id
+        # Always generate a new CID for every proceed-btn click
+        customer_id = 'CID-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        request.session['customer_id'] = customer_id
         try:
             data = json.loads(request.body)
             files = data.get('files', [])
