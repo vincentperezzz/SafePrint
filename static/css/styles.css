@@ -385,7 +385,7 @@ html {
     gap: 30px;
     justify-content: center;
     padding: 0 50px 50px 50px;
-    margin: 100px 10%;
+    margin: 100px 5%;
 }
 
 /* Individual card styling */
@@ -1917,7 +1917,7 @@ input:focus::placeholder {
     gap: 20px;
     padding: 1.5%;
     overflow-y: auto;  
-    min-width: 1300px;
+    min-width: 1260px;
 }
 
 .dashboard-rows {
