@@ -54,11 +54,11 @@ def upload_file_view(request):
                 'error': 'Only PDF files are allowed.'
             })
         
-        # Validate file size (e.g., 10MB limit)
-        if uploaded_file.size > 10 * 1024 * 1024:
+        # Enforce 100MB file size limit
+        if uploaded_file.size > 100 * 1024 * 1024:
             return JsonResponse({
                 'success': False,
-                'error': 'File size too large. Maximum 10MB allowed.'
+                'error': 'File size too large. Maximum 100MB allowed.'
             })
         
         try:

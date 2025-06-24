@@ -12,13 +12,13 @@ SafePrint
         <div class="file-upload-title">File Upload</div>
         <div class="file-upload-subtitle">Add your documents here.</div>
     </div>
-    <div class="upload-area">
+    <div class="upload-area">        
         <div class="drag-area" id="drag-area">
             <img src="{% static 'assets/upload_icon.svg' %}" alt="Upload Icon">
             <p>Drag your file(s)</p>
-            <p>Upload in PDF format</p>
+            <p>Upload in PDF files</p>
         </div>
-        <input type="file" id="file-input" accept="application/pdf" multiple style="display:none;">        <div class="or-divider">
+        <input type="file" id="file-input" accept="application/pdf" multiple style="display:none;"><div class="or-divider">
             <span class="line"></span>
             <span>OR</span>
             <span class="line"></span>
@@ -39,20 +39,18 @@ SafePrint
     </p>
 </div>
 
-<div class="card-container">
-    <div class="card">
+<div class="card-container">    <div class="card">
         <div class="card-text">
             <h3 class="card-title">Drag and Drop</h3>
             <h3 class="card-title">Uploading</h3>
-            <p class="card-description">Easily upload your files by dragging and dropping them into the designated area on our platform.</p>
+            <p class="card-description">Easily upload unlimited PDF files by dragging and dropping them into the designated area on our platform.</p>
         </div>
         <img src="{% static 'assets/drag-n-drop.svg' %}" alt="Drag and Drop Icon" class="card-icon">
-    </div>
-    <div class="card">
+    </div>    <div class="card">
         <div class="card-text">
             <h3 class="card-title">Browse Files to</h3>
             <h3 class="card-title">Upload</h3>
-            <p class="card-description">Select your document from your computer or mobile device. Ensure the file format is supported.</p>
+            <p class="card-description">Select unlimited PDF documents from your computer or mobile device of any size. All PDF formats are supported.</p>
         </div>
         <img src="{% static 'assets/browse.svg' %}" alt="Browse Icon" class="card-icon">
     </div>
