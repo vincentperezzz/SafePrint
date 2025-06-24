@@ -27,44 +27,7 @@ SafePrint
             <span class="browse-text">Upload from Files</span>
             <button class="browse-btn" id="browse-btn">Browse Files</button>
         </div>
-    </div>
-    <!-- Example file elements (hidden by default, shown for demo purposes) -->
-    <div class="file upload-completed" style="display: none;">
-        <div class="file-rows">
-            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
-            <div class="file-title">
-                <span class="file-name">Abstract</span>
-                <span class="file-size">500KB</span>
-            </div> 
-            <img src="{% static 'assets/delete-icon.svg' %}" alt="Delete Icon" class="delete-icon">
-        </div>
-    </div>
-        <div class="file upload-error" style="display: none;">
-        <div class="file-rows">
-            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
-            <div class="file-title">
-                <span class="file-name">Abstract</span>
-                <span class="file-failed">Upload Failed</span>
-            </div> 
-            <img src="{% static 'assets/trash-icon.svg' %}" alt="Trash Icon" class="trash-icon">
-            <img src="{% static 'assets/repeat-icon.svg' %}" alt="Repeat Icon" class="repeat-icon">
-        </div>
-    </div>
-    <div class="file uploading" style="display: none;">
-        <div class="file-rows">
-            <div class="file-title">
-                <span class="file-name">Uploading...</span>
-                <span class="file-size">24% • 30 seconds remaining</span>
-            </div> 
-            <img src="{% static 'assets/pause-icon.svg' %}" alt="Pause Icon" class="pause-icon">
-            <img src="{% static 'assets/delete-icon.svg' %}" alt="Delete Icon" class="delete-icon">
-        </div>        
-        <div class="progress-bar">
-            <div class="progress" style="width: 24%;"></div>
-        </div>
-    </div>
-    
-    <!-- Proceed button - always at the bottom, hidden when no files uploaded -->
+    </div>    
     <button class="proceed-btn" data-url="{% url 'upload' %}" style="display: none;">Proceed</button>
 </div>
 
