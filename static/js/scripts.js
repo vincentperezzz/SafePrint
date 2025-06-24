@@ -53,6 +53,54 @@ document.addEventListener('DOMContentLoaded', () => {
             fileInput.value = '';
         });
     } 
+
+    const dragOverlay = document.getElementById('drag-overlay');
+    let dragCounter = 0;
+    
+    if (dragOverlay) {
+        document.addEventListener('dragenter', function(e) {
+            if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+                dragCounter++;
+                dragOverlay.style.display = 'block';
+                if (dragArea) dragArea.classList.add('dragover');
+            }
+        });
+
+        document.addEventListener('dragover', function(e) {
+            if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+                e.preventDefault();
+                dragOverlay.style.display = 'block';
+                if (dragArea) dragArea.classList.add('dragover');
+            }
+        });
+
+        document.addEventListener('dragleave', function(e) {
+            if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+                dragCounter--;
+                if (dragCounter <= 0) {
+                    dragOverlay.style.display = 'none';
+                    if (dragArea) dragArea.classList.remove('dragover');
+                    dragCounter = 0;
+                }
+            }
+        });
+
+        document.addEventListener('drop', function(e) {
+            if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+                e.preventDefault();
+                dragOverlay.style.display = 'none';
+                if (dragArea) dragArea.classList.remove('dragover');
+                dragCounter = 0;
+                handleFiles(e.dataTransfer.files);
+            }
+        });
+
+        window.addEventListener('mouseleave', function() {
+            dragOverlay.style.display = 'none';
+            if (dragArea) dragArea.classList.remove('dragover');
+            dragCounter = 0;
+        });
+    }
     
     function handleFiles(files) {
         // Accept unlimited number of PDF files, add to existing
