@@ -266,6 +266,20 @@ html {
     letter-spacing: var(--letterSpacing-md, 0px);
 }
 
+#drag-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgb(0 0 0 / 50%);
+    z-index: 9998;
+    display: none;
+}
+.drag-area.dragover {
+    background: #fff !important;
+    box-shadow: 0 0 0 4px #0078d7;
+    z-index: 9999;
+    position: relative;
+}
+
 .or-divider {
     display: flex;
     align-items: center;
