@@ -120,8 +120,8 @@ def printing_queue(request):
     pending_documents = Document.objects.filter(doc_status='pending').order_by('-time_submitted')
 
     # Queue Documents
-    on_queue_documents = Document.objects.filter(doc_status__in=['Queued', 'Printing']).select_related('printer_assigned')
-
+    on_queue_documents = Document.objects.filter(doc_status__in=['Queued', 'Printing']).select_related('printer_assigned').order_by('-time_submitted')
+    
     # Combine all documents to fetch all related payments
     all_documents = list(pending_documents) + list(on_queue_documents)
     payments = {p.doc.doc_id: p for p in Payment.objects.filter(doc__in=all_documents)}
@@ -429,10 +429,35 @@ def approve_all_documents(request):
         # Always use CID- prefix for matching
         if not customer_id.upper().startswith('CID-'):
             customer_id = f'CID-{customer_id}'
-        # Only update pending documents
         qs = Document.objects.filter(customer_id__iexact=customer_id, doc_status='Pending')
+        approved_doc_ids = list(qs.values_list('doc_id', flat=True))
+        docs = list(qs)  # <-- EVALUATE the queryset BEFORE update!
         updated = qs.update(doc_status='Queued')
-        return JsonResponse({'success': True, 'updated_count': updated})
+
+        # Get admin name from session
+        admin_name = None
+        admin_user_id = request.session.get('admin_user_id')
+        admin_user = None
+        if admin_user_id:
+            try:
+                admin_user = AdminUser.objects.get(id=admin_user_id)
+                admin_name = admin_user.name
+            except AdminUser.DoesNotExist:
+                pass
+
+        # Update Payment records for all docs
+        if admin_user:
+            from django.utils import timezone
+            for doc in docs:
+                try:
+                    payment = Payment.objects.get(doc_id=doc.doc_id)
+                    payment.approved_by = admin_user.name
+                    payment.approved_at = timezone.now()
+                    payment.save()
+                except Payment.DoesNotExist:
+                    pass
+
+        return JsonResponse({'success': True, 'updated_count': updated, 'admin_name': admin_name, 'approved_doc_ids': approved_doc_ids})
 
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
@@ -454,6 +479,27 @@ def approve_document(request):
         doc_id = data.get('doc_id')
         if not doc_id:
             return JsonResponse({'success': False, 'error': 'Document ID is required'})
+
+        # Update document status
         updated = Document.objects.filter(doc_id=doc_id, doc_status='Pending').update(doc_status='Queued')
-        return JsonResponse({'success': True, 'updated_count': updated})
+
+        # Get admin name from session
+        admin_name = None
+        admin_user_id = request.session.get('admin_user_id')
+        if admin_user_id:
+            try:
+                admin_user = AdminUser.objects.get(id=admin_user_id)
+                admin_name = admin_user.name  # Always set this!
+                try:
+                    payment = Payment.objects.get(doc_id=doc_id)
+                    payment.approved_by = admin_user.name
+                    from django.utils import timezone
+                    payment.approved_at = timezone.now()
+                    payment.save()
+                except Payment.DoesNotExist:
+                    pass  # Still set admin_name for the response
+            except AdminUser.DoesNotExist:
+                pass  # If admin user not found, admin_name will be None
+
+        return JsonResponse({'success': True, 'updated_count': updated, 'admin_name': admin_name})
     return JsonResponse({'success': False, 'error': 'Invalid request method'})

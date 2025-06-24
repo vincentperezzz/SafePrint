@@ -6,62 +6,29 @@ SafePrint
 {% endblock %}
 
 {% block content %}
+{% csrf_token %}
 <div class="file-upload">
     <div class="upload-title-wrapper">
         <div class="file-upload-title">File Upload</div>
         <div class="file-upload-subtitle">Add your documents here.</div>
     </div>
-    <div class="upload-area">
-        <div class="drag-area">
+    <div class="upload-area">        
+        <div class="drag-area" id="drag-area">
             <img src="{% static 'assets/upload_icon.svg' %}" alt="Upload Icon">
             <p>Drag your file(s)</p>
-            <p>Upload in PDF format</p>
+            <p>Upload in PDF files</p>
         </div>
-        <div class="or-divider">
+        <input type="file" id="file-input" accept="application/pdf" multiple style="display:none;"><div class="or-divider">
             <span class="line"></span>
             <span>OR</span>
             <span class="line"></span>
         </div>
         <div class="browse-area">
             <span class="browse-text">Upload from Files</span>
-            <button class="browse-btn temporary-link" data-url="{% url 'upload' %}">Browse Files</button>
+            <button class="browse-btn" id="browse-btn">Browse Files</button>
         </div>
-    </div>
-    <div class="file upload-completed">
-        <div class="file-rows">
-            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
-            <div class="file-title">
-                <span class="file-name">Abstract</span>
-                <span class="file-size">500KB</span>
-            </div> 
-            <img src="{% static 'assets/delete-icon.svg' %}" alt="Delete Icon" class="delete-icon">
-        </div>
-    </div>
-        <div class="file upload-error">
-        <div class="file-rows">
-            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
-            <div class="file-title">
-                <span class="file-name">Abstract</span>
-                <span class="file-failed">Upload Failed</span>
-            </div> 
-            <img src="{% static 'assets/trash-icon.svg' %}" alt="Trash Icon" class="trash-icon">
-            <img src="{% static 'assets/repeat-icon.svg' %}" alt="Repeat Icon" class="repeat-icon">
-        </div>
-    </div>
-    <div class="file uploading">
-        <div class="file-rows">
-            <div class="file-title">
-                <span class="file-name">Uploading...</span>
-                <span class="file-size">24% • 30 seconds remaining</span>
-            </div> 
-            <img src="{% static 'assets/pause-icon.svg' %}" alt="Pause Icon" class="pause-icon">
-            <img src="{% static 'assets/delete-icon.svg' %}" alt="Delete Icon" class="delete-icon">
-        </div>
-        <div class="progress-bar">
-            <div class="progress" style="width: 24%;"></div>
-        </div>
-    </div>
-    <button class="proceed-btn" disabled>Proceed</button>
+    </div>    
+    <button class="proceed-btn" id="to-upload" data-url="{% url 'upload' %}" style="display: none;">Proceed</button>
 </div>
 
 <div class="section-container" id="help">
@@ -72,20 +39,18 @@ SafePrint
     </p>
 </div>
 
-<div class="card-container">
-    <div class="card">
+<div class="card-container">    <div class="card">
         <div class="card-text">
             <h3 class="card-title">Drag and Drop</h3>
             <h3 class="card-title">Uploading</h3>
-            <p class="card-description">Easily upload your files by dragging and dropping them into the designated area on our platform.</p>
+            <p class="card-description">Easily upload unlimited PDF files by dragging and dropping them into the designated area on our platform.</p>
         </div>
         <img src="{% static 'assets/drag-n-drop.svg' %}" alt="Drag and Drop Icon" class="card-icon">
-    </div>
-    <div class="card">
+    </div>    <div class="card">
         <div class="card-text">
             <h3 class="card-title">Browse Files to</h3>
             <h3 class="card-title">Upload</h3>
-            <p class="card-description">Select your document from your computer or mobile device. Ensure the file format is supported.</p>
+            <p class="card-description">Select unlimited PDF documents from your computer or mobile device of any size. All PDF formats are supported.</p>
         </div>
         <img src="{% static 'assets/browse.svg' %}" alt="Browse Icon" class="card-icon">
     </div>
@@ -306,4 +271,8 @@ SafePrint
         </div>
     </div>
 </div>
+
+<script>
+  const sessionKey = "{{ session_key }}";
+</script>
 {% endblock %}
