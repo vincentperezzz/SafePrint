@@ -208,51 +208,51 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Approve All Documents
-const approveAllBtn = document.querySelector('.approve-btn#approve-all-btn') || document.getElementById('approve-all-btn');
-if (approveAllBtn) {
-    approveAllBtn.addEventListener('click', function() {
-        const customerId = document.getElementById('customer-id-input').value.trim();
-        if (!customerId) {
-            createAlert('Error', 'Customer ID Required', 'Please enter a Customer ID to approve all documents.', 'danger', true, true, 'pageMessages');
-            return;
-        }
-
-        fetch(approveAllUrl, {
-            method: "POST",
-            headers: {
-                "X-CSRFToken": csrfToken,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ customer_id: customerId })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                createAlert('Success', 'Approved', `All documents approved.`, 'success', true, true, 'pageMessages');
-                // Update "Approved by" only for affected documents
-                if (data.approved_doc_ids) {
-                    data.approved_doc_ids.forEach(docId => {
-                        // Place this line here:
-                        const approvedCol = document.querySelector(`#onqueue-doc-${docId.toString()} .doc-approved`);
-                        if (approvedCol) {
-                            approvedCol.textContent = data.admin_name ? data.admin_name : '-';
-                        }
-                    });
-                }
-
-                // Remove all document items from the UI
-                document.querySelectorAll('.document-item').forEach(row => row.remove());
-                document.getElementById('price-to-pay').textContent = '₱0.00';
-                toggleActionButtons(false);
-            } else {
-                createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
+    const approveAllBtn = document.querySelector('.approve-btn#approve-all-btn') || document.getElementById('approve-all-btn');
+    if (approveAllBtn) {
+        approveAllBtn.addEventListener('click', function() {
+            const customerId = document.getElementById('customer-id-input').value.trim();
+            if (!customerId) {
+                createAlert('Error', 'Customer ID Required', 'Please enter a Customer ID to approve all documents.', 'danger', true, true, 'pageMessages');
+                return;
             }
-        })
-        .catch(error => {
-            createAlert('Error', 'Approve Failed', 'An error occurred while approving documents.', 'danger', true, true, 'pageMessages');
-            });
-        });
-    }
+
+            fetch(approveAllUrl, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ customer_id: customerId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    createAlert('Success', 'Approved', `All documents approved.`, 'success', true, true, 'pageMessages');
+                    // Update "Approved by" only for affected documents
+                    if (data.approved_doc_ids) {
+                        data.approved_doc_ids.forEach(docId => {
+                            // Place this line here:
+                            const approvedCol = document.querySelector(`#onqueue-doc-${docId.toString()} .doc-approved`);
+                            if (approvedCol) {
+                                approvedCol.textContent = data.admin_name ? data.admin_name : '-';
+                            }
+                        });
+                    }
+
+                    // Remove all document items from the UI
+                    document.querySelectorAll('.document-item').forEach(row => row.remove());
+                    document.getElementById('price-to-pay').textContent = '₱0.00';
+                    toggleActionButtons(false);
+                } else {
+                    createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
+                }
+            })
+            .catch(error => {
+                createAlert('Error', 'Approve Failed', 'An error occurred while approving documents.', 'danger', true, true, 'pageMessages');
+                    });
+                });
+        }
 
     // Change Profile Image
     const imageUpload = document.getElementById('image-upload');
@@ -1158,6 +1158,36 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             })
             .catch(() => alert('An error occurred while marking as handed over.'));
+        });
+    });
+
+    // Handled Done button for completed jobs (dashboard)
+    document.querySelectorAll('.jobs-done-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const docId = btn.getAttribute('data-doc-id');
+            if (!docId) return;
+            fetch(denyDocumentUrl, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ doc_id: docId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Remove the job from the DOM
+                    const wrapper = btn.closest('.jobs-item-wrapper');
+                    if (wrapper) wrapper.remove();
+                    if (typeof createAlert === "function") {
+                        createAlert('Success', 'Done', 'Document marked as done.', 'success', true, true, 'pageMessages');
+                    }
+                } else {
+                    alert('Failed: ' + (data.error || 'Unknown error.'));
+                }
+            })
+            .catch(() => alert('An error occurred while marking as done.'));
         });
     });
 });
