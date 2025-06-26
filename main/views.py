@@ -405,7 +405,7 @@ def update_document_settings(request):
                         Payment.objects.create(
                             doc=doc,
                             price=10 * int(doc.num_copies),  # Changed from 5 to 10 currency units per copy
-                            payment_status='Pending'
+                            payment_status='Unpaid'
                         )
                 except Document.DoesNotExist:
                     continue
