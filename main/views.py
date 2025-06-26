@@ -399,11 +399,11 @@ def update_document_settings(request):
                     # --- Payment creation and color scanning now happens here ---
                     file_rel_path = f'uploads/{session_key}/{doc.stored_name}'
                     abs_path = default_storage.path(file_rel_path)
-                    color_results = analyze_pdf_colors(abs_path)
-                    # Example: get user-specified pages from upd['pages'] (e.g., '1,2-5,7-10')
                     page_range_str = upd.get('pages', None)
                     if page_range_str and isinstance(page_range_str, str):
-                        total_pages = len(color_results)
+                        # Parse page indices before scanning
+                        with default_storage.open(file_rel_path, 'rb') as f:
+                            total_pages = len(PyPDF2.PdfReader(f).pages)
                         try:
                             page_indices = parse_page_ranges(page_range_str, total_pages)
                         except Exception as e:
@@ -424,8 +424,11 @@ def update_document_settings(request):
                                         return JsonResponse({'success': False, 'error': f'Invalid range: {start}-{end}. Start must be less than or equal to end.'}, status=400)
                                 except Exception:
                                     return JsonResponse({'success': False, 'error': f'Invalid range format: {part}'}, status=400)
-                        filtered_color_results = [color_results[i] for i in page_indices if 0 <= i < total_pages]
+                        # Only scan selected pages
+                        color_results = analyze_pdf_colors(abs_path, page_indices=page_indices)
+                        filtered_color_results = color_results
                     else:
+                        color_results = analyze_pdf_colors(abs_path)
                         filtered_color_results = color_results
                     _, costs_per_page = calculate_page_costs(
                         filtered_color_results,

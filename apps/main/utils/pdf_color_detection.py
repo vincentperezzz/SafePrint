@@ -7,13 +7,17 @@ def is_colored_pixel(pixel, threshold=10):
     r, g, b = pixel[:3]
     return abs(r - g) > threshold or abs(r - b) > threshold or abs(g - b) > threshold
 
-def analyze_pdf_colors(pdf_path, dpi=100):
+def analyze_pdf_colors(pdf_path, dpi=100, page_indices=None):
     """
     Returns a list of dicts per page: { 'bw': bool, 'partial': bool, 'full_color': bool, 'color_ratio': float }
+    If page_indices is provided, only those pages are scanned (0-based).
     """
     doc = fitz.open(pdf_path)
     results = []
-    for page in doc:
+    if page_indices is None:
+        page_indices = range(len(doc))
+    for i in page_indices:
+        page = doc[i]
         # Render page to a pixmap (image)
         pix = page.get_pixmap(dpi=dpi)
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
