@@ -2789,10 +2789,11 @@ input:focus::placeholder {
     background: #e9fee4;
 }
 
-.queue-search-bar input {
-    flex: 1;
+.queue-search-bar input,
+.printer-search-bar input {
     border: none;
     outline: none;
+    flex: 1;
     font-size: 16px;
     color: #18191F;
     background: transparent;
@@ -3078,24 +3079,23 @@ input:focus::placeholder {
     border: 1px solid var(--mid-gray-color, #A19F9F);
 }
 
-.doc-name { flex: 2.5; gap: 10px; }
-.on-queue-header .doc-printer,
-.on-queue-header .doc-approved {
-    flex: 1.2;
-}
-.on-queue-header .doc-id {
-    flex: 0.7;
-}
-.on-queue-header .doc-actions { flex: 0.7; justify-content: flex-end; }
 
-.on-queue-row .doc-printer,
-.on-queue-row .doc-approved {
-    flex: 1.2;
-}
-.on-queue-row .doc-id {
-    flex: 0.7;
-}
-.on-queue-row .doc-actions { flex: 0.7; justify-content: flex-end; }
+/* --- On Queue Documents: Ensure header and row columns align perfectly --- */
+.on-queue-header .doc-name        { flex: 2.5; min-width: 0; }
+.on-queue-header .doc-printer     { flex: 1.2; min-width: 0; }
+.on-queue-header .doc-approved    { flex: 1.1; min-width: 120px; max-width: 180px; text-align: center; }
+.on-queue-header .doc-id          { flex: 1.1; min-width: 120px; max-width: 160px; text-align: center; }
+.on-queue-header .doc-customer    { flex: 0.5; min-width: 120px; max-width: 160px; text-align: center; }
+.on-queue-header .doc-actions     { flex: 0.5; min-width: 60px; max-width: 90px; justify-content: flex-end; }
+
+.on-queue-row .doc-name        { flex: 2.5; min-width: 0; }
+.on-queue-row .doc-printer     { flex: 1.2; min-width: 0; }
+.on-queue-row .doc-approved    { flex: 1.1; min-width: 120px; max-width: 180px; text-align: center; }
+.on-queue-row .doc-id          { flex: 1.1; min-width: 120px; max-width: 160px; text-align: center; }
+.on-queue-row .doc-customer    { flex: 0.5; min-width: 120px; max-width: 160px; text-align: center; }
+.on-queue-row .doc-actions     { flex: 0.5; min-width: 60px; max-width: 90px; justify-content: flex-end; }
+
+/* Remove conflicting/duplicate flex rules below this section for .on-queue-header and .on-queue-row columns */
 
 .on-queue-row .queue-col.doc-printer {
     display: flex;
@@ -3195,7 +3195,7 @@ input:focus::placeholder {
     font-weight: 500;
 }
 
-.doc-id {
+.doc-id, .doc-customer {
     font-size: 16px;
     font-weight: 500;
 }
