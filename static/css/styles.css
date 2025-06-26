@@ -3520,7 +3520,7 @@ input:focus::placeholder {
 }
 
 #no-match-row{
-    background: #FAFAFB;
+    background: white;
 }
 
 .user-account-row input[type="checkbox"] {

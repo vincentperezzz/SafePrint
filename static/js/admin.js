@@ -1023,15 +1023,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         createAlert('Success', 'Denied', 'Document denied.', 'success', true, true, 'pageMessages');
                     }
 
+                    // When updating the pending list (e.g., after approve/deny):
                     const pendingList = document.getElementById('pending-list');
-                    // Only count rows that are actual pending docs
-                    const remainingRows = pendingList.querySelectorAll('.queue-row[id^="pending-doc-"]');
-                    if (remainingRows.length === 0 && !document.getElementById('no-pending-documents-row')) {
-                        const emptyRow = document.createElement('div');
-                        emptyRow.className = 'queue-row';
-                        emptyRow.id = 'no-pending-documents-row';
-                        emptyRow.innerHTML = `<div class="queue-col" colspan="5">No pending documents.</div>`;
-                        pendingList.appendChild(emptyRow);
+                    const noMatchRow = document.getElementById('no-match-row');
+                    if (pendingList && noMatchRow) {
+                        // Only count actual pending docs, not the empty/match rows
+                        const remainingRows = pendingList.querySelectorAll('.queue-row[id^="pending-doc-"]');
+                        if (remainingRows.length === 0) {
+                            noMatchRow.style.display = 'flex';
+                        } else {
+                            noMatchRow.style.display = 'none';
+                        }
                     }
 
                 } else {
@@ -1067,6 +1069,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     row.remove();
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Approved', 'Document approved.', 'success', true, true, 'pageMessages');
+                    }
+
+                    // When updating the pending list (e.g., after approve/deny):
+                    const pendingList = document.getElementById('pending-list');
+                    let noPendingRow = document.getElementById('no-pending-documents-row');
+                    if (pendingList) {
+                        const remainingRows = pendingList.querySelectorAll('.queue-row[id^="pending-doc-"]');
+                        if (remainingRows.length === 0) {
+                            if (!noPendingRow) {
+                                noPendingRow = document.createElement('div');
+                                noPendingRow.className = 'queue-row';
+                                noPendingRow.id = 'no-pending-documents-row';
+                                noPendingRow.style.display = 'flex';
+                                noPendingRow.innerHTML = `<div class="queue-col" style="width: 100%; text-align: center;">No pending documents.</div>`;
+                                pendingList.appendChild(noPendingRow);
+                            } else {
+                                noPendingRow.style.display = 'flex';
+                            }
+                        } else if (noPendingRow) {
+                            noPendingRow.style.display = 'none';
+                        }
                     }
     
                     // Remove "No documents in queue." if present
@@ -1134,6 +1157,25 @@ document.addEventListener('DOMContentLoaded', function() {
                                         if (typeof createAlert === "function") {
                                             createAlert('Success', 'Cancelled', 'Document cancelled.', 'success', true, true, 'pageMessages');
                                         }
+                                        const onQueueList = document.querySelector('.on-queue-documents-list');
+                                        if (onQueueList) {
+                                            const remainingRows = onQueueList.querySelectorAll('.on-queue-row[id^="onqueue-doc-"]');
+                                            let noOnqueueRow = document.getElementById('no-onqueue-documents-row');
+                                            if (remainingRows.length === 0) {
+                                                if (!noOnqueueRow) {
+                                                    noOnqueueRow = document.createElement('div');
+                                                    noOnqueueRow.className = 'on-queue-row';
+                                                    noOnqueueRow.id = 'no-onqueue-documents-row';
+                                                    noOnqueueRow.style.display = 'flex';
+                                                    noOnqueueRow.innerHTML = `<div class="queue-col" style="width: 100%; text-align: center;">No documents in queue.</div>`;
+                                                    onQueueList.appendChild(noOnqueueRow);
+                                                } else {
+                                                    noOnqueueRow.style.display = 'flex';
+                                                }
+                                            } else if (noOnqueueRow) {
+                                                noOnqueueRow.style.display = 'none';
+                                            }
+                                        }
                                     } else {
                                         alert('Cancel failed: ' + (data.error || 'Unknown error.'));
                                     }
@@ -1173,6 +1215,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     row.remove();
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Cancelled', 'Document cancelled.', 'success', true, true, 'pageMessages');
+                    }
+                    // When updating the on-queue list (e.g., after cancel/deny/approve):
+                    const onQueueList = document.querySelector('.on-queue-documents-list');
+                    const noOnqueueRow = document.getElementById('no-onqueue-documents-row');
+                    if (onQueueList && noOnqueueRow) {
+                        // Only count actual on-queue docs, not the empty/match rows
+                        const remainingRows = onQueueList.querySelectorAll('.on-queue-row[id^="onqueue-doc-"]');
+                        if (remainingRows.length === 0) {
+                            noOnqueueRow.style.display = 'flex';
+                        } else {
+                            noOnqueueRow.style.display = 'none';
+                        }
                     }
                 } else {
                     alert('Cancel failed: ' + (data.error || 'Unknown error.'));
