@@ -461,6 +461,7 @@ def approve_all_documents(request):
                     payment = Payment.objects.get(doc_id=doc.doc_id)
                     payment.approved_by = admin_user.name
                     payment.approved_at = timezone.now()
+                    payment.payment_status = 'Paid'
                     payment.save()
                 except Payment.DoesNotExist:
                     pass
@@ -516,6 +517,7 @@ def approve_document(request):
                     payment.approved_by = admin_user.name
                     from django.utils import timezone
                     payment.approved_at = timezone.now()
+                    payment.payment_status = 'Paid'
                     payment.save()
                 except Payment.DoesNotExist:
                     pass  # Still set admin_name for the response
