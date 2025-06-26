@@ -101,6 +101,7 @@ Printing Queue
                         <div class="queue-col doc-printer">Printer Assigned</div>
                         <div class="queue-col doc-approved">Approved by</div>
                         <div class="queue-col doc-id">Document ID</div>
+                        <div class="queue-col doc-customer">Customer ID</div>
                         <div class="queue-col doc-actions"></div>
                     </div>
                 </div>
@@ -156,13 +157,14 @@ Printing Queue
                             {% endwith %}
                         </div>
                         <div class="queue-col doc-id">#{{ doc.doc_id }}</div>
+                        <div class="queue-col doc-customer">{{ doc.customer_id }}</div>
                         <div class="queue-col doc-actions">
                             <button class="queue-cancel-btn">Cancel</button>
                         </div>
                     </div>
                     {% empty %}
                         <div class="on-queue-row" id="no-onqueue-documents-row">
-                            <div class="queue-col" colspan="5">No documents in queue.</div>
+                            <div class="queue-col" colspan="6">No documents in queue.</div>
                         </div>
                     {% endfor %}
             </div>
