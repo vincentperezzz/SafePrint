@@ -193,6 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(data => {
                 if (data.success) {
                     createAlert('Success', 'Denied', `All documents denied.`, 'success', true, true, 'pageMessages');
+                    clearCustomerIdAndPrice();
                     // Remove all document items from the UI
                     document.querySelectorAll('.document-item').forEach(row => row.remove());
                     document.getElementById('price-to-pay').textContent = '₱0.00';
@@ -229,6 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(data => {
                 if (data.success) {
                     createAlert('Success', 'Approved', `All documents approved.`, 'success', true, true, 'pageMessages');
+                    clearCustomerIdAndPrice();
                     // Update "Approved by" only for affected documents
                     if (data.approved_doc_ids) {
                         data.approved_doc_ids.forEach(docId => {
@@ -922,6 +924,18 @@ function renderDocumentItems(documents, resultsDiv) {
                 if (data.success) {
                     createAlert('Success', 'Denied', 'Document denied.', 'success', true, true, 'pageMessages');
                     docItem.remove();
+
+                    // Recalculate total price
+                    let total = 0;
+                    resultsDiv.querySelectorAll('.document-item .document-info span').forEach(span => {
+                        total += parseFloat(span.textContent.replace('₱', '')) || 0;
+                    });
+                    document.getElementById('price-to-pay').textContent = '₱' + total.toFixed(2);
+                    
+                    // If no more documents, clear everything
+                    if (resultsDiv.querySelectorAll('.document-item').length === 0) {
+                        clearCustomerIdAndPrice();
+                    }
                 } else {
                     createAlert('Error', 'Deny Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
                 }
@@ -950,6 +964,18 @@ function renderDocumentItems(documents, resultsDiv) {
                 if (data.success) {
                     createAlert('Success', 'Approved', 'Document approved.', 'success', true, true, 'pageMessages');
                     docItem.remove();
+                    
+                    // Recalculate total price
+                    let total = 0;
+                    resultsDiv.querySelectorAll('.document-item .document-info span').forEach(span => {
+                        total += parseFloat(span.textContent.replace('₱', '')) || 0;
+                    });
+                    document.getElementById('price-to-pay').textContent = '₱' + total.toFixed(2);
+
+                    // If no more documents, clear everything
+                    if (resultsDiv.querySelectorAll('.document-item').length === 0) {
+                        clearCustomerIdAndPrice();
+                    }
                 } else {
                     createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
                 }
@@ -959,6 +985,15 @@ function renderDocumentItems(documents, resultsDiv) {
             });
         });
     });
+}
+
+// Auto-clear CID and Price
+function clearCustomerIdAndPrice() {
+    const customerInput = document.getElementById('customer-id-input');
+    const priceDisplay = document.getElementById('price-to-pay');
+    if (customerInput) customerInput.value = '';
+    if (priceDisplay) priceDisplay.textContent = '₱0.00';
+    toggleActionButtons(false);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1149,7 +1184,20 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
+                    const printerCard = row.closest('.completed-printer-card');
                     row.remove();
+                    // Check if there are any more completed jobs for this printer
+                    const remainingRows = printerCard.querySelectorAll('.completed-row[data-doc-id]');
+                    if (remainingRows.length === 0) {
+                        // Add the empty state for this printer
+                        const emptyDiv = document.createElement('div');
+                        emptyDiv.className = 'completed-row completed-empty';
+                        emptyDiv.innerHTML = `
+                            <img src="/static/assets/all-completed.png" alt="All Completed" class="all-completed">
+                            <div class="completed-empty-text">All jobs handed over!</div>
+                        `;
+                        printerCard.appendChild(emptyDiv);
+                    }
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Handed Over', 'Document handed over.', 'success', true, true, 'pageMessages');
                     }

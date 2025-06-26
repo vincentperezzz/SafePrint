@@ -400,6 +400,7 @@ def problem_reports_api(request):
     ]
     return JsonResponse({'problem_reports': data})
 
+
 @csrf_exempt
 def deny_all_documents(request):
     if request.method == 'POST':
@@ -408,11 +409,18 @@ def deny_all_documents(request):
         if not customer_id:
             return JsonResponse({'success': False, 'error': 'Customer ID is required'})
 
-        # Always use CID- prefix for matching
         if not customer_id.upper().startswith('CID-'):
             customer_id = f'CID-{customer_id}'
-        # Only delete pending documents
         qs = Document.objects.filter(customer_id__iexact=customer_id, doc_status='Pending')
+        uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
+        for doc in qs:
+            if doc.stored_name:
+                for root, dirs, files in os.walk(uploads_dir):
+                    if doc.stored_name in files:
+                        file_path = os.path.join(root, doc.stored_name)
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+                            break
         deleted, _ = qs.delete()
         return JsonResponse({'success': True, 'deleted_count': deleted})
 
@@ -468,8 +476,21 @@ def deny_document(request):
         doc_id = data.get('doc_id')
         if not doc_id:
             return JsonResponse({'success': False, 'error': 'Document ID is required'})
-        deleted, _ = Document.objects.filter(doc_id=doc_id).delete()
-        return JsonResponse({'success': True, 'deleted_count': deleted})
+        try:
+            doc = Document.objects.get(doc_id=doc_id)
+            # Try to delete the file from disk using stored_name
+            if doc.stored_name:
+                uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
+                for root, dirs, files in os.walk(uploads_dir):
+                    if doc.stored_name in files:
+                        file_path = os.path.join(root, doc.stored_name)
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+                            break
+            doc.delete()
+            return JsonResponse({'success': True, 'deleted_count': 1})
+        except Document.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Document not found'})
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 @csrf_exempt
