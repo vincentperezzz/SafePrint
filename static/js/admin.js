@@ -924,7 +924,18 @@ function renderDocumentItems(documents, resultsDiv) {
                 if (data.success) {
                     createAlert('Success', 'Denied', 'Document denied.', 'success', true, true, 'pageMessages');
                     docItem.remove();
-                    clearCustomerIdAndPrice();
+
+                    // Recalculate total price
+                    let total = 0;
+                    resultsDiv.querySelectorAll('.document-item .document-info span').forEach(span => {
+                        total += parseFloat(span.textContent.replace('₱', '')) || 0;
+                    });
+                    document.getElementById('price-to-pay').textContent = '₱' + total.toFixed(2);
+                    
+                    // If no more documents, clear everything
+                    if (resultsDiv.querySelectorAll('.document-item').length === 0) {
+                        clearCustomerIdAndPrice();
+                    }
                 } else {
                     createAlert('Error', 'Deny Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
                 }
@@ -953,7 +964,18 @@ function renderDocumentItems(documents, resultsDiv) {
                 if (data.success) {
                     createAlert('Success', 'Approved', 'Document approved.', 'success', true, true, 'pageMessages');
                     docItem.remove();
-                    clearCustomerIdAndPrice();
+                    
+                    // Recalculate total price
+                    let total = 0;
+                    resultsDiv.querySelectorAll('.document-item .document-info span').forEach(span => {
+                        total += parseFloat(span.textContent.replace('₱', '')) || 0;
+                    });
+                    document.getElementById('price-to-pay').textContent = '₱' + total.toFixed(2);
+
+                    // If no more documents, clear everything
+                    if (resultsDiv.querySelectorAll('.document-item').length === 0) {
+                        clearCustomerIdAndPrice();
+                    }
                 } else {
                     createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
                 }
@@ -999,7 +1021,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     row.remove();
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Denied', 'Document denied.', 'success', true, true, 'pageMessages');
-                        clearCustomerIdAndPrice();
                     }
                 } else {
                     alert('Deny failed: ' + (data.error || 'Unknown error.'));
@@ -1034,7 +1055,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     row.remove();
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Approved', 'Document approved.', 'success', true, true, 'pageMessages');
-                        clearCustomerIdAndPrice();
                     }
 
                     // Get info from the old row
