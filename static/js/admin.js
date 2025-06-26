@@ -1184,7 +1184,20 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
+                    const printerCard = row.closest('.completed-printer-card');
                     row.remove();
+                    // Check if there are any more completed jobs for this printer
+                    const remainingRows = printerCard.querySelectorAll('.completed-row[data-doc-id]');
+                    if (remainingRows.length === 0) {
+                        // Add the empty state for this printer
+                        const emptyDiv = document.createElement('div');
+                        emptyDiv.className = 'completed-row completed-empty';
+                        emptyDiv.innerHTML = `
+                            <img src="/static/assets/all-completed.png" alt="All Completed" class="all-completed">
+                            <div class="completed-empty-text">All jobs handed over!</div>
+                        `;
+                        printerCard.appendChild(emptyDiv);
+                    }
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Handed Over', 'Document handed over.', 'success', true, true, 'pageMessages');
                     }
