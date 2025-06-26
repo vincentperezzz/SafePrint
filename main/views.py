@@ -347,15 +347,6 @@ def finalize_uploads_view(request):
                 doc_status='Pending',
                 time_submitted=timezone.now(),
             )
-            # --- Create Payment record for this document ---
-            color_results = analyze_pdf_colors(abs_path)
-            _, costs_per_page = calculate_page_costs(color_results, gsm=int(doc.paper_quality))
-            price = sum(costs_per_page)
-            Payment.objects.create(
-                doc=doc,
-                price=price,
-                payment_status='Unpaid'
-            )
             docs_data.append({
                 'doc_id': doc_id,
                 'filename': original_name,  
@@ -402,8 +393,8 @@ def update_document_settings(request):
                     if 'paper_quality' in upd:
                         doc.paper_quality = upd['paper_quality']
                     doc.save()
-                    # --- Update or create Payment record for this document ---
-                    session_key = request.session.get('upload_session_key')
+
+                    # --- Payment creation and color scanning now happens here ---
                     file_rel_path = f'uploads/{session_key}/{doc.stored_name}'
                     abs_path = default_storage.path(file_rel_path)
                     color_results = analyze_pdf_colors(abs_path)
