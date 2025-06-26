@@ -1,6 +1,6 @@
-import io
-from pdf2image import convert_from_path
+import fitz  # PyMuPDF
 from PIL import Image
+import io
 
 # Helper to determine if a pixel is colored (not grayscale)
 def is_colored_pixel(pixel, threshold=10):
@@ -11,10 +11,12 @@ def analyze_pdf_colors(pdf_path, dpi=100):
     """
     Returns a list of dicts per page: { 'bw': bool, 'partial': bool, 'full_color': bool, 'color_ratio': float }
     """
-    pages = convert_from_path(pdf_path, dpi=dpi)
+    doc = fitz.open(pdf_path)
     results = []
-    for page in pages:
-        img = page.convert('RGB')
+    for page in doc:
+        # Render page to a pixmap (image)
+        pix = page.get_pixmap(dpi=dpi)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
         pixels = img.getdata()
         total = len(pixels)
         color_count = sum(1 for px in pixels if is_colored_pixel(px))
@@ -28,18 +30,11 @@ def analyze_pdf_colors(pdf_path, dpi=100):
     return results
 
 def calculate_page_costs(color_results, gsm=70):
-    """
-    color_results: output from analyze_pdf_colors
-    gsm: 70 or 80
-    Returns total cost and breakdown per page.
-    """
     costs = []
-    gsm_add = 1 if gsm == 70 else 2 if gsm == 80 else 0
-    for res in color_results:
-        if res['bw'] or res['partial']:
-            base = 2
-        else:
-            base = 5
-        costs.append(base + gsm_add)
-    total = sum(costs)
-    return total, costs
+    for page in color_results:
+        if page.get('bw') or page.get('partial'):
+            costs.append(2)
+        else:  # full_color
+            costs.append(5)
+    print("Costs per page:", costs)
+    return sum(costs), costs
