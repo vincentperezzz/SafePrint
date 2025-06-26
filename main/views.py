@@ -8,6 +8,7 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.utils import timezone
 from apps.main.utils.pdf_color_detection import analyze_pdf_colors, calculate_page_costs 
+from apps.main.utils.page_range import parse_page_ranges
 import os, uuid, math, time, random, string, json, PyPDF2
 
 
@@ -365,8 +366,6 @@ def finalize_uploads_view(request):
                 'paper_quality': doc.paper_quality,
                 'color_mode': doc.color_mode,
             })
-            print(f"Document {doc_id} created for customer {customer_id}")
-            print(doc)
         return JsonResponse({'success': True, 'documents': docs_data, 'customer_id': customer_id})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
@@ -403,8 +402,35 @@ def update_document_settings(request):
                     file_rel_path = f'uploads/{session_key}/{doc.stored_name}'
                     abs_path = default_storage.path(file_rel_path)
                     color_results = analyze_pdf_colors(abs_path)
+                    # Example: get user-specified pages from upd['pages'] (e.g., '1,2-5,7-10')
+                    page_range_str = upd.get('pages', None)
+                    if page_range_str and isinstance(page_range_str, str):
+                        total_pages = len(color_results)
+                        try:
+                            page_indices = parse_page_ranges(page_range_str, total_pages)
+                        except Exception as e:
+                            return JsonResponse({'success': False, 'error': f'Invalid page range input: {str(e)}'}, status=400)
+                        # Validate for out-of-bounds and invalid ranges
+                        if not page_indices:
+                            return JsonResponse({'success': False, 'error': 'No valid pages specified.'}, status=400)
+                        for idx in page_indices:
+                            if idx < 0 or idx >= total_pages:
+                                return JsonResponse({'success': False, 'error': f'Page {idx+1} is out of bounds (document has {total_pages} pages).'}, status=400)
+                        # Check for reversed ranges (e.g., 5-1)
+                        for part in page_range_str.split(','):
+                            part = part.strip()
+                            if '-' in part:
+                                try:
+                                    start, end = map(int, part.split('-'))
+                                    if start > end:
+                                        return JsonResponse({'success': False, 'error': f'Invalid range: {start}-{end}. Start must be less than or equal to end.'}, status=400)
+                                except Exception:
+                                    return JsonResponse({'success': False, 'error': f'Invalid range format: {part}'}, status=400)
+                        filtered_color_results = [color_results[i] for i in page_indices if 0 <= i < total_pages]
+                    else:
+                        filtered_color_results = color_results
                     _, costs_per_page = calculate_page_costs(
-                        color_results,
+                        filtered_color_results,
                         gsm=int(doc.paper_quality),
                         color_mode=doc.color_mode
                     )
