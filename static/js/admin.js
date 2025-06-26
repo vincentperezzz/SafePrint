@@ -193,6 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(data => {
                 if (data.success) {
                     createAlert('Success', 'Denied', `All documents denied.`, 'success', true, true, 'pageMessages');
+                    clearCustomerIdAndPrice();
                     // Remove all document items from the UI
                     document.querySelectorAll('.document-item').forEach(row => row.remove());
                     document.getElementById('price-to-pay').textContent = '₱0.00';
@@ -229,6 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(data => {
                 if (data.success) {
                     createAlert('Success', 'Approved', `All documents approved.`, 'success', true, true, 'pageMessages');
+                    clearCustomerIdAndPrice();
                     // Update "Approved by" only for affected documents
                     if (data.approved_doc_ids) {
                         data.approved_doc_ids.forEach(docId => {
@@ -922,6 +924,7 @@ function renderDocumentItems(documents, resultsDiv) {
                 if (data.success) {
                     createAlert('Success', 'Denied', 'Document denied.', 'success', true, true, 'pageMessages');
                     docItem.remove();
+                    clearCustomerIdAndPrice();
                 } else {
                     createAlert('Error', 'Deny Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
                 }
@@ -950,6 +953,7 @@ function renderDocumentItems(documents, resultsDiv) {
                 if (data.success) {
                     createAlert('Success', 'Approved', 'Document approved.', 'success', true, true, 'pageMessages');
                     docItem.remove();
+                    clearCustomerIdAndPrice();
                 } else {
                     createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
                 }
@@ -959,6 +963,15 @@ function renderDocumentItems(documents, resultsDiv) {
             });
         });
     });
+}
+
+// Auto-clear CID and Price
+function clearCustomerIdAndPrice() {
+    const customerInput = document.getElementById('customer-id-input');
+    const priceDisplay = document.getElementById('price-to-pay');
+    if (customerInput) customerInput.value = '';
+    if (priceDisplay) priceDisplay.textContent = '₱0.00';
+    toggleActionButtons(false);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -986,6 +999,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     row.remove();
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Denied', 'Document denied.', 'success', true, true, 'pageMessages');
+                        clearCustomerIdAndPrice();
                     }
                 } else {
                     alert('Deny failed: ' + (data.error || 'Unknown error.'));
@@ -1020,6 +1034,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     row.remove();
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Approved', 'Document approved.', 'success', true, true, 'pageMessages');
+                        clearCustomerIdAndPrice();
                     }
 
                     // Get info from the old row
