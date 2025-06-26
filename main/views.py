@@ -294,11 +294,12 @@ def finalize_uploads_view(request):
             data = json.loads(request.body)
             files = data.get('files', [])
             original_names = data.get('original_names', {})
+            # Get default paper size from POST or fallback to 'Letter'
+            default_paper_size = data.get('default_paper_size', 'Letter')
         except Exception as e:
             return JsonResponse({'success': False, 'error': f'Invalid data: {str(e)}'})
         docs_data = []
         for file_path in files:
-            abs_path = default_storage.path(file_path)
             try:
                 with default_storage.open(file_path, 'rb') as f:
                     reader = PyPDF2.PdfReader(f)
@@ -309,13 +310,16 @@ def finalize_uploads_view(request):
                         height = float(page.mediabox.height)
                         orientation = 'Landscape' if width > height else 'Portrait'
                         paper_size = get_paper_size(width, height)
+                        if not paper_size or paper_size == 'Custom':
+                            paper_size = default_paper_size
                     else:
                         orientation = 'Portrait'
-                        paper_size = 'Custom'
+                        paper_size = default_paper_size
             except Exception:
-                num_pages = 0
+                # If PDF reading fails, assume default values
+                num_pages = 1
                 orientation = 'Portrait'
-                paper_size = 'Custom'
+                paper_size = default_paper_size
             file_size = default_storage.size(file_path)
             stored_name = os.path.basename(file_path)
             # Always use original name from mapping, fallback to stored_name
