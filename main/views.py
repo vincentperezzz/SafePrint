@@ -403,7 +403,11 @@ def update_document_settings(request):
                     file_rel_path = f'uploads/{session_key}/{doc.stored_name}'
                     abs_path = default_storage.path(file_rel_path)
                     color_results = analyze_pdf_colors(abs_path)
-                    _, costs_per_page = calculate_page_costs(color_results, gsm=int(doc.paper_quality))
+                    _, costs_per_page = calculate_page_costs(
+                        color_results,
+                        gsm=int(doc.paper_quality),
+                        color_mode=doc.color_mode
+                    )
                     new_price = sum(costs_per_page)
                     try:
                         payment = Payment.objects.get(doc=doc)
