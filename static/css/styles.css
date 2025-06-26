@@ -384,8 +384,8 @@ html {
     flex-wrap: wrap;
     gap: 30px;
     justify-content: center;
-    padding: 0 50px 50px 50px;
-    margin: 100px 5%;
+    margin: 100px auto;
+    max-width: 1240px;
 }
 
 /* Individual card styling */
@@ -3956,6 +3956,9 @@ input:focus::placeholder {
     }
     #admin-404-overlay {
         display: flex !important;
+    }
+    .card-container {
+        padding: 0 10%;
     }
 }
 
