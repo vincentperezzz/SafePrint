@@ -15,6 +15,9 @@ env/
 .vscode/
 .idea/
 
+# Ignore upload directories
+/media/
+
 # Ignore database files
 *.sqlite3
 
