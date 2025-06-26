@@ -36,5 +36,9 @@ def calculate_page_costs(color_results, gsm=70):
             costs.append(2)
         else:  # full_color
             costs.append(5)
+    print("==================================================")
     print("Costs per page:", costs)
+    print("Total pages:", len(costs))
+    print("Total cost:", sum(costs))
+    print("==================================================")
     return sum(costs), costs
