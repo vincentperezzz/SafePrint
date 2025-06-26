@@ -281,9 +281,10 @@ def get_paper_size(width, height):
 @csrf_exempt
 def finalize_uploads_view(request):
     if request.method == 'POST':
-        session_key = request.session.get('upload_session_key')
-        if not session_key:
-            return JsonResponse({'success': False, 'error': 'Session key missing.'})
+        # Always use the same session key for the user session
+        if not request.session.get('upload_session_key'):
+            request.session['upload_session_key'] = str(uuid.uuid4())
+        session_key = request.session['upload_session_key']
         # Always generate a new CID for every proceed-btn click
         customer_id = 'CID-' + ''.join(random.choices(string.digits, k=4))
         request.session['customer_id'] = customer_id
@@ -374,6 +375,10 @@ def finalize_uploads_view(request):
 def update_document_settings(request):
     if request.method == 'POST':
         try:
+            # Always use the same session key for the user session
+            if not request.session.get('upload_session_key'):
+                request.session['upload_session_key'] = str(uuid.uuid4())
+            session_key = request.session['upload_session_key']
             data = json.loads(request.body)
             updates = data.get('updates', [])
             for upd in updates:
