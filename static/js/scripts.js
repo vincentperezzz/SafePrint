@@ -25,36 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize proceed button state
     updateProceedButton();
 
-    if (dragArea && fileInput && browseBtn) {
-        // Highlight drag area on dragover
-        dragArea.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            dragArea.classList.add('dragover');
-        });
-    
-        dragArea.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            dragArea.classList.remove('dragover');
-        });
-    
-        dragArea.addEventListener('drop', function(e) {
-            e.preventDefault();
-            dragArea.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            handleFiles(files);
-        });
-    
-        browseBtn.addEventListener('click', function() {
-            fileInput.click();
-        });
-    
-        fileInput.addEventListener('change', function() {
-            const files = Array.from(fileInput.files);
-            handleFiles(files);
-            fileInput.value = '';
-        });
-    } 
-
+    // Handle file input and drag-and-drop events
     const dragOverlay = document.getElementById('drag-overlay');
     let dragCounter = 0;
     
