@@ -213,7 +213,7 @@ html {
 }
 
 .spinner {
-    border: 8px solid #f3f3f3; border-top: 8px solid #3498db; border-radius: 50%;
+    border: 8px solid #f3f3f3; border-top: 8px solid #FBB41D; border-radius: 50%;
     width: 60px; height: 60px; animation: spin 1s linear infinite;
 }
 
