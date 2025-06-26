@@ -29,22 +29,31 @@ def analyze_pdf_colors(pdf_path, dpi=100):
             results.append({'bw': True, 'partial': False, 'full_color': False, 'color_ratio': 0.0})
     return results
 
+# Pricing variables for easy changes
+PRICE_BW_70 = 1
+PRICE_BW_80 = 2
+PRICE_COLOR_PARTIAL = 2  # <10% colored pixels
+PRICE_COLOR_FULL = 5     # Full RGB
+
 def calculate_page_costs(color_results, gsm=70, color_mode='Color'):
     """
     Calculates per-page costs based on color analysis, GSM, and color mode.
-    If color_mode is 'Black and White', applies B&W pricing logic based on GSM.
-    Otherwise, uses color analysis.
     """
     costs = []
-    if color_mode == 'Black and White':
-        bw_price = 1 if str(gsm) == '70' else 2
+    gsm = int(gsm)
+    if color_mode != 'Color':
+        # B&W pricing logic
+        bw_price = PRICE_BW_70 if gsm == 70 else PRICE_BW_80
         costs = [bw_price] * len(color_results)
     else:
         for page in color_results:
-            if page.get('bw') or page.get('partial'):
-                costs.append(2)
-            else:  # full_color
-                costs.append(5)
+            if page.get('full_color'):
+                costs.append(PRICE_COLOR_FULL)
+            elif page.get('partial'):
+                costs.append(PRICE_COLOR_PARTIAL)
+            else:  # pure B&W in color mode
+                bw_price = PRICE_BW_70 if gsm == 70 else PRICE_BW_80
+                costs.append(bw_price)
     print("==================================================")
     print("Costs per page:", costs)
     print("Total pages:", len(costs))
