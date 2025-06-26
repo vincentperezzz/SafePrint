@@ -270,7 +270,7 @@ def get_paper_size(width, height):
         'A4': [(595, 842), (842, 595)],
         'Letter': [(612, 792), (792, 612)],
         'Legal': [(612, 1008), (1008, 612)],
-        'Long': [(612, 936), (936, 612)],  # Example, adjust as needed
+        'Long': [(612, 936), (936, 612)],  
     }
     for name, dims in sizes.items():
         for w, h in dims:
