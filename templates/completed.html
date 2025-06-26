@@ -20,18 +20,19 @@ Print Completed
     <div class="completed-section">
         <h2 class="completed-title">All Printers</h2>
 
-         {% for printer_id, printer_data in printers_with_completed.items %}
+        {% for printer in printers_with_completed %}
         <div class="completed-printer-card">
-            <div class="completed-printer-header">{{ printer_data.printer_name }} Jobs Completed</div>
+            <div class="completed-printer-header">{{ printer.printer_name }} Jobs Completed</div>
             <div class="completed-table-header">
                 <div class="completed-col doc-name">Document Name</div>
                 <div class="completed-col doc-id">Document ID</div>
+                <div class="completed-col doc-customer">Customer ID</div>
                 <div class="completed-col doc-printer">Printed At</div>
                 <div class="completed-col doc-action"></div>
             </div>
             
-            {% if printer_data.documents %}
-                {% for document in printer_data.documents %}
+            {% if printer.documents %}
+                {% for document in printer.documents %}
                 <div class="completed-row" data-doc-id="{{ document.doc_id }}">
                     <div class="completed-col doc-name">
                         <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
@@ -40,6 +41,7 @@ Print Completed
                         </div>
                     </div>
                     <div class="completed-col doc-id">#{{ document.doc_id }}</div>
+                    <div class="completed-col doc-customer">{{ document.customer_id }}</div>
                     <div class="completed-col doc-printer">{{ printer_data.printer_name }}</div>
                     <div class="completed-col doc-action">
                         {% if document.handed_over %}

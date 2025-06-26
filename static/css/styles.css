@@ -3262,6 +3262,9 @@ input:focus::placeholder {
 }
 
 .completed-printer-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     border: 2px solid #18191F;
     border-radius: 16px;
     box-sizing: border-box;
@@ -3279,7 +3282,6 @@ input:focus::placeholder {
     font-size: 18px;
     font-weight: 700;
     font-family: 'Montserrat', sans-serif;
-    margin-bottom: 12px;
 }
 
 .completed-table-header {
