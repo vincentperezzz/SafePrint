@@ -333,6 +333,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (proceedBtn) {
         proceedBtn.addEventListener('click', function() {
             hasProceeded = true;
+            // Show loading overlay immediately after clicking proceed
+            var overlay = document.getElementById('loading-overlay');
+            if (overlay) overlay.style.display = 'flex';
             if (uploadedFiles.length > 0) {
                 // Gather server paths of uploaded files
                 const filePaths = uploadedFiles.map(f => f.serverPath || f.file_path || f.path || f.name);
@@ -358,9 +361,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Redirect to upload.html for preview
                         window.location.href = proceedBtn.getAttribute('data-url');
                     } else {
+                        // Hide overlay if error
+                        if (overlay) overlay.style.display = 'none';
                         alert('Failed to process documents: ' + data.error);
                     }
+                })
+                .catch(() => {
+                    if (overlay) overlay.style.display = 'none';
                 });
+            } else {
+                // Hide overlay if no files
+                if (overlay) overlay.style.display = 'none';
             }
         });
     }
@@ -370,9 +381,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (confirmBtn) {
         confirmBtn.addEventListener('click', function() {
             hasProceeded = true;
+            // Show loading overlay immediately after clicking confirm
+            var overlay = document.getElementById('loading-overlay');
+            if (overlay) overlay.style.display = 'flex';
             const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
             const uploadedFilesDiv = document.querySelector('.uploaded-files');
-            if (!uploadedFilesDiv || !docs.length) return;
+            if (!uploadedFilesDiv || !docs.length) {
+                if (overlay) overlay.style.display = 'none';
+                return;
+            }
             const docDivs = uploadedFilesDiv.querySelectorAll('.file');
             let updates = [];
             docDivs.forEach((fileDiv, idx) => {
@@ -427,11 +444,14 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    // Optionally update sessionStorage or redirect
                     window.location.href = confirmBtn.getAttribute('data-url');
                 } else {
+                    if (overlay) overlay.style.display = 'none';
                     alert('Failed to update settings: ' + (data.error || 'Unknown error'));
                 }
+            })
+            .catch(() => {
+                if (overlay) overlay.style.display = 'none';
             });
         });
     }
@@ -620,6 +640,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (finishBtn) {
         finishBtn.addEventListener('click', function () {
             hasProceeded = true;
+            var overlay = document.getElementById('loading-overlay');
+            if (overlay) overlay.style.display = 'flex';
             window.location.href = '/';
         });
     }
@@ -982,3 +1004,9 @@ function renderUploadedDocumentsPreview() {
         }
     });
 }
+
+// Hide loading overlay on DOMContentLoaded
+window.addEventListener('DOMContentLoaded', function() {
+    var overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.style.display = 'none';
+});
