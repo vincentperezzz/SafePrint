@@ -267,14 +267,16 @@ def delete_all_documents(request):
 def get_paper_size(width, height):
     # Sizes in points (1 pt = 1/72 inch)
     sizes = {
-        'A4': (595, 842),
-        'Letter': (612, 792),
-        'Legal': (612, 1008),
-        'Long': (612, 936),  # Example, adjust as needed
+        'A4': [(595, 842), (842, 595)],
+        'Letter': [(612, 792), (792, 612)],
+        'Legal': [(612, 1008), (1008, 612)],
+        'Long': [(612, 936), (936, 612)],  # Example, adjust as needed
     }
-    for name, (w, h) in sizes.items():
-        if math.isclose(width, w, abs_tol=10) and math.isclose(height, h, abs_tol=10):
-            return name
+    for name, dims in sizes.items():
+        for w, h in dims:
+            if (math.isclose(width, w, abs_tol=10) and math.isclose(height, h, abs_tol=10)) or \
+               (math.isclose(width, h, abs_tol=10) and math.isclose(height, w, abs_tol=10)):
+                return name
     return 'Custom'
 
 
