@@ -25,7 +25,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize proceed button state
     updateProceedButton();
 
-    // Handle file input and drag-and-drop events
+    if (fileInput && browseBtn) {
+
+        browseBtn.addEventListener('click', function() {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', function() {
+            const files = Array.from(fileInput.files);
+            handleFiles(files);
+            fileInput.value = '';
+        });
+    } 
+
     const dragOverlay = document.getElementById('drag-overlay');
     let dragCounter = 0;
     
