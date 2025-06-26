@@ -346,11 +346,13 @@ def finalize_uploads_view(request):
                 time_submitted=timezone.now(),
             )
             # --- Create Payment record for this document ---
-            price = 10 * int(doc.num_copies)  # Changed from 5 to 10 currency units per copy
+            color_results = analyze_pdf_colors(abs_path)
+            _, costs_per_page = calculate_page_costs(color_results, gsm=int(doc.paper_quality))
+            price = sum(costs_per_page)
             Payment.objects.create(
                 doc=doc,
                 price=price,
-                payment_status='Pending'
+                payment_status='Unpaid'
             )
             docs_data.append({
                 'doc_id': doc_id,
@@ -397,14 +399,20 @@ def update_document_settings(request):
                         doc.paper_quality = upd['paper_quality']
                     doc.save()
                     # --- Update or create Payment record for this document ---
+                    session_key = request.session.get('upload_session_key')
+                    file_rel_path = f'uploads/{session_key}/{doc.stored_name}'
+                    abs_path = default_storage.path(file_rel_path)
+                    color_results = analyze_pdf_colors(abs_path)
+                    _, costs_per_page = calculate_page_costs(color_results, gsm=int(doc.paper_quality))
+                    new_price = sum(costs_per_page)
                     try:
                         payment = Payment.objects.get(doc=doc)
-                        payment.price = 10 * int(doc.num_copies)  # Changed from 5 to 10 currency units per copy
+                        payment.price = new_price
                         payment.save()
                     except Payment.DoesNotExist:
                         Payment.objects.create(
                             doc=doc,
-                            price=10 * int(doc.num_copies),  # Changed from 5 to 10 currency units per copy
+                            price=new_price,
                             payment_status='Unpaid'
                         )
                 except Document.DoesNotExist:
