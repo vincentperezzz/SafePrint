@@ -1068,24 +1068,24 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Approved', 'Document approved.', 'success', true, true, 'pageMessages');
                     }
-
-                    // Get info from the old row
-                    const filename = row.querySelector('.doc-title').textContent;
-                    const price = row.querySelector('.doc-price').textContent;
-                    const docIdText = row.querySelector('.queue-col.doc-id').textContent;
-
-                    // On Queue Documents
+    
+                    // Remove "No documents in queue." if present
                     const onQueueList = document.querySelector('.on-queue-documents-list');
+                    const noOnqueueRow = document.getElementById('no-onqueue-documents-row');
+                    if (noOnqueueRow) {
+                        noOnqueueRow.remove();
+                    }
+    
+                    // Add the newly approved document to On Queue Documents
                     if (onQueueList) {
-                        const existingRow = document.getElementById('onqueue-doc-' + docId);
-                        if (existingRow) {
-                            existingRow.remove();
-                        }
-
+                        const filename = row.querySelector('.doc-title').textContent;
+                        const price = row.querySelector('.doc-price') ? row.querySelector('.doc-price').textContent : '';
+                        const docIdText = row.querySelector('.queue-col.doc-id').textContent;
+                        const customerId = row.querySelector('.queue-col.doc-customer') ? row.querySelector('.queue-col.doc-customer').textContent : '';
+    
                         const newRow = document.createElement('div');
                         newRow.className = 'on-queue-row';
                         newRow.id = 'onqueue-doc-' + docId;
-
                         newRow.innerHTML = `
                             <div class="queue-col doc-name">
                                 <img src="/static/assets/pdf-icon.svg" alt="PDF Icon" class="pdf-icon">
@@ -1095,17 +1095,20 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                             </div>
                             <div class="queue-col doc-printer">
-                                <span class="printer-status printer-queued"></span>
-                                No Printer Assigned (Queued)
+                                <div>
+                                    <span class="printer-status printer-queued"></span>
+                                    No Printer Assigned (Queued)
+                                </div>
                             </div>
                             <div class="queue-col doc-approved">${data.admin_name ? data.admin_name : '-'}</div>
                             <div class="queue-col doc-id">${docIdText}</div>
+                            <div class="queue-col doc-customer">${customerId}</div>
                             <div class="queue-col doc-actions">
                                 <button class="queue-cancel-btn">Cancel</button>
                             </div>
                         `;
                         onQueueList.appendChild(newRow);
-
+    
                         // Attach cancel event to the new cancel button
                         const cancelBtn = newRow.querySelector('.queue-cancel-btn');
                         if (cancelBtn) {
