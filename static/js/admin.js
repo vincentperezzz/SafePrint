@@ -193,11 +193,24 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(data => {
                 if (data.success) {
                     createAlert('Success', 'Denied', `All documents denied.`, 'success', true, true, 'pageMessages');
-                    clearCustomerIdAndPrice();
-                    // Remove all document items from the UI
-                    document.querySelectorAll('.document-item').forEach(row => row.remove());
-                    document.getElementById('price-to-pay').textContent = '₱0.00';
+                    customerIdInput.value = '';
+                    priceToPay.textContent = '₱0.00';
                     toggleActionButtons(false);
+
+                    const resultsDiv = document.getElementById('document-results');
+                    if (resultsDiv) {
+                        const searchBar = resultsDiv.querySelector('.search-bar');
+                        const docTitle = resultsDiv.querySelector('.document-item-title');
+                        if (searchBar) searchBar.style.display = 'none';
+                        if (docTitle) docTitle.style.display = 'none';
+                        Array.from(resultsDiv.querySelectorAll('.document-item, .no-documents')).forEach(el => el.remove());
+                        resultsDiv.innerHTML += `
+                            <div class="no-documents">
+                                <img src="/static/assets/no-documents.png" alt="No Documents">
+                                <p>No documents found, Please enter a Customer ID</p>
+                            </div>
+                        `;
+                    }
                 } else {
                     createAlert('Error', 'Deny Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
                 }
@@ -932,9 +945,20 @@ function renderDocumentItems(documents, resultsDiv) {
                     });
                     document.getElementById('price-to-pay').textContent = '₱' + total.toFixed(2);
                     
-                    // If no more documents, clear everything
+                    // If no more documents, clear everything and hide search/title
                     if (resultsDiv.querySelectorAll('.document-item').length === 0) {
                         clearCustomerIdAndPrice();
+                        const searchBar = resultsDiv.querySelector('.search-bar');
+                        const docTitle = resultsDiv.querySelector('.document-item-title');
+                        if (searchBar) searchBar.style.display = 'none';
+                        if (docTitle) docTitle.style.display = 'none';
+                        Array.from(resultsDiv.querySelectorAll('.no-documents')).forEach(el => el.remove());
+                        resultsDiv.innerHTML += `
+                            <div class="no-documents">
+                                <img src="/static/assets/no-documents.png" alt="No Documents">
+                                <p>No documents found, Please enter a Customer ID</p>
+                            </div>
+                        `;
                     }
                 } else {
                     createAlert('Error', 'Deny Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
@@ -975,6 +999,17 @@ function renderDocumentItems(documents, resultsDiv) {
                     // If no more documents, clear everything
                     if (resultsDiv.querySelectorAll('.document-item').length === 0) {
                         clearCustomerIdAndPrice();
+                        const searchBar = resultsDiv.querySelector('.search-bar');
+                        const docTitle = resultsDiv.querySelector('.document-item-title');
+                        if (searchBar) searchBar.style.display = 'none';
+                        if (docTitle) docTitle.style.display = 'none';
+                        Array.from(resultsDiv.querySelectorAll('.no-documents')).forEach(el => el.remove());
+                        resultsDiv.innerHTML += `
+                            <div class="no-documents">
+                                <img src="/static/assets/no-documents.png" alt="No Documents">
+                                <p>No documents found, Please enter a Customer ID</p>
+                            </div>
+                        `;
                     }
                 } else {
                     createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
