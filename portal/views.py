@@ -34,7 +34,7 @@ def dashboard(request):
     # Get recent completed documents with payment info and printed_at timestamp
     completed_documents = Document.objects.filter(
         doc_status='Finished', 
-    ).select_related('printer_assigned').prefetch_related('payment_set').order_by('-printed_at')[:5]
+    ).select_related('printed_at').prefetch_related('payment_set').order_by('-printed_at')[:5]
     
     # Handle customer ID search
     searched_documents = []
@@ -120,7 +120,7 @@ def printing_queue(request):
     pending_documents = Document.objects.filter(doc_status='pending').order_by('-time_submitted')
 
     # Queue Documents
-    on_queue_documents = Document.objects.filter(doc_status__in=['Queued', 'Printing']).select_related('printer_assigned').order_by('-time_submitted')
+    on_queue_documents = Document.objects.filter(doc_status__in=['Queued', 'Printing']).select_related('printed_at').order_by('-time_submitted')
     
     # Combine all documents to fetch all related payments
     all_documents = list(pending_documents) + list(on_queue_documents)
@@ -145,18 +145,16 @@ def print_completed(request):
         raise Http404("User not found in session")
     
     # Get all completed documents grouped by printer - filter by doc_status='finished'
-    completed_documents = Document.objects.filter(doc_status='Finished').select_related('printer_assigned').order_by('printer_assigned__id', '-time_submitted')
+    completed_documents = Document.objects.filter(doc_status='Finished').select_related('printed_at').order_by('printer_assigned__id', '-time_submitted')
     
     # Group documents by printer
     printers_with_completed = {}
     for doc in completed_documents:
-        printer_id = doc.printer_assigned.id if doc.printer_assigned else 'unassigned'
-        # Check what the actual field name is - it might be 'printer_name', 'model', etc.
-        printer_name = str(doc.printer_assigned) if doc.printer_assigned else 'Unassigned'
-        
+        printer_id = doc.printed_at.id if doc.printed_at else 'unassigned'
+        printer_name = str(doc.printed_at) if doc.printed_at else 'Unassigned'
         if printer_id not in printers_with_completed:
             printers_with_completed[printer_id] = {
-                'printer': doc.printer_assigned,
+                'printer': doc.printed_at,
                 'printer_name': printer_name,
                 'documents': []
             }
@@ -168,12 +166,18 @@ def print_completed(request):
         if printer.id not in printers_with_completed:
             printers_with_completed[printer.id] = {
                 'printer': printer,
-                'printer_name': str(printer),  # Use __str__ method of the printer
+                'printer_name': str(printer),
                 'documents': []
             }
-    
+
+    # Sort printers by printer_name (or use printer.id for ID order)
+    sorted_printers = sorted(
+        printers_with_completed.values(),
+        key=lambda x: x['printer_name'].lower() if x['printer_name'] else ''
+    )
+
     context = {
-        'printers_with_completed': printers_with_completed,
+        'printers_with_completed': sorted_printers,
     }
     return render(request, 'completed.html', context)
 
