@@ -1,13 +1,12 @@
 from django.shortcuts import render, redirect
 from django.urls import reverse, path
-from portal.models import AdminUser
+from portal.models import AdminUser, Document, Payment
 from django.contrib.auth.hashers import check_password
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.utils import timezone
-from portal.models import Document
 import os, uuid, math, time, random, string, json, PyPDF2
 
 
@@ -25,8 +24,28 @@ def upload_view(request):
 
 
 def confirmation(request):
-    stars = range(4) 
-    return render(request, 'confirmation.html', {'stars': stars})
+    customer_id = request.session.get('customer_id')
+    # Get all payments for this customer/session via related Document
+    payments = Payment.objects.filter(doc__customer_id=customer_id)
+    documents = []
+    total_price = 0
+
+    for payment in payments:
+        doc = payment.doc  # Use the related Document
+        documents.append({
+            'name': doc.filename, 
+            'price': payment.price,  # Use 'price' field
+            'doc_id': doc.doc_id,  
+        })
+        total_price += payment.price
+
+    context = {
+        'customer_id': customer_id,
+        'documents': documents,
+        'total_price': total_price,
+        'stars': range(4), 
+    }
+    return render(request, 'confirmation.html', context)
 
 
 def login_view(request):
@@ -325,6 +344,13 @@ def finalize_uploads_view(request):
                 doc_status='Pending',
                 time_submitted=timezone.now(),
             )
+            # --- Create Payment record for this document ---
+            price = 5 * int(doc.num_copies)  # Example: 5 currency units per copy
+            Payment.objects.create(
+                doc=doc,
+                price=price,
+                payment_status='Pending'
+            )
             docs_data.append({
                 'doc_id': doc_id,
                 'filename': original_name,  
@@ -369,6 +395,17 @@ def update_document_settings(request):
                     if 'paper_quality' in upd:
                         doc.paper_quality = upd['paper_quality']
                     doc.save()
+                    # --- Update or create Payment record for this document ---
+                    try:
+                        payment = Payment.objects.get(doc=doc)
+                        payment.price = 5 * int(doc.num_copies)  # Example: 5 currency units per copy
+                        payment.save()
+                    except Payment.DoesNotExist:
+                        Payment.objects.create(
+                            doc=doc,
+                            price=5 * int(doc.num_copies),
+                            payment_status='Pending'
+                        )
                 except Document.DoesNotExist:
                     continue
             return JsonResponse({'success': True})
