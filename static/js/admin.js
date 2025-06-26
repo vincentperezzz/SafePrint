@@ -1022,6 +1022,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Denied', 'Document denied.', 'success', true, true, 'pageMessages');
                     }
+
+                    const pendingList = document.getElementById('pending-list');
+                    // Only count rows that are actual pending docs
+                    const remainingRows = pendingList.querySelectorAll('.queue-row[id^="pending-doc-"]');
+                    if (remainingRows.length === 0 && !document.getElementById('no-pending-documents-row')) {
+                        const emptyRow = document.createElement('div');
+                        emptyRow.className = 'queue-row';
+                        emptyRow.id = 'no-pending-documents-row';
+                        emptyRow.innerHTML = `<div class="queue-col" colspan="5">No pending documents.</div>`;
+                        pendingList.appendChild(emptyRow);
+                    }
+
                 } else {
                     alert('Deny failed: ' + (data.error || 'Unknown error.'));
                 }
@@ -1186,6 +1198,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     const printerCard = row.closest('.completed-printer-card');
                     row.remove();
+
                     // Check if there are any more completed jobs for this printer
                     const remainingRows = printerCard.querySelectorAll('.completed-row[data-doc-id]');
                     if (remainingRows.length === 0) {
@@ -1198,6 +1211,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         `;
                         printerCard.appendChild(emptyDiv);
                     }
+
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Handed Over', 'Document handed over.', 'success', true, true, 'pageMessages');
                     }
