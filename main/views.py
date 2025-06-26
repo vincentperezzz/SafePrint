@@ -7,6 +7,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.utils import timezone
+from apps.main.utils.pdf_color_detection import analyze_pdf_colors, calculate_page_costs 
 import os, uuid, math, time, random, string, json, PyPDF2
 
 
@@ -345,7 +346,7 @@ def finalize_uploads_view(request):
                 time_submitted=timezone.now(),
             )
             # --- Create Payment record for this document ---
-            price = 5 * int(doc.num_copies)  # Example: 5 currency units per copy
+            price = 10 * int(doc.num_copies)  # Changed from 5 to 10 currency units per copy
             Payment.objects.create(
                 doc=doc,
                 price=price,
@@ -398,12 +399,12 @@ def update_document_settings(request):
                     # --- Update or create Payment record for this document ---
                     try:
                         payment = Payment.objects.get(doc=doc)
-                        payment.price = 5 * int(doc.num_copies)  # Example: 5 currency units per copy
+                        payment.price = 10 * int(doc.num_copies)  # Changed from 5 to 10 currency units per copy
                         payment.save()
                     except Payment.DoesNotExist:
                         Payment.objects.create(
                             doc=doc,
-                            price=5 * int(doc.num_copies),
+                            price=10 * int(doc.num_copies),  # Changed from 5 to 10 currency units per copy
                             payment_status='Pending'
                         )
                 except Document.DoesNotExist:

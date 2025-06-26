@@ -624,6 +624,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const feedbackBtn = document.querySelector('.feedback-btn');
+    if (feedbackBtn) {
+        feedbackBtn.addEventListener('click', function () {
+            hasProceeded = true;
+            window.location.href = '/#feedback';
+        });
+    }
 
 
 
