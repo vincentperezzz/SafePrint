@@ -39,12 +39,15 @@ PRICE_BW_80 = 2
 PRICE_COLOR_PARTIAL = 2  # <10% colored pixels
 PRICE_COLOR_FULL = 5     # Full RGB
 
-def calculate_page_costs(color_results, gsm=70, color_mode='Color'):
+def calculate_page_costs(color_results, gsm=70, color_mode='Color', num_copies=1):
     """
     Calculates per-page costs based on color analysis, GSM, and color mode.
+    Factors in the number of copies requested.
     """
     costs = []
     gsm = int(gsm)
+    num_copies = int(num_copies) if num_copies else 1  # Ensure num_copies is at least 1
+    
     if color_mode != 'Color':
         # B&W pricing logic
         bw_price = PRICE_BW_70 if gsm == 70 else PRICE_BW_80
@@ -58,9 +61,16 @@ def calculate_page_costs(color_results, gsm=70, color_mode='Color'):
             else:  # pure B&W in color mode
                 bw_price = PRICE_BW_70 if gsm == 70 else PRICE_BW_80
                 costs.append(bw_price)
+    
+    # Calculate single copy cost and total cost
+    single_copy_cost = sum(costs)
+    total_cost = single_copy_cost * num_copies
+    
     print("==================================================")
     print("Costs per page:", costs)
     print("Total pages:", len(costs))
-    print("Total cost:", sum(costs))
+    print(f"Number of copies: {num_copies}")
+    print(f"Total cost: ₱{total_cost}")
     print("==================================================")
-    return sum(costs), costs
+    
+    return total_cost, costs

@@ -434,12 +434,13 @@ def update_document_settings(request):
                     else:
                         color_results = analyze_pdf_colors(abs_path)
                         filtered_color_results = color_results
-                    _, costs_per_page = calculate_page_costs(
+                    total_cost, costs_per_page = calculate_page_costs(
                         filtered_color_results,
                         gsm=int(doc.paper_quality),
-                        color_mode=doc.color_mode
+                        color_mode=doc.color_mode,
+                        num_copies=doc.num_copies,
                     )
-                    new_price = sum(costs_per_page)
+                    new_price = total_cost
                     try:
                         payment = Payment.objects.get(doc=doc)
                         payment.price = new_price
