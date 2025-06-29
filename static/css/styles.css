@@ -50,7 +50,7 @@ html {
 
 .navbar .logo {
     height: 100px;
-    width: fit-content;
+    width: 100px;
 }
 
 .navbar.scrolled {
@@ -185,7 +185,7 @@ html {
 
     .menu {
         position: fixed;
-        top: -100%; 
+        top: -200%; 
         left: 0;
         width: 100%;
         height: 100vh;
@@ -200,6 +200,7 @@ html {
         padding-left: 129px;
         top: 130px;
         left: 0;
+        z-index: 1000;
     }
 
     .menu li {
@@ -315,6 +316,7 @@ html {
     align-items: center; 
     justify-content: space-between; 
     border: 1px solid black; 
+    color: #000;
     border-radius: 12px; 
     padding: 10px; 
     font-family: 'Montserrat', sans-serif;
@@ -707,8 +709,7 @@ html {
 .form-category {
     display: flex;
     margin-bottom: 20px;
-    justify-content: flex-start;
-    gap: 30px;
+    justify-content: space-around;
 }
 
 .form-category label {
@@ -1108,10 +1109,6 @@ html {
         margin-bottom: 15px;
     }
 
-    .social-media ul li a {
-        padding: 10px;
-    }
-
     .footer-bottom {
         font-size: 1.1rem;
         margin-top: 20px; 
@@ -1177,11 +1174,20 @@ html {
     color: #f33700;
 }
 
-.file-title{
+.file-title {
     display: flex;
     flex-direction: column;
     width: 100%;
     padding-left: 5px;
+    overflow: hidden;                
+}
+
+.file-title h5, .file-title span, .file-title p {
+    white-space: nowrap;            
+    overflow: hidden;                
+    text-overflow: ellipsis;      
+    max-width: 100%;                
+    display: block;                 
 }
 
 .file-rows{
@@ -1485,7 +1491,6 @@ input:focus::placeholder {
 .proceed-btn, .add-printer-btn {
     display: flex;
     padding: 10px;
-    height: 50px;
     flex-direction: column;
     align-items: center;
     gap: 10px;
@@ -1780,6 +1785,139 @@ input:focus::placeholder {
     .feedback {
         align-items: center;
     }
+}
+
+@media (max-width: 1000px) {
+    .main{
+        margin-top: 80px;
+    }
+    body, html {
+        font-size: 11px;
+    }
+    .navbar {
+        padding: 4px 0;
+    }
+    .navbar .logo {
+        height: 50px;
+        width: 50px;
+    }
+    .navbar .brand-title {
+        font-size: 1rem;
+        padding: 2px 3px;
+    }
+    .navbar .brand-subtitle {
+        font-size: 0.5rem;
+        padding: 2px 3px;
+    }
+    .menu, .navbar .menu {
+        font-size: 15px;
+        gap: 10px;
+    }
+
+    .menu {
+        padding: 0 10px;
+        width: 100vw;
+        left: 0;
+        top: -200%;
+        height: 100vh;
+        align-items: center;
+        justify-content: flex-start;
+    }
+    .menu.active {
+        padding-left: 0;
+        top: 64px; 
+        left: 0;
+        z-index: 1200;
+    }
+    .menu li {
+        margin: 10px 0;
+    }
+    .hamburger {
+        width: 36px;
+        height: 36px;
+    }
+    .file-upload, .uploaded, .confirmation {
+        padding: 10px;
+    }
+    .file-upload-title, .confirmation-title {
+        font-size: 1rem;
+    }
+    .file-upload-subtitle, .confirmation-subtitle {
+        font-size: 0.8rem;
+    }
+    .browse-area, .browse-btn {
+        font-size: 0.8rem;
+        padding: 6px 10px;
+    }
+    .browse-btn{
+        margin-bottom: 5px;
+    }
+
+    .browse-btn,
+    .browse-btn * {
+        color: #000 !important;
+        text-shadow: none !important;
+        -webkit-text-fill-color: #000 !important; /* For Safari/iOS */
+    }
+    input[type="file"]::file-selector-button {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    }
+    .drag-area {
+        padding: 20px;
+    }
+
+    .drag-area p {
+        font-size: 1rem;
+        line-height: 1.2rem;
+    }
+    .document-item, .queue-row, .on-queue-row, .completed-row {
+        padding: 8px;
+    }
+    .document-item-title, .completedJobs-item-title {
+        font-size: 1rem;
+        padding: 6px;
+    }
+    .search-bar, .queue-search-bar, .printer-search-bar {
+        padding: 6px;
+        font-size: 13px;
+    }
+    .approve-btn, .deny-btn, .queue-approve-btn, .queue-deny-btn, .queue-cancel-btn, .handed-over-btn {
+        font-size: 0.8rem;
+        padding: 6px 10px;
+    }
+    .price-display p {
+        font-size: 1.5rem;
+    }
+    .amount h3 {
+        font-size: 2rem;
+    }
+    .customer-id-label, .customer-id-value {
+        font-size: 3.1rem;
+    }
+    .card-title, .faq-card-title {
+        font-size: 1rem;
+    }
+    .faq-card-header {
+        padding: 10px 0;
+    }
+    .form-container {
+        padding: 25px;
+        width: 100%;
+    }
+    .form-category span{
+        font-size: 0.9rem;
+    }
+    .footer-logo .logo {
+        height: 50px;
+    }
+    .footer-content {
+        margin-bottom: 20px;
+    }
+    .footer-bottom {
+        font-size: 0.8rem;
+    }
+
 }
 
 /* DASHBOARD LAYOUT */

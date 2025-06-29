@@ -1,6 +1,7 @@
 let uploadedFiles = [];
 let hasProceeded = false;
 const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
+document.addEventListener("touchstart", function(){}, true);
 
 document.addEventListener('DOMContentLoaded', () => {
     //Drag and Drop File Upload Functionality
