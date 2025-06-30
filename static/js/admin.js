@@ -1344,4 +1344,45 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(() => alert('An error occurred while marking as done.'));
         });
     });
+
+    // SSE for real-time printer status and ink updates
+    if (window.location.pathname.includes('/portal/status/')) {
+        const evtSource = new EventSource('/portal/sse/printer-status/');
+        evtSource.onmessage = function(event) {
+            try {
+                const printers = JSON.parse(event.data);
+                document.querySelectorAll('.printer-table-row').forEach(row => {
+                    const printerName = row.querySelector('.printer-name')?.textContent?.trim();
+                    const printer = printers.find(p => p.printer_name === printerName);
+                    if (printer) {
+                        // Update status dot and text
+                        const statusDot = row.querySelector('.status-dot');
+                        if (statusDot) {
+                            statusDot.classList.remove('idle', 'printing', 'error');
+                            if (printer.printer_status === 'Idle') statusDot.classList.add('idle');
+                            else if (printer.printer_status === 'Printing') statusDot.classList.add('printing');
+                            else if (printer.printer_status === 'Error') statusDot.classList.add('error');
+                        }
+                        const statusText = statusDot ? statusDot.nextSibling : null;
+                        if (statusText && statusText.nodeType === 3) {
+                            statusText.textContent = ' ' + printer.printer_status;
+                        }
+                        // Update ink bars if ink info exists
+                        const inkBars = row.querySelectorAll('.ink-bars .ink');
+                        if (inkBars.length === 4) {
+                            const inkLevels = [printer.ink_cyan, printer.ink_magenta, printer.ink_yellow, printer.ink_black];
+                            inkBars.forEach((bar, i) => {
+                                if (inkLevels[i] !== null && inkLevels[i] !== undefined) {
+                                    bar.style.opacity = (inkLevels[i] > 0 ? 1 : 0.3);
+                                    bar.title = `Level: ${inkLevels[i]}`;
+                                }
+                            });
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error('SSE parse error:', e);
+            }
+        };
+    }
 });

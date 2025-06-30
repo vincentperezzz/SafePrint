@@ -3,15 +3,15 @@ import json
 from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
 from django.conf import settings
-from django.http import JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.http import Http404
 from django.views.decorators.csrf import csrf_exempt
 from .forms import FeedbackForm
-from django.http import JsonResponse
 from django.utils.timezone import localtime
 from .models import AdminUser, Printer, Document, Payment
 from django.db.models import Q
+import time
 
 
 
@@ -530,3 +530,32 @@ def approve_document(request):
 
         return JsonResponse({'success': True, 'updated_count': updated, 'admin_name': admin_name})
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+def printer_status_stream(request):
+    # SSE headers
+    response = StreamingHttpResponse(printer_status_event_stream(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    return response
+
+def printer_status_event_stream():
+    last_data = None
+    while True:
+        # Query all printers' idle and ink status
+        printers = Printer.objects.all()
+        data = []
+        for printer in printers:
+            data.append({
+                'id': printer.id,
+                'printer_name': printer.printer_name,
+                'printer_status': printer.printer_status,
+                'ink_cyan': getattr(printer, 'ink_cyan', None),
+                'ink_magenta': getattr(printer, 'ink_magenta', None),
+                'ink_yellow': getattr(printer, 'ink_yellow', None),
+                'ink_black': getattr(printer, 'ink_black', None),
+            })
+        import json
+        json_data = json.dumps(data)
+        if json_data != last_data:
+            yield f"data: {json_data}\n\n"
+            last_data = json_data
+        time.sleep(2)  # Poll every 2 seconds (adjust as needed)
