@@ -1315,9 +1315,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Handled Done button for completed jobs (dashboard)
-    document.querySelectorAll('.jobs-done-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
+        // Handled Done button for completed jobs (dashboard)
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.classList.contains('jobs-done-btn')) {
+            const btn = e.target;
+            const wrapper = btn.closest('.jobs-item-wrapper');
+            const jobsItem = wrapper ? wrapper.parentElement : null;
             const docId = btn.getAttribute('data-doc-id');
             if (!docId) return;
             fetch(denyDocumentUrl, {
@@ -1331,18 +1334,30 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Remove the job from the DOM
-                    const wrapper = btn.closest('.jobs-item-wrapper');
                     if (wrapper) wrapper.remove();
+    
+                    // If no more jobs, show the empty state
+                    if (jobsItem && jobsItem.querySelectorAll('.jobs-item-wrapper').length === 0) {
+                        jobsItem.innerHTML = `
+                            <div class="no-jobs">
+                                <img src="/static/assets/empty-jobs.png" alt="Completed Jobs">
+                                <p>All Completed!</p>
+                            </div>
+                        `;
+                        // Hide the completedJobs-item-title if present
+                        const title = document.querySelector('.completedJobs-item-title');
+                        if (title) title.style.display = 'none';
+                    }
+    
                     if (typeof createAlert === "function") {
-                        createAlert('Success', 'Done', 'Document marked as done.', 'success', true, true, 'pageMessages');
+                        createAlert('Success', 'Handed Over', 'Document handed over.', 'success', true, true, 'pageMessages');
                     }
                 } else {
                     alert('Failed: ' + (data.error || 'Unknown error.'));
                 }
             })
-            .catch(() => alert('An error occurred while marking as done.'));
-        });
+            .catch(() => alert('An error occurred while marking as handed over.'));
+        }
     });
 
     // SSE for real-time printer status and ink updates
