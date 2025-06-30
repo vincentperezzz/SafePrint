@@ -26,6 +26,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize proceed button state
     updateProceedButton();
 
+    // Make drag area clickable to open file browser
+    if (dragArea && fileInput) {
+        dragArea.addEventListener('click', function(e) {
+            // Prevent click event if the browse button inside the drag area was clicked
+            if (e.target.closest('.browse-btn')) return;
+            
+            // Trigger file input click
+            fileInput.click();
+        });
+        
+        // Add pointer cursor to show it's clickable
+        dragArea.style.cursor = 'pointer';
+    }
+
     if (fileInput && browseBtn) {
 
         browseBtn.addEventListener('click', function() {
