@@ -1696,7 +1696,6 @@ input:focus::placeholder {
     font-size: 1rem;
     font-weight: 600;
     text-align: right;
-    padding: 5px 0 0 10px;
 }
 
 /* Feedback Section */
@@ -1892,8 +1891,29 @@ input:focus::placeholder {
     .amount h3 {
         font-size: 2rem;
     }
-    .customer-id-label, .customer-id-value {
-        font-size: 3.1rem;
+    .customer-id-label {
+        font-size: 2rem;
+    }
+    .customer-id-value {
+        font-size: 2rem;
+        line-height: 2.2rem;
+    }
+    .avatar {
+        width: 40px;
+        height: 40px;
+    }
+    .document-item img, .file-icon{
+        width: 30px;
+        height: 30px;
+    }
+    .document-info h6, .file-name{ 
+        font-size: 12px;
+    }
+    .document-info span, .file-size{
+        font-size: 10px;
+    }
+    .documents, .file{
+        padding: 12px;
     }
     .card-title, .faq-card-title {
         font-size: 1rem;
