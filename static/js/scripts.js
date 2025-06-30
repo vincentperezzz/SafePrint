@@ -369,6 +369,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
                 .then(res => res.json())
                 .then(data => {
+                    if (!data.success && data.paper_size_errors) {
+                        // Show a detailed alert for the user
+                        let msg = "Paper Size Error:\n";
+                        data.paper_size_errors.forEach(err => {
+                            msg += `- ${err.file}: ${err.reason}\n`;
+                        });
+                        msg += "\nPlease remove this file and approach our store personnel for custom paper size.";
+                        alert(msg); // Or use your custom alert system
+                        if (overlay) overlay.style.display = 'none';
+                        return; // Stop further processing
+                    }
                     if (data.success) {
                         // Store document metadata in sessionStorage for preview
                         sessionStorage.setItem('documents', JSON.stringify(data.documents));

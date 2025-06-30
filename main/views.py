@@ -283,22 +283,20 @@ def get_paper_size(width, height):
 @csrf_exempt
 def finalize_uploads_view(request):
     if request.method == 'POST':
-        # Always use the same session key for the user session
         if not request.session.get('upload_session_key'):
             request.session['upload_session_key'] = str(uuid.uuid4())
         session_key = request.session['upload_session_key']
-        # Always generate a new CID for every proceed-btn click
         customer_id = 'CID-' + ''.join(random.choices(string.digits, k=4))
         request.session['customer_id'] = customer_id
         try:
             data = json.loads(request.body)
             files = data.get('files', [])
             original_names = data.get('original_names', {})
-            # Get default paper size from POST or fallback to 'Letter'
-            default_paper_size = data.get('default_paper_size', 'Letter')
         except Exception as e:
             return JsonResponse({'success': False, 'error': f'Invalid data: {str(e)}'})
         docs_data = []
+        paper_size_errors = []
+        allowed_paper_sizes = {'A4', 'Letter', 'Long'}
         for file_path in files:
             try:
                 with default_storage.open(file_path, 'rb') as f:
@@ -310,30 +308,35 @@ def finalize_uploads_view(request):
                         height = float(page.mediabox.height)
                         orientation = 'Landscape' if width > height else 'Portrait'
                         paper_size = get_paper_size(width, height)
-                        if not paper_size or paper_size == 'Custom':
-                            paper_size = default_paper_size
+                        # Assign 'Unsupported' if not in allowed set
+                        if paper_size not in allowed_paper_sizes:
+                            paper_size = 'Unsupported'
                     else:
                         orientation = 'Portrait'
-                        paper_size = default_paper_size
+                        paper_size = 'Unsupported'
             except Exception:
-                # If PDF reading fails, assume default values
                 num_pages = 1
                 orientation = 'Portrait'
-                paper_size = default_paper_size
+                paper_size = 'Unsupported'
             file_size = default_storage.size(file_path)
             stored_name = os.path.basename(file_path)
-            # Always use original name from mapping, fallback to stored_name
             original_name = original_names.get(file_path, stored_name)
 
-            # Generate unique DOC_ID
+            # If paper_size is 'Unsupported', inform user and skip creation
+            if paper_size == 'Unsupported':
+                paper_size_errors.append({
+                    'file': original_name,
+                    'reason': 'This document has a paper size that is not supported.'
+                })
+                continue
+
             while True:
                 doc_id = 'DOC-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
                 if not Document.objects.filter(doc_id=doc_id).exists():
                     break
 
-            # Prevent duplicate stored_name
             if Document.objects.filter(stored_name=stored_name).exists():
-                continue  # Skip this file
+                continue
 
             doc = Document.objects.create(
                 doc_id=doc_id,
@@ -363,6 +366,12 @@ def finalize_uploads_view(request):
                 'stored_name': stored_name,
                 'paper_quality': doc.paper_quality,
                 'color_mode': doc.color_mode,
+            })
+        if paper_size_errors:
+            return JsonResponse({
+                'success': False,
+                'error': 'Some files have undetected or unsupported paper size.',
+                'paper_size_errors': paper_size_errors
             })
         return JsonResponse({'success': True, 'documents': docs_data, 'customer_id': customer_id})
     return JsonResponse({'success': False, 'error': 'Invalid request'})

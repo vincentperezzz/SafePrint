@@ -23,8 +23,9 @@ class AdminUser(models.Model):
 class Printer(models.Model):
     PAPER_SIZE_CHOICES = [
         ('Long', 'Long'),
-        ('Short', 'Short'),
+        ('Letter', 'Letter'), 
         ('A4', 'A4'),
+        ('Unsupported', 'Unsupported'),
     ]
 
     GSM_CHOICES = [
