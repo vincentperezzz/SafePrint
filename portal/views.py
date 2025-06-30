@@ -559,3 +559,41 @@ def printer_status_event_stream():
             yield f"data: {json_data}\n\n"
             last_data = json_data
         time.sleep(2)  # Poll every 2 seconds (adjust as needed)
+
+def dashboard_status_stream(request):
+    response = StreamingHttpResponse(dashboard_status_event_stream(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    return response
+
+def dashboard_status_event_stream():
+    last_data = None
+    while True:
+        # Gather dashboard stats
+        completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
+        printer_errors_count = Printer.objects.filter(printer_status='Error').count()
+        pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
+        # Get recent completed documents (limit 5, order by -printed_at)
+        completed_documents = list(
+            Document.objects.filter(doc_status='Finished')
+            .select_related('printer_assigned')
+            .order_by('-printed_at')[:5]
+        )
+        completed_docs_data = []
+        for doc in completed_documents:
+            completed_docs_data.append({
+                'doc_id': doc.doc_id,
+                'filename': doc.filename,
+                'printer_name': doc.printer_assigned.printer_name if doc.printer_assigned else 'No Printer',
+            })
+        data = {
+            'completed_jobs_count': completed_jobs_count,
+            'printer_errors_count': printer_errors_count,
+            'pending_customers_count': pending_customers_count,
+            'completed_documents': completed_docs_data,
+        }
+        import json
+        json_data = json.dumps(data)
+        if json_data != last_data:
+            yield f"data: {json_data}\n\n"
+            last_data = json_data
+        time.sleep(2)
