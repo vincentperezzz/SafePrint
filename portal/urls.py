@@ -26,4 +26,5 @@ urlpatterns = [
     path('deny-document/', views.deny_document, name='deny_document'),
     path('approve-document/', views.approve_document, name='approve_document'),
     path('sse/printer-status/', views.printer_status_stream, name='printer_status_stream'),
+    path('sse/dashboard-status/', views.dashboard_status_stream, name='dashboard_status_stream'),
 ]

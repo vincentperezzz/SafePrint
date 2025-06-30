@@ -1385,4 +1385,51 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         };
     }
+
+    // SSE for real-time dashboard stats (printer status, completed jobs, pending customers, completed documents)
+    if (window.location.pathname.includes('/portal/dashboard/')) {
+        const evtSource = new EventSource('/portal/sse/dashboard-status/');
+        evtSource.onmessage = function(event) {
+            try {
+                const stats = JSON.parse(event.data);
+                // Update Print Jobs Completed
+                const completedElem = document.querySelector('.stat-card.green p');
+                if (completedElem) completedElem.textContent = stats.completed_jobs_count;
+                // Update Printer Errors
+                const errorElem = document.querySelector('.stat-card.red p');
+                if (errorElem) errorElem.textContent = stats.printer_errors_count;
+                // Update Pending Customers
+                const pendingElem = document.querySelector('.stat-card.yellow p');
+                if (pendingElem) pendingElem.textContent = stats.pending_customers_count;
+
+                // Update Completed Jobs List (dashboard-right)
+                const jobsItem = document.querySelector('.jobs-item');
+                if (jobsItem && Array.isArray(stats.completed_documents)) {
+                    jobsItem.innerHTML = '';
+                    if (stats.completed_documents.length > 0) {
+                        stats.completed_documents.forEach(doc => {
+                            const wrapper = document.createElement('div');
+                            wrapper.className = 'jobs-item-wrapper';
+                            wrapper.innerHTML = `
+                                <h6 title="${doc.filename}">${doc.filename}</h6>
+                                <div class="Printer-Assigned">${doc.printer_name || 'No Printer'}</div>
+                                <button class="jobs-done-btn" data-doc-id="${doc.doc_id}">Done</button>
+                            `;
+                            jobsItem.appendChild(wrapper);
+                        });
+                    } else {
+                        jobsItem.innerHTML = `
+                            <div class="no-jobs">
+                                <img src="/static/assets/empty-jobs.png" alt="Completed Jobs">
+                                <p>All Completed!</p>
+                            </div>
+                        `;
+                    }
+                }
+            } catch (e) {
+                console.error('Dashboard SSE parse error:', e);
+            }
+        };
+    }
+
 });
