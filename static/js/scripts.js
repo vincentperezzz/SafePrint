@@ -190,7 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Send the request
-        xhr.open('POST', '/upload-file/', true);
+        xhr.open('POST', '/api/upload-file/', true);
         // Ensure cookies (sessionid) are sent with the request
         xhr.withCredentials = true;
         xhr.send(formData);
@@ -298,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 // Call backend to delete the file from server
-                fetch('/delete-file/', {
+                fetch('/api/delete-file/', {
                     method: 'POST',
                     headers: headers,
                     body: JSON.stringify({
@@ -359,7 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const path = f.serverPath || f.file_path || f.path || f.name;
                     originalNames[path] = f.name;
                 });
-                fetch('/finalize-uploads/', {
+                fetch('/api/finalize-uploads/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -459,7 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
             // Send updates to backend
-            fetch('/update-document-settings/', {
+            fetch('/api/update-document-settings/', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -608,7 +608,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const form = e.target;
             const formData = new FormData(form);
     
-            fetch("{% url 'feedback' %}", {
+            fetch("/api/feedback/", {
                 method: "POST",
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
@@ -792,7 +792,7 @@ window.addEventListener('beforeunload', function (e) {
         !hasProceeded
     ) {
         // Send a request to delete all uploaded files for this session
-        navigator.sendBeacon('/delete-all-uploads/');
+        navigator.sendBeacon('/api/delete-all-uploads/');
         e.preventDefault();
         e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
     }
@@ -950,7 +950,7 @@ function renderUploadedDocumentsPreview() {
         const deleteIcon = fileDiv.querySelector('.delete-icon');
         if (deleteIcon) {
             deleteIcon.addEventListener('click', () => {
-                fetch('/delete-document/', {
+                fetch('/api/delete-document/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
