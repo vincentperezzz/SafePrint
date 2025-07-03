@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
             createAlert('Error', 'Customer ID Required', 'Please enter a Customer ID to search for documents.', 'danger', true, true, 'pageMessages');
             return;
         }
-        fetch('/portal/search_customer/', {
+        fetch('/api/search_customer/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            fetch(denyAllUrl, {
+            fetch('/api/deny-all-documents/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -231,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            fetch(approveAllUrl, {
+            fetch('/api/approve-all-documents/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -277,7 +277,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (fileInput.files.length > 0) {
                 var formData = new FormData();
                 formData.append('profile_image', fileInput.files[0]);
-                fetch(changeImageUrl, {
+                fetch('/api/change-image-ajax/', {
                     method: 'POST',
                     headers: {
                         'X-CSRFToken': csrfToken
@@ -308,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
         editNameForm.onsubmit = function(e) {
         e.preventDefault();
         var formData = new FormData(this);
-        fetch(updateNameUrl, {
+        fetch('/api/update-name/', {
             method: 'POST',
             headers: {
                 'X-CSRFToken': csrfToken
@@ -335,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
         editUsernameForm.onsubmit = function(e) {
         e.preventDefault();
         var formData = new FormData(this);
-        fetch(updateUsernameUrl, {
+        fetch('/api/update-username/', {
             method: 'POST',
             headers: {
                 'X-CSRFToken': csrfToken
@@ -362,7 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
         editPasswordForm.onsubmit = function(e) {
          e.preventDefault();
         var formData = new FormData(this);
-        fetch(updatePasswordUrl, {
+        fetch('/api/update-password/', {
             method: 'POST',
             headers: {
                 'X-CSRFToken': csrfToken
@@ -411,7 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
         editUserPasswordForm.onsubmit = function(e) {
         e.preventDefault();
         var formData = new FormData(this);
-        fetch(updateUserPasswordUrl, {
+        fetch('/api/update-user-password/', {
             method: 'POST',
             headers: {
                 'X-CSRFToken': csrfToken
@@ -436,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (deleteBtn) {
         deleteBtn.onclick = function() {
             var userId = document.getElementById('delete-user-id').value;
-            fetch(deleteUserUrl, {
+            fetch('/api/delete_user_ajax/', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -506,7 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
         var password = formData.get('password');
         var confirmPassword = formData.get('confirm_password');
 
-        fetch('/portal/add_user_ajax/', {
+        fetch('/api/add_user_ajax/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -544,7 +544,7 @@ document.addEventListener('DOMContentLoaded', () => {
         feedbackBtn.addEventListener('click', function(e) {
         e.preventDefault();
         document.getElementById('feedbackModal').style.display = 'block';
-        fetch(updateFeebackUrl)
+        fetch('/api/feedback-comments/')
             .then(response => response.json())
             .then(data => {
                 const list = document.querySelector("#feedbackModal .feedback-list");
@@ -577,7 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
         problemBtn.addEventListener('click', function(e) {
          e.preventDefault();
         document.getElementById('problemModal').style.display = 'block';
-        fetch(updateProblemUrl)
+        fetch('/api/problem-reports/')
             .then(response => response.json())
             .then(data => {
                 const list = document.querySelector("#problemModal .feedback-list");
@@ -661,7 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('field', field);
                 formData.append('value', value);
                 
-                fetch(updatePrinterUrl, {
+                fetch('/api/update_printer_field/', {
                     method: 'POST',
                     headers: {
                         'X-CSRFToken': csrfToken
@@ -924,7 +924,7 @@ function renderDocumentItems(documents, resultsDiv) {
         btn.addEventListener('click', function() {
             const docItem = btn.closest('.document-item');
             const docId = docItem.getAttribute('data-doc-id');
-            fetch(denyDocumentUrl, {
+            fetch('/api/deny-document/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -975,7 +975,7 @@ function renderDocumentItems(documents, resultsDiv) {
         btn.addEventListener('click', function() {
             const docItem = btn.closest('.document-item');
             const docId = docItem.getAttribute('data-doc-id');
-            fetch(approveDocumentUrl, {
+            fetch('/api/approve-document/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -1042,7 +1042,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (row.id.startsWith('onqueue-doc-')) {
                 docId = row.id.replace('onqueue-doc-', '');
             }
-            fetch(denyDocumentUrl, {
+            fetch('/api/deny-document/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -1089,7 +1089,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (row.id.startsWith('onqueue-doc-')) {
                 docId = row.id.replace('onqueue-doc-', '');
             }
-            fetch(approveDocumentUrl, {
+            fetch('/api/approve-document/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -1177,7 +1177,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     docId = row.id.replace('onqueue-doc-', '');
                                 }
                                 if (!docId) return;
-                                fetch(denyDocumentUrl, {
+                                fetch('/api/deny-document/', {
                                     method: "POST",
                                     headers: {
                                         "X-CSRFToken": csrfToken,
@@ -1236,7 +1236,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 docId = row.id.replace('onqueue-doc-', '');
             }
             if (!docId) return;
-            fetch(denyDocumentUrl, {
+            fetch('/api/deny-document/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -1277,7 +1277,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const row = btn.closest('.completed-row');
             const docId = row ? row.getAttribute('data-doc-id') : null;
             if (!docId) return;
-            fetch(denyDocumentUrl, {
+            fetch('/api/deny-document/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -1323,7 +1323,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const jobsItem = wrapper ? wrapper.parentElement : null;
             const docId = btn.getAttribute('data-doc-id');
             if (!docId) return;
-            fetch(denyDocumentUrl, {
+            fetch('/api/deny-document/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -1361,8 +1361,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // SSE for real-time printer status and ink updates
-    if (window.location.pathname.includes('/portal/status/')) {
-        const evtSource = new EventSource('/portal/sse/printer-status/');
+    if (window.location.pathname.includes('/api/status/')) {
+        const evtSource = new EventSource('/sse/printer-status/');
         evtSource.onmessage = function(event) {
             try {
                 const printers = JSON.parse(event.data);
@@ -1403,7 +1403,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // SSE for real-time dashboard stats (printer status, completed jobs, pending customers, completed documents)
     if (window.location.pathname.includes('/portal/dashboard/')) {
-        const evtSource = new EventSource('/portal/sse/dashboard-status/');
+        const evtSource = new EventSource('/sse/dashboard-status/');
         evtSource.onmessage = function(event) {
             try {
                 const stats = JSON.parse(event.data);

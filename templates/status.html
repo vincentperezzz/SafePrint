@@ -99,15 +99,6 @@ Printer Status
 </div>
 
 <script>
-    var changeImageUrl = "{% url 'change_image_ajax' %}";
-    var updateNameUrl = "{% url 'update_name' %}";
-    var updateUsernameUrl = "{% url 'update_username' %}";
-    var updatePasswordUrl = "{% url 'update_password' %}";
-    var updateUserPasswordUrl = "{% url 'update_user_password' %}";
-    var deleteUserUrl = "{% url 'delete_user_ajax' %}"; 
-    var updateFeebackUrl = "{% url 'feedback_comments_api' %}";
-    var updateProblemUrl = "{% url 'problem_reports_api' %}";
-    var updatePrinterUrl = "{% url 'update_printer_field' %}";
     var csrfToken = "{{ csrf_token }}";
 </script>
 {% endblock %}
