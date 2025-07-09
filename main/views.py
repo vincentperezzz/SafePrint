@@ -9,7 +9,7 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 from apps.main.utils.pdf_color_detection import analyze_pdf_colors, calculate_page_costs 
 from apps.main.utils.page_range import parse_page_ranges
-import os, uuid, math, time, random, string, json, PyPDF2
+import os, uuid, math, time, random, string, json, PyPDF2, subprocess
 
 
 
@@ -139,6 +139,8 @@ def delete_file_view(request):
             # Check if file exists and delete it
             if default_storage.exists(file_path):
                 default_storage.delete(file_path)
+                # Trigger folder cleanup after file deletion
+                subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
                 return JsonResponse({
                     'success': True,
                     'message': 'File deleted successfully'
@@ -205,6 +207,8 @@ def delete_all_uploads_view(request):
                     default_storage.delete(os.path.join(upload_dir, fname))
                 # Optionally, delete the directory itself
                 default_storage.delete(upload_dir)
+                # Trigger folder cleanup after deleting all uploads
+                subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
             return JsonResponse({'success': True})
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})
@@ -228,6 +232,8 @@ def delete_document(request):
                 from django.core.files.storage import default_storage
                 if default_storage.exists(file_path):
                     default_storage.delete(file_path)
+                    # Trigger folder cleanup after file deletion
+                    subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
             doc.delete()
             return JsonResponse({'success': True})
         except Document.DoesNotExist:
@@ -255,6 +261,8 @@ def delete_all_documents(request):
                         from django.core.files.storage import default_storage
                         if default_storage.exists(file_path):
                             default_storage.delete(file_path)
+                            # Trigger folder cleanup after file deletion
+                            subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
                     doc.delete()
                 except Document.DoesNotExist:
                     continue  # Skip if document does not exist
