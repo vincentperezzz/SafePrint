@@ -13,6 +13,7 @@ from .models import AdminUser, Printer, Document, Payment
 from django.db.models import Q
 from django.utils import timezone
 import time
+import subprocess
 
 
 now = timezone.now()
@@ -427,6 +428,8 @@ def deny_all_documents(request):
                             os.remove(file_path)
                             break
         deleted, _ = qs.delete()
+        # Trigger folder cleanup after deleting all documents
+        subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
         return JsonResponse({'success': True, 'deleted_count': deleted})
 
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
@@ -498,6 +501,8 @@ def deny_document(request):
                             os.remove(file_path)
                             break
             doc.delete()
+            # Trigger folder cleanup after deleting a document
+            subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
             return JsonResponse({'success': True, 'deleted_count': 1})
         except Document.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Document not found'})
