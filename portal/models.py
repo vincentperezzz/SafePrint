@@ -88,6 +88,7 @@ class Document(models.Model):
     file_type = models.CharField(max_length=50)
     file_size = models.IntegerField()
     doc_status = models.CharField(max_length=50, choices=DOC_STATUS_CHOICES, default='Pending')
+    status_updated_at = models.DateTimeField(auto_now=True)  # Track last status change
     time_submitted = models.DateTimeField()
     printer_assigned = models.ForeignKey(
         Printer,
@@ -151,6 +152,14 @@ class Document(models.Model):
                 pages.append(int(part))
         
         return sorted(list(set(pages)))  # Remove duplicates and sort
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            orig = Document.objects.get(pk=self.pk)
+            if orig.doc_status != self.doc_status:
+                from django.utils import timezone
+                self.status_updated_at = timezone.now()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.doc_id} - {self.filename}"
