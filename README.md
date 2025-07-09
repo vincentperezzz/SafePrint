@@ -141,29 +141,23 @@ Follow these steps to run SafePrint on a Linux server (e.g., Ubuntu-Server-LTS):
    ssh your_username@your_server_ip
    ```
 
-2. **(Optional) Change to root:**
-   If you need root privileges:
-   ```sh
-   sudo -i
-   ```
-
-3. **Navigate to the project directory:**
+2. **Navigate to the project directory:**
    ```sh
    cd /dev/SafePrint
    ```
 
-4. **Activate the Python virtual environment:**
+3. **Activate the Python virtual environment:**
    ```sh
    . venv/bin/activate
    ```
 
-5. **Run the Django development server:**
+4. **Run the Django development server:**
    ```sh
    python manage.py runserver 0.0.0.0:8080
    ```
    Access the app at `http://your_server_ip:8080/`
 
-6. **Update code from Git (if changes are made):**
+5. **Update code from Git (if changes are made):**
    ```sh
    git pull
    ```
