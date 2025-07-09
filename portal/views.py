@@ -11,10 +11,11 @@ from .forms import FeedbackForm
 from django.utils.timezone import localtime
 from .models import AdminUser, Printer, Document, Payment
 from django.db.models import Q
+from django.utils import timezone
 import time
 
 
-
+now = timezone.now()
 
 def dashboard(request):
     user_id = request.session.get('admin_user_id')
@@ -444,7 +445,12 @@ def approve_all_documents(request):
         qs = Document.objects.filter(customer_id__iexact=customer_id, doc_status='Pending')
         approved_doc_ids = list(qs.values_list('doc_id', flat=True))
         docs = list(qs)  # <-- EVALUATE the queryset BEFORE update!
-        updated = qs.update(doc_status='Queued')
+        # Update doc_status and status_updated_at for all docs
+        for doc in docs:
+            doc.doc_status = 'Queued'
+            doc.status_updated_at = now
+            doc.save()
+        updated = len(docs)
 
         # Get admin name from session
         admin_name = None
@@ -459,12 +465,11 @@ def approve_all_documents(request):
 
         # Update Payment records for all docs
         if admin_user:
-            from django.utils import timezone
             for doc in docs:
                 try:
                     payment = Payment.objects.get(doc_id=doc.doc_id)
                     payment.approved_by = admin_user.name
-                    payment.approved_at = timezone.now()
+                    payment.approved_at = now
                     payment.payment_status = 'Paid'
                     payment.save()
                 except Payment.DoesNotExist:
@@ -506,8 +511,16 @@ def approve_document(request):
         if not doc_id:
             return JsonResponse({'success': False, 'error': 'Document ID is required'})
 
-        # Update document status
-        updated = Document.objects.filter(doc_id=doc_id, doc_status='Pending').update(doc_status='Queued')
+        from django.utils import timezone
+        now = timezone.now()
+        try:
+            doc = Document.objects.get(doc_id=doc_id, doc_status='Pending')
+            doc.doc_status = 'Queued'
+            doc.status_updated_at = now
+            doc.save()
+            updated = 1
+        except Document.DoesNotExist:
+            updated = 0
 
         # Get admin name from session
         admin_name = None
@@ -519,8 +532,7 @@ def approve_document(request):
                 try:
                     payment = Payment.objects.get(doc_id=doc_id)
                     payment.approved_by = admin_user.name
-                    from django.utils import timezone
-                    payment.approved_at = timezone.now()
+                    payment.approved_at = now
                     payment.payment_status = 'Paid'
                     payment.save()
                 except Payment.DoesNotExist:

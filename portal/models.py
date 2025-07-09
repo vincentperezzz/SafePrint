@@ -154,7 +154,7 @@ class Document(models.Model):
         return sorted(list(set(pages)))  # Remove duplicates and sort
 
     def save(self, *args, **kwargs):
-        if self.pk:
+        if self.pk and Document.objects.filter(pk=self.pk).exists():
             orig = Document.objects.get(pk=self.pk)
             if orig.doc_status != self.doc_status:
                 from django.utils import timezone
