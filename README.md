@@ -134,7 +134,7 @@ This ensures users can set up the database using MySQL Workbench and configure t
 
 ## Linux Server Setup & Usage
 
-Follow these steps to run SafePrint on a Linux server (e.g., Ubuntu):
+Follow these steps to run SafePrint on a Linux server (e.g., Ubuntu-Server-LTS):
 
 1. **SSH into your server:**
    ```sh
