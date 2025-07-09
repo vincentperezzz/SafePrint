@@ -12,7 +12,7 @@ SECRET_KEY = config('DJANGO_SECRET_KEY', default='default-secret-key')
 
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '172.20.10.8', '192.168.1.205']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '172.20.10.8', '192.168.1.213']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
