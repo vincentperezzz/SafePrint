@@ -1,6 +1,5 @@
 from django.urls import path, include
 from . import views
-from .views import finalize_uploads_view
 
 urlpatterns = [
     path('', views.index_view, name='home'), 
@@ -14,7 +13,7 @@ urlpatterns = [
     path('api/delete-all-uploads/', views.delete_all_uploads_view, name='delete_all_uploads'),
     path('api/delete-all-documents/', views.delete_all_documents, name='delete_all_documents'),
     path('api/delete-document/', views.delete_document, name='delete_document'),
-    path('api/finalize-uploads/', finalize_uploads_view, name='finalize_uploads'),
+    path('api/finalize-uploads/', views.finalize_uploads_view, name='finalize_uploads'),
     path('api/update-document-settings/', views.update_document_settings, name='update_document_settings'),
     path('', include('portal.urls')),
 ]

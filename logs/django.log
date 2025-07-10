@@ -1,0 +1,2 @@
+INFO 2025-07-10 22:05:50,780 autoreload 3677 136918370381952 Watching for file changes with StatReloader
+INFO 2025-07-10 22:06:16,183 autoreload 3677 136918370381952 /home/safeprint/dev/SafePrint/SafePrint/settings.py changed, reloading.

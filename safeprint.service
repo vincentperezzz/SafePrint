@@ -1,0 +1,15 @@
+[Unit]
+Description=SafePrint Gunicorn Daemon
+After=network.target
+
+[Service]
+User=safeprint
+Group=www-data
+ExecStart=/home/safeprint/dev/SafePrint/gunicorn_start.sh
+WorkingDirectory=/home/safeprint/dev/SafePrint
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=-/etc/default/safeprint
+
+[Install]
+WantedBy=multi-user.target

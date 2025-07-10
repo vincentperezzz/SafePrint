@@ -10,12 +10,24 @@ config = Config(RepositoryEnv(env_path))
 
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='default-secret-key')
 
-DEBUG = True
+# Set to False in production
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '172.20.10.8', '192.168.1.213', 'nanoprint.com:8080', 'nanoprint.com', 'https://nanoprint.com']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '172.20.10.8', '192.168.1.213', 'nanoprint.com']
 
 # CSRF settings for HTTPS
 CSRF_TRUSTED_ORIGINS = ['https://nanoprint.com']
+
+# HTTPS Security Settings
+# Only apply these settings in production to allow development server to work properly
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True  # Redirects all non-HTTPS requests to HTTPS
+    SESSION_COOKIE_SECURE = True  # Ensures cookies are only sent over HTTPS
+    CSRF_COOKIE_SECURE = True  # Ensures CSRF cookies are only sent over HTTPS
+    SECURE_HSTS_SECONDS = 31536000  # 1 year, instructs browsers to only use HTTPS
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True  # Applies HSTS to all subdomains
+    SECURE_HSTS_PRELOAD = True  # For inclusion in browser HSTS preload list
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')  # For proxy servers
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -96,13 +108,19 @@ USE_L10N = True
 
 USE_TZ = True
 
+# Static files configuration
 STATIC_URL = '/static/'
-
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Make sure collectstatic has been run
+# Run: python manage.py collectstatic
+
+# Media files configuration
+MEDIA_URL = '/media/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-MEDIA_URL = '/media/'
