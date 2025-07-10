@@ -5,6 +5,9 @@ After=network.target
 [Service]
 User=safeprint
 Group=www-data
+# Ensure the socket directory exists and has correct permissions before starting
+ExecStartPre=/bin/mkdir -p /home/safeprint/dev/SafePrint
+ExecStartPre=/bin/chown safeprint:www-data /home/safeprint/dev/SafePrint
 ExecStart=/home/safeprint/dev/SafePrint/gunicorn_start.sh
 WorkingDirectory=/home/safeprint/dev/SafePrint
 Restart=on-failure
