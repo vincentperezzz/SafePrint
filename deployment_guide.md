@@ -37,13 +37,16 @@ sudo systemctl enable safeprint  # Enable to start on boot
 sudo systemctl status safeprint
 ```
 
-## 4. Test the Nginx Configuration
+## 4. Configure Nginx Site
 
 ```bash
-# Test the Nginx configuration
+# Copy your Nginx config to sites-available
+sudo cp /home/safeprint/dev/SafePrint/nginx.conf /etc/nginx/sites-available/nanoprint.com
+# Enable the site
+sudo ln -sf /etc/nginx/sites-available/nanoprint.com /etc/nginx/sites-enabled/
+# Test Nginx configuration
 sudo nginx -t
-
-# If successful, reload Nginx
+# Reload Nginx to apply changes
 sudo systemctl reload nginx
 ```
 
