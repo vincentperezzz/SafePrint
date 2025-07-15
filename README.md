@@ -1,4 +1,5 @@
 # SafePrint Project
+# 📦 [Deployment Guide](deployment_guide.md)
 
 ## Overview
 SafePrint is a Django web application designed to provide a secure and efficient printing solution. This project aims to streamline the printing process while ensuring user data is handled safely.
