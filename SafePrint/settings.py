@@ -13,7 +13,7 @@ SECRET_KEY = config('DJANGO_SECRET_KEY', default='default-secret-key')
 # Set to False in production
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '172.20.10.8', '192.168.1.213', 'nanoprint.com']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '172.20.10.8', '192.168.1.213', 'nanoprint.com', 'nanoprint.duckdns.org', 'safeprint']
 
 # CSRF settings for HTTPS
 CSRF_TRUSTED_ORIGINS = ['https://nanoprint.com']
