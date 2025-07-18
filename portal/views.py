@@ -366,7 +366,7 @@ def add_user_ajax(request):
 
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
-
+@csrf_exempt
 def feedback_view(request):
     if request.method == 'POST':
         form = FeedbackForm(request.POST)

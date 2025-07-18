@@ -384,6 +384,105 @@ def finalize_uploads_view(request):
         return JsonResponse({'success': True, 'documents': docs_data, 'customer_id': customer_id})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
+@csrf_exempt
+def flutter_finalize_uploads_api(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            files = data.get('files', [])
+            original_names = data.get('original_names', {})
+            customer_id = data.get('customer_id', None)
+            if not customer_id:
+                # Generate a customer_id if not provided
+                customer_id = 'CID-' + ''.join(random.choices(string.digits, k=4))
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': f'Invalid data: {str(e)}'}, status=400)
+
+        docs_data = []
+        paper_size_errors = []
+        allowed_paper_sizes = {'A4', 'Letter', 'Long'}
+
+        for file_info in files:
+            file_path = file_info.get("file_path")
+            original_name = file_info.get("original_name", os.path.basename(file_path))
+            try:
+                with default_storage.open(file_path, 'rb') as f:
+                    reader = PyPDF2.PdfReader(f)
+                    num_pages = len(reader.pages)
+                    if num_pages > 0:
+                        page = reader.pages[0]
+                        width = float(page.mediabox.width)
+                        height = float(page.mediabox.height)
+                        orientation = 'Landscape' if width > height else 'Portrait'
+                        paper_size = get_paper_size(width, height)
+                        if paper_size not in allowed_paper_sizes:
+                            paper_size = 'Unsupported'
+                    else:
+                        orientation = 'Portrait'
+                        paper_size = 'Unsupported'
+            except Exception:
+                num_pages = 1
+                orientation = 'Portrait'
+                paper_size = 'Unsupported'
+
+            file_size = default_storage.size(file_path)
+            stored_name = os.path.basename(file_path)
+            original_name = file_info.get("original_name", stored_name)
+
+            if paper_size == 'Unsupported':
+                paper_size_errors.append({
+                    'file': original_name,
+                    'reason': 'This document has a paper size that is not supported.'
+                })
+                continue
+
+            while True:
+                doc_id = 'DOC-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+                if not Document.objects.filter(doc_id=doc_id).exists():
+                    break
+
+            if Document.objects.filter(stored_name=stored_name).exists():
+                continue
+
+            doc = Document.objects.create(
+                doc_id=doc_id,
+                customer_id=customer_id,
+                filename=original_name, 
+                num_copies=1,
+                pages_num=str(num_pages),
+                orientation=orientation,
+                color_mode='Colored',
+                paper_size=paper_size,
+                paper_quality='70',
+                original_name=original_name,
+                stored_name=stored_name,
+                file_name=original_name,  
+                file_type='pdf',
+                file_size=file_size,
+                doc_status='Pending',
+                time_submitted=timezone.now(),
+            )
+            docs_data.append({
+                'doc_id': doc_id,
+                'filename': original_name,  
+                'num_pages': num_pages,
+                'file_size': file_size,
+                'orientation': orientation,
+                'paper_size': paper_size,
+                'stored_name': stored_name,
+                'file_path': file_path,
+                'paper_quality': doc.paper_quality,
+                'color_mode': doc.color_mode,
+            })
+
+        if paper_size_errors:
+            return JsonResponse({
+                'success': False,
+                'error': 'Some files have undetected or unsupported paper size.',
+                'paper_size_errors': paper_size_errors
+            })
+        return JsonResponse({'success': True, 'documents': docs_data, 'customer_id': customer_id})
+    return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)
 
 @csrf_exempt
 def update_document_settings(request):
@@ -418,7 +517,7 @@ def update_document_settings(request):
                     doc.save()
 
                     # --- Payment creation and color scanning now happens here ---
-                    file_rel_path = f'uploads/{session_key}/{doc.stored_name}'
+                    file_rel_path = upd.get('file_path', f'uploads/{session_key}/{doc.stored_name}')
                     abs_path = default_storage.path(file_rel_path)
                     page_range_str = upd.get('pages', None)
                     if page_range_str and isinstance(page_range_str, str):
@@ -473,4 +572,38 @@ def update_document_settings(request):
             return JsonResponse({'success': True})
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})
+    return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)
+
+
+@csrf_exempt
+def flutter_confirmation_view(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            customer_id = data.get('customer_id')
+            if not customer_id:
+                return JsonResponse({'success': False, 'error': 'customer_id is required'}, status=400)
+
+            payments = Payment.objects.filter(doc__customer_id=customer_id)
+            documents = []
+            total_price = 0
+
+            for payment in payments:
+                doc = payment.doc
+                documents.append({
+                    'doc_id': doc.doc_id,
+                    'filename': doc.filename,
+                    'stored_name': doc.stored_name,
+                    'price': payment.price,
+                })
+                total_price += payment.price
+
+            return JsonResponse({
+                'success': True,
+                'customer_id': customer_id,
+                'documents': documents,
+                'total_price': total_price
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
     return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)

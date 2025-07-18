@@ -17,7 +17,10 @@ urlpatterns = [
     path('api/delete-document/', views.delete_document, name='delete_document'),
     path('api/finalize-uploads/', views.finalize_uploads_view, name='finalize_uploads'),
     path('api/update-document-settings/', views.update_document_settings, name='update_document_settings'),
+    path('api/flutter-finalize-uploads/', views.flutter_finalize_uploads_api, name='flutter_finalize_uploads_api'),
+    path('api/flutter-confirmation/', views.flutter_confirmation_view, name='flutter_confirmation_view'),
     path('', include('portal.urls')),
+    
 ]
 
 if settings.DEBUG:
