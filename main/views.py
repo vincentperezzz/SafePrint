@@ -137,19 +137,19 @@ def delete_file_view(request):
                 })
             
             # Check if file exists and delete it
-            if default_storage.exists(file_path):
-                default_storage.delete(file_path)
-                # Trigger folder cleanup after file deletion
-                subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
-                return JsonResponse({
-                    'success': True,
-                    'message': 'File deleted successfully'
-                })
-            else:
-                return JsonResponse({
-                    'success': False,
-                    'error': 'File not found'
-                })
+            # if default_storage.exists(file_path):
+            #     default_storage.delete(file_path)
+            #     # Trigger folder cleanup after file deletion
+            #     subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+            #     return JsonResponse({
+            #         'success': True,
+            #         'message': 'File deleted successfully'
+            #     })
+            # else:
+            #     return JsonResponse({
+            #         'success': False,
+            #         'error': 'File not found'
+            #     })
                 
         except json.JSONDecodeError:
             return JsonResponse({
