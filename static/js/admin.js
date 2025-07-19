@@ -255,10 +255,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                     }
 
-                    // Remove all document items from the UI
-                    document.querySelectorAll('.document-item').forEach(row => row.remove());
-                    document.getElementById('price-to-pay').textContent = '₱0.00';
-                    toggleActionButtons(false);
+                    const resultsDiv = document.getElementById('document-results');
+                    if (resultsDiv) {
+                        const searchBar = resultsDiv.querySelector('.search-bar');
+                        const docTitle = resultsDiv.querySelector('.document-item-title');
+                        if (searchBar) searchBar.style.display = 'none';
+                        if (docTitle) docTitle.style.display = 'none';
+                        Array.from(resultsDiv.querySelectorAll('.document-item, .no-documents')).forEach(el => el.remove());
+                        resultsDiv.innerHTML += `
+                            <div class="no-documents">
+                                <img src="/static/assets/no-documents.png" alt="No Documents">
+                                <p>No documents found, Please enter a Customer ID</p>
+                            </div>
+                        `;
+                    }
                 } else {
                     createAlert('Error', 'Approve Failed', data.error || 'Unknown error.', 'danger', true, true, 'pageMessages');
                 }
@@ -1192,11 +1202,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                         if (typeof createAlert === "function") {
                                             createAlert('Success', 'Cancelled', 'Document cancelled.', 'success', true, true, 'pageMessages');
                                         }
+                                        // When updating the On Queue list and list is empty(after deny):
                                         const onQueueList = document.querySelector('.on-queue-documents-list');
+                                        let noOnqueueRow = document.getElementById('no-onqueue-documents-row');
                                         if (onQueueList) {
-                                            const remainingRows = onQueueList.querySelectorAll('.on-queue-row[id^="onqueue-doc-"]');
-                                            let noOnqueueRow = document.getElementById('no-onqueue-documents-row');
-                                            if (remainingRows.length === 0) {
+                                            const remainingOnQueueRows = onQueueList.querySelectorAll('.on-queue-row[id^="onqueue-doc-"]');
+                                            if (remainingOnQueueRows.length === 0) {
                                                 if (!noOnqueueRow) {
                                                     noOnqueueRow = document.createElement('div');
                                                     noOnqueueRow.className = 'on-queue-row';
