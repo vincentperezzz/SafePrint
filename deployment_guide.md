@@ -111,6 +111,21 @@ source venv/bin/activate
 python manage.py collectstatic --noinput --clear
 ```
 
+### Verify ChaCha20 Cipher and SSL Digital Signature
+To verify that your server supports ChaCha20 encryption and your SSL certificate is valid:
+
+#### 1. Check ChaCha20 Cipher Support
+```bash
+openssl s_client -connect nanoprint.duckdns.org:443 -cipher 'ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305' -tls1_2
+```
+- If the connection is successful and you see a line like `Cipher    : ECDHE-RSA-CHACHA20-POLY1305`, then ChaCha20 is enabled and working.
+
+#### 2. Check SSL Certificate Digital Signature
+```bash
+openssl s_client -connect nanoprint.duckdns.org:443 -tls1_2
+```
+- Look for the `Signature Algorithm` in the certificate details to verify the digital signature is present and valid.
+
 ## 6. Additional Notes
 
 - Make sure file permissions are correct
