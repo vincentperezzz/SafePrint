@@ -122,31 +122,39 @@ document.addEventListener('DOMContentLoaded', () => {
         exampleFiles.forEach(file => file.remove());
     }
 
-    function uploadFile(file) {
-        const fileId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-          // Create file element for uploading state
+    // Store original file objects for retry
+    const failedUploads = {};
+
+    function uploadFile(file, retryFileId = null) {
+        const fileId = retryFileId || (Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+        // If this is a retry, remove any previous failed record
+        if (retryFileId && failedUploads[retryFileId]) {
+            delete failedUploads[retryFileId];
+        }
+        // Create file element for uploading state
         const fileElement = createFileElement(file, fileId, 'uploading');
-        
+
         // Insert the file element before the proceed button
         const fileUploadContainer = document.querySelector('.file-upload');
         const proceedButton = fileUploadContainer.querySelector('.proceed-btn');
         fileUploadContainer.insertBefore(fileElement, proceedButton);
-        
+
         // Create FormData for upload
         const formData = new FormData();
         formData.append('file', file);
-        
+
         // Get CSRF token
-        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
                          document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
         if (csrfToken) {
             formData.append('csrfmiddlewaretoken', csrfToken);
-        }        // Create XMLHttpRequest for progress tracking
+        }
+        // Create XMLHttpRequest for progress tracking
         const xhr = new XMLHttpRequest();
-        
+
         // Set timeout for large file uploads (30 minutes)
         xhr.timeout = 30 * 60 * 1000;
-        
+
         // Track upload progress
         xhr.upload.addEventListener('progress', function(e) {
             if (e.lengthComputable) {
@@ -172,20 +180,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         // Upload failed
                         updateFileStatus(fileId, 'error', file.name);
+                        failedUploads[fileId] = file;
                         console.error(`Upload failed for "${file.name}": ${response.error}`);
                     }
                 } catch (e) {
                     updateFileStatus(fileId, 'error', file.name);
+                    failedUploads[fileId] = file;
                 }
             } else {
                 updateFileStatus(fileId, 'error', file.name);
+                failedUploads[fileId] = file;
             }
-        });        xhr.addEventListener('error', function() {
+        });
+        xhr.addEventListener('error', function() {
             updateFileStatus(fileId, 'error', file.name);
+            failedUploads[fileId] = file;
         });
 
         xhr.addEventListener('timeout', function() {
             updateFileStatus(fileId, 'error', file.name);
+            failedUploads[fileId] = file;
             alert(`Upload of "${file.name}" timed out. Please try again.`);
         });
 
@@ -326,13 +340,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.retryUpload = function(fileId) {
-        // For retry, we would need to store the original file object
-        // This is a simplified implementation
+        // Retry upload using the original file object if available
         const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
         if (fileElement) {
             fileElement.remove();
-            // Would need to re-trigger file selection or store file reference
-            alert('Please select the file again to retry upload.');
+        }
+        if (failedUploads[fileId]) {
+            uploadFile(failedUploads[fileId], fileId);
+        } else {
+            alert('Original file not found for retry. Please reselect the file.');
         }
     };
 
@@ -1012,11 +1028,12 @@ function renderUploadedDocumentsPreview() {
         const specificPagesRadio = fileDiv.querySelector('input[value="specific-pages"]');
         const allPagesRadio = fileDiv.querySelector('input[value="all"]');
         const pageInput = fileDiv.querySelector('.page-input');
+        
         if (specificPagesRadio && pageInput) {
             specificPagesRadio.addEventListener('change', () => {
                 if (specificPagesRadio.checked) {
                     pageInput.disabled = false;
-                    pageInput.focus();
+                    pageInput.placeholder = "e.g., 1-3,5,7-9";
                 }
             });
         }
@@ -1025,6 +1042,7 @@ function renderUploadedDocumentsPreview() {
                 if (allPagesRadio.checked) {
                     pageInput.disabled = true;
                     pageInput.value = '';
+                    pageInput.placeholder = `1-${doc.num_pages}`;
                 }
             });
         }
