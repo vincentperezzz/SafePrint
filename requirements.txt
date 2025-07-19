@@ -11,3 +11,4 @@ sqlparse==0.5.3
 tornado==6.5.1
 tzdata==2025.2
 gunicorn
+gevent
