@@ -37,6 +37,7 @@ echo "Starting $NAME as `whoami`"
 exec gunicorn ${DJANGO_WSGI_MODULE}:application \
   --name $NAME \
   --workers $WORKERS \
+  --worker-class gevent \
   --user=$USER \
   --group=$GROUP \
   --bind=$BIND \
