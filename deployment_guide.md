@@ -70,12 +70,55 @@ sudo systemctl restart safeprint
 sudo systemctl reload nginx
 ```
 
+### Clear Python Bytecode Cache (After Code Changes)
+When your code changes aren't being reflected after deployment:
+```bash
+# Navigate to project directory
+cd /home/safeprint/dev/SafePrint
+
+# Clear all .pyc files (compiled Python files)
+find . -name "*.pyc" -delete
+
+# Remove all __pycache__ directories
+find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+
+# Alternative one-liner to clear all Python cache
+find . -type f -name "*.pyc" -delete && find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+```
+
+### Force Application Reload (Complete Deployment)
+Use this when code changes aren't being picked up:
+```bash
+# Method 1: Graceful reload (recommended)
+pkill -HUP gunicorn
+
+# Method 2: Hard restart (if graceful reload doesn't work)
+sudo systemctl stop safeprint && sleep 2 && sudo systemctl start safeprint
+
+# Method 3: Complete cache clear and restart
+cd /home/safeprint/dev/SafePrint
+find . -name "*.pyc" -delete && find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+source venv/bin/activate
+python manage.py collectstatic --noinput
+sudo systemctl restart safeprint
+sudo systemctl restart nginx
+```
+
+### Clear Static Files Cache
+```bash
+cd /home/safeprint/dev/SafePrint
+source venv/bin/activate
+python manage.py collectstatic --noinput --clear
+```
+
 ## 6. Additional Notes
 
 - Make sure file permissions are correct
 - Ensure your Django settings are configured for production
 - Remember to set DEBUG=False in your .env file
 - Run `python manage.py collectstatic` when you update static files
+- Always clear Python bytecode cache after making code changes
+- Use graceful reload (`pkill -HUP gunicorn`) for minimal downtime
 
 
 ## 7. Enable HTTPS with DuckDNS and Let's Encrypt
