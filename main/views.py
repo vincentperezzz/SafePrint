@@ -230,10 +230,10 @@ def delete_document(request):
             if hasattr(doc, 'stored_name') and doc.stored_name:
                 file_path = f'uploads/{session_key}/{doc.stored_name}'
                 from django.core.files.storage import default_storage
-                if default_storage.exists(file_path):
-                    default_storage.delete(file_path)
-                    # Trigger folder cleanup after file deletion
-                    subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+                # if default_storage.exists(file_path):
+                #     default_storage.delete(file_path)
+                #     # Trigger folder cleanup after file deletion
+                #     subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
             doc.delete()
             return JsonResponse({'success': True})
         except Document.DoesNotExist:
