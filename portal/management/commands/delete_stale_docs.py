@@ -11,12 +11,18 @@ class Command(BaseCommand):
         cutoff = timezone.now() - timedelta(hours=1)
         stale_docs = Document.objects.filter(status_updated_at__lt=cutoff)
         for doc in stale_docs:
-            # Try to delete the file if it exists
-            file_path = os.path.join('media', 'uploads', doc.stored_name)
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-                self.stdout.write(self.style.SUCCESS(f"Deleted file: {file_path}"))
+            # Recursively search for the file by name under media/uploads
+            found_file = None
+            for root, dirs, files in os.walk(os.path.join('media', 'uploads')):
+                if doc.stored_name in files:
+                    found_file = os.path.join(root, doc.stored_name)
+                    break
+            print(f"DEBUG: Searching for {doc.stored_name} under media/uploads. Found: {found_file}")
+            if found_file and os.path.isfile(found_file):
+                os.remove(found_file)
+                self.stdout.write(self.style.SUCCESS(f"Deleted file: {found_file}"))
             else:
-                self.stdout.write(self.style.WARNING(f"File not found: {file_path}"))
+                self.stdout.write(self.style.WARNING(f"File not found: {doc.stored_name}"))
+            doc_id = getattr(doc, 'doc_id', None) or getattr(doc, 'id', None)
             doc.delete()
-            self.stdout.write(self.style.SUCCESS(f"Deleted document: {doc.doc_id}"))
+            self.stdout.write(self.style.SUCCESS(f"Deleted document: {doc_id}"))

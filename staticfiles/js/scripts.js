@@ -1,5 +1,6 @@
 let uploadedFiles = [];
 let hasProceeded = false;
+let isScanning = false; // Track if any file is being scanned for viruses
 const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
 document.addEventListener("touchstart", function(){}, true);
 
@@ -30,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Function to update proceed button visibility and state
     function updateProceedButton() {
         if (!proceedBtn) return; 
-        if (uploadedFiles.length > 0) {
+        if (uploadedFiles.length > 0 && !isScanning) {
             proceedBtn.style.display = 'block';
             proceedBtn.disabled = false;
         } else {
@@ -187,6 +188,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 progressBar.classList.remove('scanning-pulse');
             }
             
+            // Reset scanning flag and update proceed button
+            isScanning = false;
+            updateProceedButton();
+            
             if (xhr.status === 200) {
                 try {
                     const response = JSON.parse(xhr.responseText);
@@ -224,12 +229,16 @@ document.addEventListener('DOMContentLoaded', () => {
         xhr.addEventListener('error', function() {
             updateFileStatus(fileId, 'error', file.name);
             failedUploads[fileId] = file;
+            isScanning = false;
+            updateProceedButton();
         });
 
         xhr.addEventListener('timeout', function() {
             updateFileStatus(fileId, 'error', file.name);
             failedUploads[fileId] = file;
             alert(`Upload of "${file.name}" timed out. Please try again.`);
+            isScanning = false;
+            updateProceedButton();
         });
 
         // Send the request
@@ -281,6 +290,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 sizeSpan.textContent = `Scanning for viruses...`;
                 progressBar.style.width = '100%';
                 progressBar.classList.add('scanning-pulse');
+                isScanning = true;
+                updateProceedButton();
             }
         }
     }
