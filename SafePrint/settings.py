@@ -13,7 +13,7 @@ SECRET_KEY = config('DJANGO_SECRET_KEY', default='default-secret-key')
 # Set to False in production
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '172.20.10.8', '192.168.1.213', 'nanoprint.com', 'nanoprint.duckdns.org', 'safeprint', '192.168.1.205', '172.16.217.49', '192.168.0.101']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'nanoprint.com', 'nanoprint.duckdns.org', 'safeprint', '*']
 
 
 INSTALLED_APPS = [
