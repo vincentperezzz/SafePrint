@@ -1479,6 +1479,7 @@ input:focus::placeholder {
     background-color: #fafafa;
     border-radius: 4px;
     overflow: hidden;
+    margin-top: 5px;
 }
 
 .progress {
