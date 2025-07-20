@@ -26,3 +26,11 @@ class Command(BaseCommand):
             doc_id = getattr(doc, 'doc_id', None) or getattr(doc, 'id', None)
             doc.delete()
             self.stdout.write(self.style.SUCCESS(f"Deleted document: {doc_id}"))
+
+            # Call clean_empty_upload_folders.py after each document deletion
+            try:
+                import subprocess
+                script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../scripts/clean_empty_upload_folders.py'))
+                subprocess.run(['python3', script_path], check=True)
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f"Failed to clean empty upload folders: {e}"))
