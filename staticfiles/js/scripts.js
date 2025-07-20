@@ -4,6 +4,22 @@ const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
 document.addEventListener("touchstart", function(){}, true);
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Add CSS for scanning animation
+    const style = document.createElement('style');
+    style.textContent = `
+        .progress.scanning-pulse {
+            background: linear-gradient(90deg, #4caf50, #8bc34a);
+            animation: scanning-pulse 2s ease-in-out infinite;
+            background-size: 200% 100%;
+        }
+        @keyframes scanning-pulse {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+    `;
+    document.head.appendChild(style);
+    
     //Drag and Drop File Upload Functionality
     const dragArea = document.getElementById('drag-area');
     const fileInput = document.getElementById('file-input');
@@ -164,11 +180,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         xhr.addEventListener('load', function() {
+            // Stop the scanning animation regardless of response
+            const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+            const progressBar = fileElement?.querySelector('.progress');
+            if (progressBar) {
+                progressBar.classList.remove('scanning-pulse');
+            }
+            
             if (xhr.status === 200) {
                 try {
                     const response = JSON.parse(xhr.responseText);
                     if (response.success) {
-                        // Upload successful
+                        // Upload and scan successful
                         updateFileStatus(fileId, 'completed', file.name, formatFileSize(file.size));
                         uploadedFiles.push({
                             id: fileId,
@@ -181,7 +204,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Upload failed
                         updateFileStatus(fileId, 'error', file.name);
                         failedUploads[fileId] = file;
-                        console.error(`Upload failed for "${file.name}": ${response.error}`);
+                        
+                        // Check if this is a virus detection
+                        if (response.error && response.error.toLowerCase().includes('virus')) {
+                            alert(`Security alert: The file "${file.name}" contains a virus and has been deleted.`);
+                        } else {
+                            console.error(`Upload failed for "${file.name}": ${response.error}`);
+                        }
                     }
                 } catch (e) {
                     updateFileStatus(fileId, 'error', file.name);
@@ -241,12 +270,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const progressBar = fileElement.querySelector('.progress');
             const sizeSpan = fileElement.querySelector('.file-size');
             const remainingTime = Math.max(0, Math.round((100 - percentComplete) * 0.3)); // Rough estimate
-            
-            progressBar.style.width = percentComplete + '%';
+
             if (percentComplete < 100) {
+                // Normal upload progress
+                progressBar.style.width = percentComplete + '%';
+                progressBar.classList.remove('scanning-pulse');
                 sizeSpan.textContent = `${Math.round(percentComplete)}% • ${remainingTime} seconds remaining`;
             } else {
-                sizeSpan.textContent = `Upload complete`;
+                // At 100%, show scanning message and pulse animation
+                sizeSpan.textContent = `Scanning for viruses...`;
+                progressBar.style.width = '100%';
+                progressBar.classList.add('scanning-pulse');
             }
         }
     }
@@ -365,7 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
         proceedBtn.addEventListener('click', function() {
             hasProceeded = true;
             // Show loading overlay immediately after clicking proceed
-            var overlay = document.getElementById('loading-overlay');
+            const overlay = document.getElementById('loading-overlay');
             if (overlay) overlay.style.display = 'flex';
             if (uploadedFiles.length > 0) {
                 // Gather server paths of uploaded files
@@ -715,8 +749,7 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     });
 });
 
-
-// Display Alert Messages
+// Display Alert Messages function
 function createAlert(title, summary, details, severity, dismissible, autoDismiss, appendToId) {
     var iconMap = {
         info: "fa fa-info-circle",
@@ -793,7 +826,7 @@ function createAlert(title, summary, details, severity, dismissible, autoDismiss
         setTimeout(function () {
             msg.removeClass("animate__flipInX").addClass("animate__flipOutX");
             setTimeout(function () {
-            msg.remove();
+                msg.remove();
             }, 1000);
         }, 5000);
     }
