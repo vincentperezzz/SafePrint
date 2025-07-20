@@ -75,14 +75,8 @@ When your code changes aren't being reflected after deployment:
 ```bash
 # Navigate to project directory
 cd /home/safeprint/dev/SafePrint
-
-# Clear all .pyc files (compiled Python files)
 find . -name "*.pyc" -delete
-
-# Remove all __pycache__ directories
 find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-
-# Alternative one-liner to clear all Python cache
 find . -type f -name "*.pyc" -delete && find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 ```
 

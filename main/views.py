@@ -102,7 +102,31 @@ def upload_file_view(request):
             
             # Simulate upload delay for progress demonstration
             time.sleep(0.5)
-            
+
+            # --- ClamAV scan integration ---
+            try:
+                # Get absolute path for scanning
+                abs_file_path = default_storage.path(file_path)
+                import subprocess
+                result = subprocess.run([
+                    'clamscan', '--no-summary', abs_file_path
+                ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                if 'FOUND' in result.stdout:
+                    # Infected: delete file and inform user
+                    default_storage.delete(file_path)
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'The uploaded file contains a virus and has been deleted.'
+                    })
+            except Exception as scan_exc:
+                # If ClamAV fails, treat as error
+                default_storage.delete(file_path)
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Virus scan failed: {str(scan_exc)}'
+                })
+
+            # If clean, proceed as normal
             return JsonResponse({
                 'success': True,
                 'file_path': file_path,
