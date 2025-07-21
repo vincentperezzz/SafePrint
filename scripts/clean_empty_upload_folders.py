@@ -1,6 +1,8 @@
 import os
+import shutil
 
-UPLOADS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../media/uploads'))
+# Use os.path.join for cross-platform compatibility
+UPLOADS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'media', 'uploads'))
 
 if not os.path.exists(UPLOADS_DIR):
     print(f"Uploads directory does not exist: {UPLOADS_DIR}")
@@ -11,6 +13,7 @@ for d in os.listdir(UPLOADS_DIR):
     dir_path = os.path.join(UPLOADS_DIR, d)
     if os.path.isdir(dir_path) and not os.listdir(dir_path):
         try:
+            # On Windows, make sure no file handles are open and use os.rmdir
             os.rmdir(dir_path)
             print(f"Deleted empty folder: {dir_path}")
             found_empty = True

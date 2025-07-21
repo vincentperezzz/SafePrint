@@ -9,7 +9,7 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 from apps.main.utils.pdf_color_detection import analyze_pdf_colors, calculate_page_costs 
 from apps.main.utils.page_range import parse_page_ranges
-import os, uuid, math, time, random, string, json, PyPDF2, subprocess
+import os, uuid, math, time, random, string, json, PyPDF2, subprocess, sys
 
 
 
@@ -137,19 +137,22 @@ def delete_file_view(request):
                 })
             
             # Check if file exists and delete it
-            # if default_storage.exists(file_path):
-            #     default_storage.delete(file_path)
-            #     # Trigger folder cleanup after file deletion
-            #     subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
-            #     return JsonResponse({
-            #         'success': True,
-            #         'message': 'File deleted successfully'
-            #     })
-            # else:
-            #     return JsonResponse({
-            #         'success': False,
-            #         'error': 'File not found'
-            #     })
+            if default_storage.exists(file_path):
+                default_storage.delete(file_path)
+                # Trigger folder cleanup after file deletion (cross-platform)
+                script_path = os.path.abspath(
+                    os.path.join(os.path.dirname(__file__), '..', 'scripts', 'clean_empty_upload_folders.py')
+                )
+                subprocess.Popen([sys.executable, script_path])
+                return JsonResponse({
+                    'success': True,
+                    'message': 'File deleted successfully'
+                })
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'File not found'
+                })
                 
         except json.JSONDecodeError:
             return JsonResponse({
