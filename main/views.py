@@ -222,25 +222,35 @@ def delete_all_uploads_view(request):
 def delete_document(request):
     if request.method == 'POST':
         import json
-        data = json.loads(request.body)
-        doc_id = data.get('doc_id')
-        session_key = data.get('session_key')
-        if not doc_id or not session_key:
-            return JsonResponse({'success': False, 'error': 'doc_id and session_key are required'}, status=400)
         try:
-            doc = Document.objects.get(doc_id=doc_id)
+            data = json.loads(request.body)
+            doc_id = data.get('doc_id')
+            session_key = data.get('session_key')
+            if not doc_id or not session_key:
+                return JsonResponse({'success': False, 'error': 'doc_id and session_key are required'}, status=400)
+            try:
+                doc = Document.objects.get(doc_id=doc_id)
+            except Document.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Document not found'}, status=404)
             # Attempt to delete the file from storage
             if hasattr(doc, 'stored_name') and doc.stored_name:
                 file_path = f'uploads/{session_key}/{doc.stored_name}'
-                from django.core.files.storage import default_storage
-                # if default_storage.exists(file_path):
-                #     default_storage.delete(file_path)
-                #     # Trigger folder cleanup after file deletion
-                #     subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
-            doc.delete()
+                if default_storage.exists(file_path):
+                    try:
+                        default_storage.delete(file_path)
+                        # Trigger folder cleanup after file deletion (cross-platform)
+                        script_path = os.path.abspath(
+                            os.path.join(os.path.dirname(__file__), '..', 'scripts', 'clean_empty_upload_folders.py')
+                        )
+                        subprocess.Popen([sys.executable, script_path])
+                    except Exception as e:
+                        # Log but continue to delete doc
+                        print(f"File deletion error: {e}")
+            try:
+                doc.delete()
+            except Exception as e:
+                return JsonResponse({'success': False, 'error': f'Database delete failed: {str(e)}'}, status=500)
             return JsonResponse({'success': True})
-        except Document.DoesNotExist:
-            return JsonResponse({'success': False, 'error': 'Document not found'}, status=404)
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
     return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)
