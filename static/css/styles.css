@@ -570,6 +570,13 @@ html {
     transform: rotate(45deg); 
 }
 
+.faq-card:not(.active),
+.faq-card:not(.active):focus,
+.faq-card:not(.active):active {
+    background: #f3f3f3 !important;
+    outline: none;
+}
+
 @media (max-width: 768px) {
     .faq-card {
         border-radius: 45px;
