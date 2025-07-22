@@ -593,7 +593,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // If the card is already active, deactivate it
                 card.classList.remove('active');
                 content.style.maxHeight = null; 
-                toggleIcon.style.transform = 'rotate(0deg)'; 
+                toggleIcon.style.transform = 'rotate(0deg)';
+                card.blur();
             } else {
                 // Activate the clicked card
                 card.classList.add('active');
