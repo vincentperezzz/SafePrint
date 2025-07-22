@@ -89,7 +89,6 @@ pkill -HUP gunicorn
 # Method 2: Hard restart (if graceful reload doesn't work)
 sudo systemctl stop safeprint && sleep 2 && sudo systemctl start safeprint
 
-# Method 3: Complete cache clear and restart
 cd /home/safeprint/dev/SafePrint
 find . -name "*.pyc" -delete && find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 source venv/bin/activate
@@ -245,6 +244,35 @@ If you use the DNS challenge for Let's Encrypt (for example, if you cannot open 
 5. Wait a few seconds for DNS propagation, then continue with Certbot.
 
 For automation, see the earlier section about using a shell script with Certbot's `--manual-auth-hook`.
+
+
+## SNMP: Install and Query Brother Printer
+
+To install SNMP tools and get information from your Brother printer (IP: 192.168.0.101):
+
+```bash
+sudo apt update
+sudo apt install snmp snmp-mibs-downloader
+```
+
+To get general info from the printer:
+```bash
+snmpwalk -v1 -c public 192.168.0.101
+```
+
+To get the printer's page count (common OID, may vary by model):
+```bash
+snmpget -v1 -c public 192.168.0.101 1.3.6.1.2.1.43.10.2.1.4.1.1
+```
+
+To get printer status:
+```bash
+snmpget -v1 -c public 192.168.0.101 1.3.6.1.2.1.25.3.5.1.1.1
+```
+
+If you want human-readable output, edit `/etc/snmp/snmp.conf` and comment out the line `mibs :` (remove the colon).
+
+Replace OIDs as needed for your specific Brother model. For more details, see your printer's SNMP/MIB documentation.
 
 
 
