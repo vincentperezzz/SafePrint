@@ -109,7 +109,7 @@ def upload_file_view(request):
                 abs_file_path = default_storage.path(file_path)
                 import subprocess
                 result = subprocess.run([
-                    'clamscan', '--no-summary', abs_file_path
+                    'clamdscan', '--no-summary', abs_file_path
                 ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if 'FOUND' in result.stdout:
                     # Infected: delete file and inform user

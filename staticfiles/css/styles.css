@@ -1539,6 +1539,28 @@ input:focus::placeholder {
     color: var(--red-color);
 }
 
+.loading-bar {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: repeating-linear-gradient(
+        120deg,
+        #5ec86c 0px,
+        #5ec86c 18px,
+        #a6e6b6 18px,
+        #a6e6b6 36px
+    );
+    background-size: 48px 100%;
+    animation: loading-bar-stripes 1.2s linear infinite;
+    position: relative;
+    overflow: hidden;
+}
+
+@keyframes loading-bar-stripes {
+    0% { background-position: 0 0; }
+    100% { background-position: 48px 0; }
+}
+
 /* CONFIRMATION HTML */
 
 .confirmation {
