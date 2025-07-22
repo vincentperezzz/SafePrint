@@ -74,6 +74,7 @@ sudo systemctl reload nginx
 When your code changes aren't being reflected after deployment:
 
 ```bash
+#### Clears Cache and Restart Gunicorn and Nginx
 cd /home/safeprint/dev/SafePrint
 find . -name "*.pyc" -delete
 find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
