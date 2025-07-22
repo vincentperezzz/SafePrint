@@ -78,18 +78,11 @@ cd /home/safeprint/dev/SafePrint
 find . -name "*.pyc" -delete
 find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 find . -type f -name "*.pyc" -delete && find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-```
 
-### Force Application Reload (Complete Deployment)
-Use this when code changes aren't being picked up:
-```bash
-# Method 1: Graceful reload (recommended)
 pkill -HUP gunicorn
 
-# Method 2: Hard restart (if graceful reload doesn't work)
 sudo systemctl stop safeprint && sleep 2 && sudo systemctl start safeprint
 
-cd /home/safeprint/dev/SafePrint
 find . -name "*.pyc" -delete && find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 source venv/bin/activate
 python manage.py collectstatic --noinput
