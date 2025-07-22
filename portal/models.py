@@ -50,7 +50,8 @@ class Printer(models.Model):
     paper_assigned = models.CharField(max_length=50, choices=PAPER_SIZE_CHOICES)
     paper_quality = models.CharField(max_length=50, choices=GSM_CHOICES)
     last_checked = models.DateTimeField()
-    printer_serialNumber = models.CharField(max_length=255)
+    ip_address = models.CharField(max_length=255)
+    node_name = models.CharField(max_length=255, null=True, blank=True)
 
     def __str__(self):
         return self.printer_name

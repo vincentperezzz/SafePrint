@@ -29,7 +29,7 @@ Printer Status
     <div class="printer-table">
         <div class="printer-table-header">
             <div>Printer Name</div>
-            <div>Serial Number</div>
+            <div>IP Address</div>
             <div>Status</div>
             <div>Ink Level</div>
             <div>Paper Assigned</div>
@@ -43,7 +43,7 @@ Printer Status
                 <div class="printer-name">{{ printer.printer_name }}</div>
                 <div class="printer-model">{{ printer.model_name}}</div>
             </div>
-            <div>{{ printer.printer_serialNumber }}</div>
+            <div>{{ printer.ip_address }}</div>
             <div>
                 <span class="status-dot {% if printer.printer_status == 'Idle' %}idle{% elif printer.printer_status == 'Printing' %}printing{% elif printer.printer_status == 'Error' %}error{% endif %}"></span>
                 {{ printer.printer_status }}
