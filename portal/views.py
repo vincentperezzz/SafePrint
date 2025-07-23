@@ -55,6 +55,7 @@ def dashboard(request):
     }
     return render(request, 'dashboard.html', context)
 
+
 @csrf_exempt
 def search_customer(request):
     if request.method == 'POST':
@@ -112,6 +113,7 @@ def search_customer(request):
             return JsonResponse({'success': False, 'error': str(e)})
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
 
 def printing_queue(request):
     user_id = request.session.get('admin_user_id')
@@ -549,39 +551,66 @@ def approve_document(request):
         return JsonResponse({'success': True, 'updated_count': updated, 'admin_name': admin_name})
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
+
 def printer_status_stream(request):
     # SSE headers
     response = StreamingHttpResponse(printer_status_event_stream(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
     return response
 
+
 def printer_status_event_stream():
     last_data = None
     while True:
-        # Query all printers' idle and ink status
         printers = Printer.objects.all()
         data = []
         for printer in printers:
+            ink_status = printer.ink_status
+            
+            # If no ink_status is set in the database, calculate it based on individual ink levels
+            if not ink_status or ink_status == "OK":
+                low_ink_colors = []
+                
+                # Check each ink color
+                if hasattr(printer, 'ink_cyan') and printer.ink_cyan == 'LOW':
+                    low_ink_colors.append('cyan')
+                if hasattr(printer, 'ink_magenta') and printer.ink_magenta == 'LOW':
+                    low_ink_colors.append('magenta')
+                if hasattr(printer, 'ink_yellow') and printer.ink_yellow == 'LOW':
+                    low_ink_colors.append('yellow')
+                if hasattr(printer, 'ink_black') and printer.ink_black == 'LOW':
+                    low_ink_colors.append('black')
+                    
+                if low_ink_colors:
+                    ink_status = ','.join(low_ink_colors)
+                else:
+                    ink_status = "OK"
+                
             data.append({
                 'id': printer.id,
                 'printer_name': printer.printer_name,
+                'model_name': getattr(printer, 'model_name', ''),
+                'ip_address': printer.ip_address,
+                'node_name': getattr(printer, 'node_name', ''),
                 'printer_status': printer.printer_status,
-                'ink_cyan': getattr(printer, 'ink_cyan', None),
-                'ink_magenta': getattr(printer, 'ink_magenta', None),
-                'ink_yellow': getattr(printer, 'ink_yellow', None),
-                'ink_black': getattr(printer, 'ink_black', None),
+                'ink_status': ink_status,
+                'paper_assigned': getattr(printer, 'paper_assigned', ''),
+                'paper_quality': getattr(printer, 'paper_quality', ''),
             })
         import json
-        json_data = json.dumps(data)
+        import time
+        json_data = json.dumps({'printers': data})
         if json_data != last_data:
             yield f"data: {json_data}\n\n"
             last_data = json_data
-        time.sleep(2)  # Poll every 2 seconds (adjust as needed)
+        time.sleep(1)  # Poll every 1 second for more responsive updates
+
 
 def dashboard_status_stream(request):
     response = StreamingHttpResponse(dashboard_status_event_stream(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
     return response
+
 
 def dashboard_status_event_stream():
     last_data = None

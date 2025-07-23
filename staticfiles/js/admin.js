@@ -1371,46 +1371,114 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Function to update printer status in the UI
+    function update_printer(printer) {
+        // Find the printer row by its ID
+        const row = document.querySelector(`.printer-table-row [data-printer-id="${printer.id}"]`)?.closest('.printer-table-row') ||
+                Array.from(document.querySelectorAll('.printer-table-row')).find(row => {
+                    const printerName = row.querySelector('.printer-name')?.textContent?.trim();
+                    return printerName === printer.printer_name;
+                });
+                
+        if (!row) return; // Printer not found in the UI
+        
+        // Update status dot and text
+        const statusDot = row.querySelector('.status-dot');
+        if (statusDot) {
+            statusDot.classList.remove('ready', 'sleep', 'printing', 'error');
+            if (printer.printer_status === 'Ready') statusDot.classList.add('ready');
+            else if (printer.printer_status === 'Sleep') statusDot.classList.add('sleep');
+            else if (printer.printer_status === 'Printing') statusDot.classList.add('printing');
+            else statusDot.classList.add('error');
+            
+            // Update status text
+            const statusText = statusDot.nextSibling;
+            if (statusText && statusText.nodeType === 3) {
+                statusText.textContent = ' ' + printer.printer_status;
+            }
+        }
+        
+        // Update ink bars
+        const inkBars = row.querySelectorAll('.ink-bars .ink');
+        
+        // Update ink status based on printer data
+        if (printer.ink_status === 'OK') {
+            inkBars.forEach(bar => {
+                bar.style.opacity = 1;
+                bar.title = 'OK';
+            });
+            
+            const inkStatusSpan = row.querySelector('.ink-status');
+            if (inkStatusSpan) {
+                inkStatusSpan.textContent = 'OK';
+                inkStatusSpan.className = 'ink-status ok';
+            }
+        } else {
+            // Set all bars to normal first
+            inkBars.forEach(bar => {
+                bar.style.opacity = 1;
+                bar.title = 'OK';
+            });
+            
+            // Then set only the low colors to low opacity
+            if (printer.ink_status && printer.ink_status !== 'OK') {
+                const lowColors = printer.ink_status.split(',');
+                lowColors.forEach(color => {
+                    color = color.trim();
+                    if (color) {
+                        // Match the template's class names: b, y, c, m
+                        const colorMap = { 'black': 'b', 'yellow': 'y', 'cyan': 'c', 'magenta': 'm' };
+                        const className = colorMap[color.toLowerCase()] || color.toLowerCase();
+                        const colorBar = row.querySelector('.ink.' + className);
+                        if (colorBar) {
+                            colorBar.style.opacity = 0.3;
+                            colorBar.title = 'LOW';
+                        }
+                    }
+                });
+                
+                const inkStatusSpan = row.querySelector('.ink-status');
+                if (inkStatusSpan) {
+                    inkStatusSpan.textContent = 'LOW INK';
+                    inkStatusSpan.className = 'ink-status low';
+                }
+            }
+        }
+        
+        // Update paper assigned and GSM dropdowns if needed
+        if (printer.paper_assigned) {
+            const paperSelect = row.querySelector('select[data-field="paper_assigned"]');
+            if (paperSelect) {
+                paperSelect.value = printer.paper_assigned;
+            }
+        }
+        
+        if (printer.paper_quality) {
+            const gsmSelect = row.querySelector('select[data-field="paper_quality"]');
+            if (gsmSelect) {
+                gsmSelect.value = printer.paper_quality;
+            }
+        }
+    }
+
     // SSE for real-time printer status and ink updates
-    if (window.location.pathname.includes('/api/status/')) {
+    if (window.location.pathname.includes('/portal/status/')) {
         const evtSource = new EventSource('/sse/printer-status/');
         evtSource.onmessage = function(event) {
             try {
-                const printers = JSON.parse(event.data);
-                document.querySelectorAll('.printer-table-row').forEach(row => {
-                    const printerName = row.querySelector('.printer-name')?.textContent?.trim();
-                    const printer = printers.find(p => p.printer_name === printerName);
-                    if (printer) {
-                        // Update status dot and text
-                        const statusDot = row.querySelector('.status-dot');
-                        if (statusDot) {
-                            statusDot.classList.remove('idle', 'printing', 'error');
-                            if (printer.printer_status === 'Idle') statusDot.classList.add('idle');
-                            else if (printer.printer_status === 'Printing') statusDot.classList.add('printing');
-                            else if (printer.printer_status === 'Error') statusDot.classList.add('error');
-                        }
-                        const statusText = statusDot ? statusDot.nextSibling : null;
-                        if (statusText && statusText.nodeType === 3) {
-                            statusText.textContent = ' ' + printer.printer_status;
-                        }
-                        // Update ink bars if ink info exists
-                        const inkBars = row.querySelectorAll('.ink-bars .ink');
-                        if (inkBars.length === 4) {
-                            const inkLevels = [printer.ink_cyan, printer.ink_magenta, printer.ink_yellow, printer.ink_black];
-                            inkBars.forEach((bar, i) => {
-                                if (inkLevels[i] !== null && inkLevels[i] !== undefined) {
-                                    bar.style.opacity = (inkLevels[i] > 0 ? 1 : 0.3);
-                                    bar.title = `Level: ${inkLevels[i]}`;
-                                }
-                            });
-                        }
-                    }
+                const data = JSON.parse(event.data);
+                const printers = Array.isArray(data) ? data : (data.printers || []);
+                
+                // Update each printer in the UI
+                printers.forEach(printer => {
+                    update_printer(printer);
                 });
             } catch (e) {
                 console.error('SSE parse error:', e);
             }
         };
     }
+
 
     // SSE for real-time dashboard stats (printer status, completed jobs, pending customers, completed documents)
     if (window.location.pathname.includes('/portal/dashboard/')) {
