@@ -30,7 +30,7 @@ def dashboard(request):
     
     # Dashboard Stats
     completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
-    printer_errors_count = Printer.objects.filter(printer_status='Error').count()
+    printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
     pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
     
     # Get recent completed documents with payment info and printed_at timestamp
@@ -617,7 +617,7 @@ def dashboard_status_event_stream():
     while True:
         # Gather dashboard stats
         completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
-        printer_errors_count = Printer.objects.filter(printer_status='Error').count()
+        printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
         pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
         # Get recent completed documents (limit 5, order by -printed_at)
         completed_documents = list(

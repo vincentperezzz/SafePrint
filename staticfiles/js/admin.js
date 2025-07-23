@@ -1382,6 +1382,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 
         if (!row) return; // Printer not found in the UI
         
+        // Update printer name and model
+        const printerNameElement = row.querySelector('.printer-name');
+        if (printerNameElement) {
+            printerNameElement.textContent = printer.printer_name;
+        }
+        
+        const printerModelElement = row.querySelector('.printer-model');
+        if (printerModelElement) {
+            printerModelElement.textContent = printer.model_name;
+        }
+        
+        // Update IP address
+        const ipElement = row.children[1]; 
+        if (ipElement) {
+            ipElement.textContent = printer.ip_address;
+        }
+        
+        // Update Node name
+        const nodeElement = row.children[2];
+        if (nodeElement) {
+            nodeElement.textContent = printer.node_name;
+        }
+        
         // Update status dot and text
         const statusDot = row.querySelector('.status-dot');
         if (statusDot) {
@@ -1391,49 +1414,53 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (printer.printer_status === 'Printing') statusDot.classList.add('printing');
             else statusDot.classList.add('error');
             
-            // Update status text
-            const statusText = statusDot.nextSibling;
-            if (statusText && statusText.nodeType === 3) {
-                statusText.textContent = ' ' + printer.printer_status;
+            const statusContainer = statusDot.parentElement;
+            if (statusContainer) {
+                let node = statusDot.nextSibling;
+                while (node) {
+                    const nextNode = node.nextSibling;
+                    if (node.nodeType === 3 || node.tagName !== 'SPAN') {
+                        statusContainer.removeChild(node);
+                    }
+                    node = nextNode;
+                }
+                statusContainer.appendChild(document.createTextNode(' ' + printer.printer_status));
             }
         }
         
         // Update ink bars
-        const inkBars = row.querySelectorAll('.ink-bars .ink');
-        
-        // Update ink status based on printer data
-        if (printer.ink_status === 'OK') {
-            inkBars.forEach(bar => {
-                bar.style.opacity = 1;
-                bar.title = 'OK';
-            });
+        const inkBarsContainer = row.querySelector('.ink-bars');
+        if (inkBarsContainer) {
+            inkBarsContainer.innerHTML = '';
             
-            const inkStatusSpan = row.querySelector('.ink-status');
-            if (inkStatusSpan) {
-                inkStatusSpan.textContent = 'OK';
-                inkStatusSpan.className = 'ink-status ok';
-            }
-        } else {
-            // Set all bars to normal first
-            inkBars.forEach(bar => {
-                bar.style.opacity = 1;
-                bar.title = 'OK';
-            });
-            
-            // Then set only the low colors to low opacity
-            if (printer.ink_status && printer.ink_status !== 'OK') {
+            if (printer.ink_status === 'OK') {
+                // For OK status, show all colors (b, y, c, m)
+                ['b', 'y', 'c', 'm'].forEach(color => {
+                    const inkSpan = document.createElement('span');
+                    inkSpan.className = 'ink ' + color;
+                    inkSpan.title = 'OK';
+                    inkBarsContainer.appendChild(inkSpan);
+                });
+                
+                const inkStatusSpan = row.querySelector('.ink-status');
+                if (inkStatusSpan) {
+                    inkStatusSpan.textContent = 'OK';
+                    inkStatusSpan.className = 'ink-status ok';
+                }
+            } else if (printer.ink_status && printer.ink_status !== 'OK') {
+                // For LOW INK status, only show the specific colors listed
                 const lowColors = printer.ink_status.split(',');
                 lowColors.forEach(color => {
-                    color = color.trim();
+                    color = color.trim().toLowerCase();
                     if (color) {
-                        // Match the template's class names: b, y, c, m
+                        // Map color names to their abbreviations
                         const colorMap = { 'black': 'b', 'yellow': 'y', 'cyan': 'c', 'magenta': 'm' };
-                        const className = colorMap[color.toLowerCase()] || color.toLowerCase();
-                        const colorBar = row.querySelector('.ink.' + className);
-                        if (colorBar) {
-                            colorBar.style.opacity = 0.3;
-                            colorBar.title = 'LOW';
-                        }
+                        const className = colorMap[color] || color;
+                        
+                        const inkSpan = document.createElement('span');
+                        inkSpan.className = 'ink ' + className;
+                        inkSpan.title = 'LOW';
+                        inkBarsContainer.appendChild(inkSpan);
                     }
                 });
                 
@@ -1463,18 +1490,45 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // SSE for real-time printer status and ink updates
     if (window.location.pathname.includes('/portal/status/')) {
-        const evtSource = new EventSource('/sse/printer-status/');
+        console.log('Setting up SSE connection for printer status...');
+        let evtSource = new EventSource('/sse/printer-status/');
+        
+        evtSource.onopen = function() {
+            console.log('SSE connection opened successfully');
+        };
+        
+        evtSource.onerror = function(err) {
+            console.error('SSE connection error:', err);
+            
+            // Try to reconnect after a delay
+            setTimeout(() => {
+                evtSource.close();
+                evtSource = new EventSource('/sse/printer-status/');
+            }, 5000);
+        };
+        
         evtSource.onmessage = function(event) {
+            console.log('SSE message received:', event.data);
             try {
                 const data = JSON.parse(event.data);
+                // Flexibly handle different data formats
                 const printers = Array.isArray(data) ? data : (data.printers || []);
+                
+                console.log('SSE parsed printer data:', printers); // Debug logging
                 
                 // Update each printer in the UI
                 printers.forEach(printer => {
+                    console.log('Updating printer:', printer.printer_name);
+                    console.log('  IP Address:', printer.ip_address);
+                    console.log('  Node Name:', printer.node_name);
+                    console.log('  Status:', printer.printer_status);
+                    console.log('  Ink Status:', printer.ink_status);
                     update_printer(printer);
                 });
+                
+                // Last update timestamp has been removed
             } catch (e) {
-                console.error('SSE parse error:', e);
+                console.error('SSE parse error:', e, event.data);
             }
         };
     }
