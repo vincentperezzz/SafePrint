@@ -58,12 +58,24 @@ Printer Status
             </div>
             <div>
                 <div class="ink-bars">
-                    <span class="ink cyan"></span>
-                    <span class="ink magenta"></span>
-                    <span class="ink yellow"></span>
-                    <span class="ink black"></span>
+                    {% if printer.ink_status == 'OK' %}
+                        <span class="ink b"></span>
+                        <span class="ink y"></span>
+                        <span class="ink c"></span>
+                        <span class="ink m"></span>
+                    {% else %}
+                        {% for color in printer.ink_status|cut:"," %}
+                            {% if color %}
+                                <span class="ink {{ color|slugify }}"></span>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
                 </div>
-                <span class="ink-status ok">OK</span>
+                {% if printer.ink_status == 'OK' %}
+                    <span class="ink-status ok">OK</span>
+                {% else %}
+                    <span class="ink-status low">LOW INK</span>
+                {% endif %}
             </div>
             <div class="paper-assigned">
                 <div class="dropdown">
