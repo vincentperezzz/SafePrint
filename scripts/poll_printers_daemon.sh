@@ -45,9 +45,18 @@ echo "$(date '+%Y-%m-%d %H:%M:%S'): Starting printer polling daemon" >> $LOG_FIL
 
 # Run the continuous polling loop
 while true; do
+    # Limit log file to 5000 lines
+    MAX_LINES=5000
+    if [ -f "$LOG_FILE" ]; then
+        line_count=$(wc -l < "$LOG_FILE")
+        if [ "$line_count" -gt "$MAX_LINES" ]; then
+            tail -n "$MAX_LINES" "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
+        fi
+    fi
+
     # Activate venv and run the command
     source "$VENV_DIR/bin/activate" && python manage.py poll_printer_snmp >> $LOG_FILE 2>&1
-    
+
     # Sleep for 1 second before next poll
     sleep 1
 done
