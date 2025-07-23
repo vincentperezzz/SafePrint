@@ -11,7 +11,8 @@ config = Config(RepositoryEnv(env_path))
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='default-secret-key')
 
 # Set to False in production
-DEBUG = config('DEBUG', default=False, cast=bool)
+# DEBUG = config('DEBUG', default=False, cast=bool)
+DEBUG = True
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.0.100', 'nanoprint.com', 'nanoprint.duckdns.org', 'safeprint']
 
