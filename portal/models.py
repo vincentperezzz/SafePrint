@@ -43,10 +43,11 @@ class Printer(models.Model):
         ('Color', 'Color'),
     ]
     
-    id = models.CharField(max_length=50, primary_key=True)
+    id = models.AutoField(primary_key=True)
     printer_name = models.CharField(max_length=255)
     model_name = models.CharField(max_length=255, null=True, blank=True)
     printer_status = models.CharField(max_length=50)
+    ink_status = models.CharField(max_length=50, null=True, blank=True)
     paper_assigned = models.CharField(max_length=50, choices=PAPER_SIZE_CHOICES)
     paper_quality = models.CharField(max_length=50, choices=GSM_CHOICES)
     last_checked = models.DateTimeField()
