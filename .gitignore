@@ -27,3 +27,7 @@ env/
 # Ignore pyc files in the main folder and SafePrint folders
 /main/*.pyc
 /SafePrint/*.pyc
+
+# Ignore everything in logs except the folder itself
+/logs/*
+!/logs/
