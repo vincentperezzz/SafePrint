@@ -29,6 +29,7 @@ class Command(BaseCommand):
         for printer in printers:
             ip_address = printer.ip_address
             self.stdout.write(self.style.NOTICE(f"Polling printer at IP: {ip_address}"))
+            offline = False
             while True:
                 try:
                     status = subprocess.check_output([
@@ -36,18 +37,21 @@ class Command(BaseCommand):
                     ], timeout=2).decode(errors='ignore').strip()
                 except Exception:
                     status = None
+                    offline = True
                 try:
                     model = subprocess.check_output([
                         'snmpget', '-v2c', '-c', 'public', ip_address, model_oid
                     ], timeout=2).decode(errors='ignore').strip()
                 except Exception:
                     model = None
+                    offline = True
                 try:
                     node = subprocess.check_output([
                         'snmpget', '-v2c', '-c', 'public', ip_address, node_oid
                     ], timeout=2).decode(errors='ignore').strip()
                 except Exception:
                     node = None
+                    offline = True
 
                 # Poll ink levels and low thresholds
                 ink_levels = []
@@ -80,7 +84,13 @@ class Command(BaseCommand):
                         ink_levels.append(None)
                         ink_lows.append(None)
 
-                if status and model and node:
+                if offline:
+                    printer.printer_status = 'Offline'
+                    printer.last_checked = timezone.now()
+                    printer.save()
+                    self.stdout.write(self.style.WARNING(f"Printer at {ip_address} is Offline."))
+                    break
+                elif status and model and node:
                     import re
                     def extract_value(s):
                         match = re.search(r'"(.*?)"', s)
