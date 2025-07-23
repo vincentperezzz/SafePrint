@@ -30,11 +30,18 @@ Printer Status
         <div class="printer-table-header">
             <div>Printer Name</div>
             <div>IP Address</div>
+            <div>Node Name</div>
             <div>Status</div>
             <div>Ink Level</div>
             <div>Paper Assigned</div>
             <div>GSM</div>
-            <div></div>
+            <div class="printer-edit-btn-container">
+                <button class="reload-btn" title="Reload" onclick="window.location.reload()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.06-.27 2.05-.74 2.91l1.46 1.46A7.963 7.963 0 0020 12c0-4.42-3.58-8-8-8zm-6.26 3.09A7.963 7.963 0 004 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3c-3.31 0-6-2.69-6-6 0-1.06.27-2.05.74-2.91l-1.46-1.46z" fill="#18191F"/>
+                    </svg>
+                </button>
+            </div>
         </div>
         <!-- Repeat this row for each printer -->
         {% for printer in printers %}
@@ -44,8 +51,9 @@ Printer Status
                 <div class="printer-model">{{ printer.model_name}}</div>
             </div>
             <div>{{ printer.ip_address }}</div>
+           <div>{{ printer.node_name }}</div>
             <div>
-                <span class="status-dot {% if printer.printer_status == 'Idle' %}idle{% elif printer.printer_status == 'Printing' %}printing{% elif printer.printer_status == 'Error' %}error{% endif %}"></span>
+                <span class="status-dot {% if printer.printer_status == 'Ready' %}ready{% elif printer.printer_status == 'Sleep' %}sleep{% elif printer.printer_status == 'Printing' %}printing{% else %}error{% endif %}"></span>
                 {{ printer.printer_status }}
             </div>
             <div>
@@ -85,8 +93,8 @@ Printer Status
                     </span>
                 </div>
             </div>
-            <div>
-                <div class="edit-btn">
+            <div class="printer-edit-btn-container">
+                <div class="edit-btn" onclick="openPrinterEditPopup('{{ printer.printer_name|escapejs }}', '{{ printer.ip_address|escapejs }}', '{{ printer.id }}')">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
                       <path d="M2.49902 14.3761V17.5011H5.62402L14.8407 8.28444L11.7157 5.15944L2.49902 14.3761ZM17.2574 5.86777C17.5824 5.54277 17.5824 5.01777 17.2574 4.69277L15.3074 2.74277C14.9824 2.41777 14.4574 2.41777 14.1324 2.74277L12.6074 4.26777L15.7324 7.39277L17.2574 5.86777Z" fill="#5A5D6C"/>
                     </svg>
@@ -95,7 +103,38 @@ Printer Status
         </div>
         {% endfor %}
     </div>
-    <button class="add-printer-btn">Configure to Add Printer</button>
+    <button class="add-printer-btn" onclick="openAddPrinterPopup()">Configure to Add Printer</button>
+</div>
+
+<!-- Add Printer Popup (hidden by default, styled like popup overlay) -->
+<div class="popup-overlay" id="addPrinterPopup" style="display:none;">
+  <div class="popup-form">
+    <div class="popup-header">
+      <span class="popup-title">Add Printer</span>
+      <span class="popup-close" onclick="closeAddPrinterPopup()">&times;</span>
+    </div>
+    <hr class="popup-divider">
+    <form id="addPrinterForm">
+      <input type="text" id="addPrinterName" name="printer_name" class="popup-input" placeholder="Enter Printer Name" required>
+      <input type="text" id="addPrinterIP" name="ip_address" class="popup-input" placeholder="Enter IP Address" required>
+      <button type="submit" class="popup-done-btn">Add Printer</button>
+    </form>
+  </div>
+</div>
+<div class="popup-overlay" id="printerEditPopup" style="display:none;">
+  <div class="popup-form">
+    <div class="popup-header">
+      <span class="popup-title">Edit Printer</span>
+      <span class="popup-close" onclick="closePrinterEditPopup()">&times;</span>
+    </div>
+    <hr class="popup-divider">
+    <form id="printerEditForm">
+      <input type="text" id="editPrinterName" name="printer_name" class="popup-input" placeholder="Enter Printer Name" required>
+      <input type="text" id="editPrinterIP" name="ip_address" class="popup-input" placeholder="Enter IP Address" required>
+      <button type="submit" class="popup-done-btn">Save Changes</button>
+    </form>
+  </div>
+</div>
 </div>
 
 <script>

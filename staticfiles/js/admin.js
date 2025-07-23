@@ -1326,7 +1326,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-        // Handled Done button for completed jobs (dashboard)
+    // Handled Done button for completed jobs (dashboard)
     document.addEventListener('click', function(e) {
         if (e.target && e.target.classList.contains('jobs-done-btn')) {
             const btn = e.target;
@@ -1459,3 +1459,100 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
 });
+
+
+// Printer Status Edit Button
+let currentEditPrinterId = null;
+function openPrinterEditPopup(printerName, printerIP, printerId) {
+  document.getElementById('printerEditPopup').style.display = 'flex';
+  document.getElementById('editPrinterName').value = printerName || '';
+  document.getElementById('editPrinterIP').value = printerIP || '';
+  currentEditPrinterId = printerId;
+}
+function closePrinterEditPopup() {
+  document.getElementById('printerEditPopup').style.display = 'none';
+  currentEditPrinterId = null;
+}
+// Printer Status Add Printer Button modal control
+function openAddPrinterPopup() {
+  var popup = document.getElementById('addPrinterPopup');
+  if (popup) popup.style.display = 'flex';
+}
+function closeAddPrinterPopup() {
+  var popup = document.getElementById('addPrinterPopup');
+  if (popup) popup.style.display = 'none';
+}
+document.getElementById('printerEditForm').onsubmit = function(e) {
+  e.preventDefault();
+  var printerName = document.getElementById('editPrinterName').value;
+  var printerIP = document.getElementById('editPrinterIP').value;
+  var printerId = currentEditPrinterId;
+  if (printerName && printerIP && printerId) {
+    var data = new FormData();
+    data.append('printer_id', printerId);
+    data.append('printer_name', printerName);
+    data.append('ip_address', printerIP);
+    fetch('/api/edit_printer/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrfToken },
+      body: data
+    }).then(res => res.json()).then(resp => {
+      if (resp.success) {
+        if (typeof createAlert === 'function') {
+          createAlert('Success', 'Printer Updated', 'Printer details updated successfully.', 'success', true, true, 'pageMessages');
+        }
+        window.location.reload();
+      } else {
+        if (typeof createAlert === 'function') {
+          createAlert('Error', 'Update Failed', resp.error || 'Failed to update printer.', 'danger', true, true, 'pageMessages');
+        } else {
+          alert(resp.error || 'Failed to update printer');
+        }
+      }
+    }).catch(() => {
+      if (typeof createAlert === 'function') {
+        createAlert('Error', 'Update Failed', 'An error occurred while updating the printer.', 'danger', true, true, 'pageMessages');
+      } else {
+        alert('An error occurred while updating the printer.');
+      }
+    });
+  }
+  closePrinterEditPopup();
+};
+
+// Printer Status Add Printer Button
+document.getElementById('addPrinterForm').onsubmit = function(e) {
+  e.preventDefault();
+  var printerName = document.getElementById('addPrinterName').value;
+  var printerIP = document.getElementById('addPrinterIP').value;
+  if (printerName && printerIP) {
+    var data = new FormData();
+    data.append('printer_name', printerName);
+    data.append('ip_address', printerIP);
+    fetch('/api/add_printer/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrfToken },
+      body: data
+    }).then(res => res.json()).then(resp => {
+      if (resp.success) {
+        if (typeof createAlert === 'function') {
+          createAlert('Success', 'Printer Added', 'Printer added successfully.', 'success', true, true, 'pageMessages');
+        }
+        window.location.reload();
+      } else {
+        if (typeof createAlert === 'function') {
+          createAlert('Error', 'Add Failed', resp.error || 'Failed to add printer.', 'danger', true, true, 'pageMessages');
+        } else {
+          alert(resp.error || 'Failed to add printer');
+        }
+      }
+    }).catch(() => {
+      if (typeof createAlert === 'function') {
+        createAlert('Error', 'Add Failed', 'An error occurred while adding the printer.', 'danger', true, true, 'pageMessages');
+      } else {
+        alert('An error occurred while adding the printer.');
+      }
+    });
+  }
+  closeAddPrinterPopup();
+};
