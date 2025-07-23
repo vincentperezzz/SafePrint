@@ -269,6 +269,60 @@ To get the Node name:
 snmpget -v2c -c public 192.168.0.101 iso.3.6.1.2.1.1.5.0 
 ```
 
+## Printer Polling Setup
+
+This is a simple setup to poll printers for status every second using cron.
+
+### How it Works
+
+1. A single shell script (`poll_printers_daemon.sh`) runs as a daemon process
+2. The script polls printers every 1 second using the existing Django management command
+3. Cron starts this daemon on system reboot and hourly as a failsafe
+4. The script prevents multiple instances from running
+
+### How to Install
+
+1. Make sure the script is executable:
+   ```
+   chmod +x /home/safeprint/dev/SafePrint/scripts/poll_printers_daemon.sh
+   ```
+
+2. Install the cron job by editing your crontab:
+   ```
+   crontab -e
+   ```
+
+3. Add these lines:
+   ```
+   @reboot /home/safeprint/dev/SafePrint/scripts/poll_printers_daemon.sh
+   @hourly /home/safeprint/dev/SafePrint/scripts/poll_printers_daemon.sh
+   ```
+
+4. Save and exit the editor
+
+### How to Test
+
+You can test the daemon manually:
+
+```
+/home/safeprint/dev/SafePrint/scripts/poll_printers_daemon.sh
+```
+
+To stop it, press Ctrl+C or find its process ID and kill it:
+
+```
+ps aux | grep poll_printers_daemon
+kill <PID>
+```
+
+## Troubleshooting
+
+Check the log file for any issues:
+
+```
+tail -f /home/safeprint/dev/SafePrint/logs/printer_polling.log
+```
+
 ## Debugging with Django Development Server
 
 If you need to debug your Django application, you can temporarily stop Gunicorn and run the built-in Django development server. This allows you to see detailed error messages and debugging output.
