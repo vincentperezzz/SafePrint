@@ -615,3 +615,36 @@ def dashboard_status_event_stream():
             yield f"data: {json_data}\n\n"
             last_data = json_data
         time.sleep(2)
+
+
+@csrf_exempt
+def add_printer(request):
+    if request.method == "POST":
+        printer_name = request.POST.get('printer_name')
+        ip_address = request.POST.get('ip_address')
+        if printer_name and ip_address:
+            from django.utils import timezone
+            now = timezone.now()
+            printer = Printer(printer_name=printer_name, ip_address=ip_address, last_checked=now)
+            printer.save()
+            return JsonResponse({'success': True, 'printer_id': printer.id})
+        return JsonResponse({'success': False, 'error': 'Missing fields'})
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+@csrf_exempt
+def edit_printer(request):
+    if request.method == "POST":
+        printer_id = request.POST.get('printer_id')
+        printer_name = request.POST.get('printer_name')
+        ip_address = request.POST.get('ip_address')
+        try:
+            printer = Printer.objects.get(id=printer_id)
+            if printer_name:
+                printer.printer_name = printer_name
+            if ip_address:
+                printer.ip_address = ip_address
+            printer.save()
+            return JsonResponse({'success': True})
+        except Printer.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Printer not found'})
+    return JsonResponse({'success': False, 'error': 'Invalid request'})

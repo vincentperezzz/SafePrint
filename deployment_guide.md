@@ -251,22 +251,62 @@ sudo apt install snmp snmp-mibs-downloader
 
 To get general info from the printer:
 ```bash
-snmpwalk -v1 -c public 192.168.0.101
+snmpwalk -v2c -c public 192.168.0.101
 ```
 
-To get the printer's page count (common OID, may vary by model):
+To get the printer's model name:
 ```bash
-snmpget -v1 -c public 192.168.0.101 1.3.6.1.2.1.43.10.2.1.4.1.1
+snmpget -v2c -c public 192.168.0.101 iso.3.6.1.2.1.25.3.2.1.3.1 
 ```
 
 To get printer status:
 ```bash
-snmpget -v1 -c public 192.168.0.101 1.3.6.1.2.1.25.3.5.1.1.1
+snmpget -v2c -c public 192.168.0.101 iso.3.6.1.2.1.43.18.1.1.8.1.1 
 ```
 
-If you want human-readable output, edit `/etc/snmp/snmp.conf` and comment out the line `mibs :` (remove the colon).
+To get the Node name:
+```bash
+snmpget -v2c -c public 192.168.0.101 iso.3.6.1.2.1.1.5.0 
+```
 
-Replace OIDs as needed for your specific Brother model. For more details, see your printer's SNMP/MIB documentation.
+## Debugging with Django Development Server
+
+If you need to debug your Django application, you can temporarily stop Gunicorn and run the built-in Django development server. This allows you to see detailed error messages and debugging output.
+
+### Steps:
+
+1. **Stop Gunicorn**
+   If Gunicorn is running as a systemd service:
+   ```bash
+   sudo systemctl stop safeprint
+   ```
+   Or, if you started Gunicorn manually, use:
+   ```bash
+   pkill gunicorn
+   ```
+
+2. **Run Django Development Server**
+   Activate your virtual environment and start the server:
+   ```bash
+   cd /home/safeprint/dev/SafePrint
+   source venv/bin/activate
+   python manage.py runserver 0.0.0.0:8080
+   ```
+   This will start Django on port 8080 and show debugging output in your terminal and browser.
+
+3. **Access the Site**
+   Open your browser and go to:
+   ```
+   http://<server_ip>:8080
+   ```
+
+4. **Restore Gunicorn**
+   When finished debugging, stop the development server (Ctrl+C) and restart Gunicorn:
+   ```bash
+   sudo systemctl start safeprint
+   ```
+
+**Note:** The Django development server is for debugging only and should not be used in production.
 
 
 
