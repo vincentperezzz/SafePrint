@@ -3129,6 +3129,7 @@ input:focus::placeholder {
     display: flex;
     flex-direction: column;
     gap: 15px;
+    min-width: 1335px;
 }
 
 .printer-status-header {
