@@ -454,10 +454,11 @@ def approve_all_documents(request):
         docs = list(qs)  # <-- EVALUATE the queryset BEFORE update!
         if not docs:
             return JsonResponse({'success': False, 'error': 'No pending documents found for this customer'})
-            
+        
         # Update doc_status and status_updated_at for all docs
         for doc in docs:
             doc.doc_status = 'Queued'
+            doc.printer_assigned = None
             doc.status_updated_at = now
             doc.save()
         updated = len(docs)
@@ -484,35 +485,40 @@ def approve_all_documents(request):
                     payment.save()
                 except Payment.DoesNotExist:
                     pass
-                    
-        # Process documents through printer assignment
-        doc_printer_info = []
         
+        # Start printer assignment for all docs in background
+        doc_printer_info = []
+        def assign_printer_async(doc_id):
+            try:
+                doc = Document.objects.get(doc_id=doc_id)
+                if doc.doc_status == 'Queued':
+                    printer = assign_document_to_printer(doc)
+                    if printer:
+                        def print_document_async(doc):
+                            # Always reload doc from DB before printing each page
+                            page_list = doc.get_page_list()
+                            for page_num in page_list:
+                                try:
+                                    fresh_doc = Document.objects.get(doc_id=doc.doc_id)
+                                except Document.DoesNotExist:
+                                    print(f"[CANCELLED] Document {doc.doc_id} was deleted before printing page {page_num}.")
+                                    break
+                                print_page(fresh_doc, page_num)
+                        threading.Thread(target=print_document_async, args=(doc,)).start()
+            except Document.DoesNotExist:
+                print(f"[CANCELLED] Document {doc_id} was deleted or cancelled before printer assignment.")
+
         for doc in docs:
             # Get reroute history for the document
             history_entries = RerouteHistory.objects.filter(document_id=doc.doc_id).select_related('printer').order_by('timestamp')
             reroute_history = [entry.printer.printer_name for entry in history_entries if entry.printer]
-            
-            # Assign printer and queue for printing
-            printer = assign_document_to_printer(doc)
             doc_info = {
                 'doc_id': doc.doc_id,
                 'reroute_history': reroute_history
             }
-            
-            if printer:
-                doc_info['printer_id'] = printer.id
-                doc_info['printer_name'] = printer.printer_name
-                
-                # Start printing in background (don't wait for it to finish)
-                def print_document_async(doc):
-                    for page_num in doc.get_page_list():
-                        print_page(doc, page_num)
-                
-                threading.Thread(target=print_document_async, args=(doc,)).start()
-            
+            threading.Thread(target=assign_printer_async, args=(doc.doc_id,)).start()
             doc_printer_info.append(doc_info)
-            
+
         return JsonResponse({
             'success': True, 
             'updated_count': updated, 
@@ -520,7 +526,6 @@ def approve_all_documents(request):
             'approved_doc_ids': approved_doc_ids,
             'documents': doc_printer_info
         })
-
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 @csrf_exempt
@@ -561,6 +566,7 @@ def approve_document(request):
         try:
             doc = Document.objects.get(doc_id=doc_id, doc_status='Pending')
             doc.doc_status = 'Queued'
+            doc.printer_assigned = None
             doc.status_updated_at = now
             doc.save()
             updated = 1
@@ -591,19 +597,28 @@ def approve_document(request):
         if history_entries.exists():
             reroute_history = [entry.printer.printer_name for entry in history_entries if entry.printer]
 
-        # Call queue_and_print_document logic directly (instead of waiting for a separate POST)
-        printer = None
-        if doc.doc_status == 'Queued':
-            printer = assign_document_to_printer(doc)
-            if printer:
-                # Start printing process in background (don't wait for it to finish)
-                def print_document_async(doc):
-                    for page_num in doc.get_page_list():
-                        print_page(doc, page_num)
-                # Start printing in background
-                threading.Thread(target=print_document_async, args=(doc,)).start()
+        # Start printer assignment in background (don't block UI)
+        def assign_printer_async(doc_id):
+            try:
+                doc = Document.objects.get(doc_id=doc_id)
+                if doc.doc_status == 'Queued':
+                    printer = assign_document_to_printer(doc)
+                    if printer:
+                        def print_document_async(doc):
+                            page_list = doc.get_page_list()
+                            for page_num in page_list:
+                                try:
+                                    fresh_doc = Document.objects.get(doc_id=doc.doc_id)
+                                except Document.DoesNotExist:
+                                    print(f"[CANCELLED] Document {doc.doc_id} was deleted before printing page {page_num}.")
+                                    break
+                                print_page(fresh_doc, page_num)
+                        threading.Thread(target=print_document_async, args=(doc,)).start()
+            except Document.DoesNotExist:
+                print(f"[CANCELLED] Document {doc_id} was deleted or cancelled before printer assignment.")
 
-        # Return document info along with printer and reroute history
+        threading.Thread(target=assign_printer_async, args=(doc_id,)).start()
+
         response_data = {
             'success': True, 
             'updated_count': updated, 
@@ -611,11 +626,6 @@ def approve_document(request):
             'doc_id': doc_id,
             'reroute_history': reroute_history
         }
-        
-        if printer:
-            response_data['printer_id'] = printer.id
-            response_data['printer_name'] = printer.printer_name
-
         return JsonResponse(response_data)
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
@@ -759,28 +769,37 @@ def weighted_round_robin(printers, paper_size):
 
 @transaction.atomic
 def assign_document_to_printer(document):
-    printers = Printer.objects.all()
-    # Filter printers by status, paper size, and paper quality
-    available = [
-        p for p in printers
-        if p.printer_status in ['Ready', 'Sleep']
-        and getattr(p, 'paper_assigned', None) == getattr(document, 'paper_size', None)
-        and getattr(p, 'paper_quality', None) == getattr(document, 'paper_quality', None)
-    ]
-    # Sort by last_checked (least recently used first)
-    if available:
-        available.sort(key=lambda p: p.last_checked or timezone.now())
-        printer = available[0]
-        document.printer_assigned = printer
-        document.doc_status = 'Printing'
-        document.save()
-        # Log assignment in reroute history
-        RerouteHistory.objects.create(document=document, printer=printer, status='Assigned')
-        return printer
-    else:
-        # No available printer, print to console
-        print(f"No available printer for {document.paper_size} ({getattr(document, 'paper_quality', None)}). Document {document.doc_id} paused.")
-        return None
+    import time
+    while True:
+        # Check if document still exists and is queued
+        try:
+            doc = Document.objects.get(doc_id=document.doc_id)
+        except Document.DoesNotExist:
+            print(f"[CANCELLED] Document {document.doc_id} was deleted or cancelled before printer assignment.")
+            return None
+        if doc.doc_status != 'Queued':
+            print(f"[CANCELLED] Document {document.doc_id} is no longer queued (status: {doc.doc_status}). Aborting printer assignment.")
+            return None
+        printers = Printer.objects.all()
+        available = [
+            p for p in printers
+            if p.printer_status in ['Ready', 'Sleep']
+            and getattr(p, 'paper_assigned', None) == getattr(document, 'paper_size', None)
+            and getattr(p, 'paper_quality', None) == getattr(document, 'paper_quality', None)
+        ]
+        if available:
+            available.sort(key=lambda p: p.last_checked or timezone.now())
+            printer = available[0]
+            doc.printer_assigned = printer
+            doc.doc_status = 'Printing'
+            doc.save()
+            # Log assignment in reroute history
+            RerouteHistory.objects.create(document=doc, printer=printer, status='Assigned')
+            print(f"[ASSIGNED] Document {doc.doc_id} assigned to {printer.printer_name}.")
+            return printer
+        else:
+            print(f"No available printer for {doc.paper_size} ({getattr(doc, 'paper_quality', None)}). Document {doc.doc_id} paused. Retrying in 5 seconds...")
+            time.sleep(5)
 
 
 def print_page(document, page_num):
@@ -793,55 +812,84 @@ def print_page(document, page_num):
     stored_name = getattr(document, 'stored_name', None)
     session_key = getattr(document, 'session_key', None)
     # Find the file path
-    if stored_name:
-        uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
-        # If session_key is present, use it, else search for file
-        if session_key:
-            file_path = os.path.join(uploads_dir, session_key, stored_name)
-        else:
-            # Search for file in uploads_dir
-            file_path = None
-            for root, dirs, files in os.walk(uploads_dir):
-                if stored_name in files:
-                    file_path = os.path.join(root, stored_name)
-                    break
-        # Only send the page if file_path found
-        if file_path and os.path.isfile(file_path):
-            # Get assigned printer
-            printer = document.printer_assigned
-            if printer:
-                # Format printer name for lp
-                model_name = getattr(printer, 'model_name', printer.printer_name)
-                if model_name.lower().startswith('brother '):
-                    model_name = model_name[8:]
-                model_name = model_name.replace('-', '').replace(' ', '')
-                # Build lp command for single page
-                # Note: orientation, color_mode, paper_size, paper_quality can be passed as options if supported by PPD
-                lp_cmd = [
-                    'lp',
-                    '-d', model_name,
-                    '-n', str(copies),
-                    '-o', f'page-ranges={page_num}',
-                    '-o', f'orientation-requested={"4" if orientation=="Landscape" else "3"}',
-                    '-o', f'ColorModel={"Color" if color_mode=="Color" else "Gray" if color_mode=="Black and White" else "Color"}',
-                    '-o', f'media={paper_size}',
-                    file_path
-                ]
-                try:
-                    subprocess.run(lp_cmd, check=True)
-                except Exception as e:
-                    # Mark printer error and reroute
-                    document.printer_assigned.printer_status = 'Error'
-                    document.printer_assigned.save()
-                    reroute_document_on_error(document)
-                    return
-    # Mark page as printed in DB
+    if not stored_name:
+        print(f"[ERROR] Document {document.doc_id} has no stored file name. Cannot print page {page_num}.")
+        return
+    uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
+    # If session_key is present, use it, else search for file
+    if session_key:
+        file_path = os.path.join(uploads_dir, session_key, stored_name)
+    else:
+        # Search for file in uploads_dir
+        file_path = None
+        for root, dirs, files in os.walk(uploads_dir):
+            if stored_name in files:
+                file_path = os.path.join(root, stored_name)
+                break
+    if not file_path or not os.path.isfile(file_path):
+        print(f"[ERROR] File for document {document.doc_id} page {page_num} not found at {file_path}. Cannot print.")
+        return
+    printer = document.printer_assigned
+    if not printer:
+        print(f"[ERROR] No printer assigned for document {document.doc_id}. Cannot print page {page_num}.")
+        return
+    # Wait until printer is Ready or Sleep
+    while printer.printer_status not in ['Ready', 'Sleep']:
+        print(f"[WAIT] Printer {printer.printer_name} is {printer.printer_status}. Waiting for Ready/Sleep...")
+        time.sleep(2)
+        printer.refresh_from_db()
+    # Send print job
+    print(f"[PRINT] Sending page {page_num} of document {document.doc_id} to printer {printer.printer_name} ({printer.printer_status})")
+    model_name = getattr(printer, 'model_name', printer.printer_name)
+    if model_name.lower().startswith('brother '):
+        model_name = model_name[8:]
+    model_name = model_name.replace('-', '').replace(' ', '')
+    lp_cmd = [
+        'lp',
+        '-d', model_name,
+        '-n', str(copies),
+        '-o', f'page-ranges={page_num}',
+        '-o', f'orientation-requested={"4" if orientation=="Landscape" else "3"}',
+        '-o', f'ColorModel={"Color" if color_mode=="Color" else "Gray" if color_mode=="Black and White" else "Color"}',
+        '-o', f'media={paper_size}',
+        file_path
+    ]
+    try:
+        subprocess.run(lp_cmd, check=True)
+    except Exception as e:
+        print(f"[ERROR] Failed to print page {page_num} of document {document.doc_id} on printer {printer.printer_name}: {e}")
+        printer.printer_status = 'Error'
+        printer.save()
+        print(f"[REROUTE] Rerouting remaining pages of document {document.doc_id}")
+        reroute_document_on_error(document)
+        return
+    # Wait for printer status to become 'Printing'
+    while True:
+        printer.refresh_from_db()
+        if printer.printer_status == 'Printing':
+            print(f"[SUCCESS] Printed page {page_num} of document {document.doc_id} on printer {printer.printer_name}")
+            break
+        print(f"[WAIT] Waiting for printer {printer.printer_name} to start printing page {page_num}...")
+        time.sleep(2)
+    # Wait for printer status to become 'Ready' after printing
+    while True:
+        printer.refresh_from_db()
+        if printer.printer_status == 'Ready':
+            print(f"[READY] Printer {printer.printer_name} is ready after printing page {page_num}.")
+            break
+        print(f"[WAIT] Waiting for printer {printer.printer_name} to finish printing page {page_num}...")
+        time.sleep(2)
+    # Mark page as printed in DB only after successful print and status transitions
     document.mark_page_printed(page_num)
-    # If all pages printed, set status to Finished
+    print(f"[MARKED] Page {page_num} of document {document.doc_id} marked as printed.")
+    # If all pages printed, set status to Finished and update printed_at to last printer
     if len(document.get_remaining_pages()) == 0:
         document.doc_status = 'Finished'
         document.status_updated_at = timezone.now()
+        # Set printed_at to the last printer used
+        document.printed_at = document.printer_assigned
         document.save()
+        print(f"[COMPLETE] Document {document.doc_id} printing complete. Printed at: {document.printed_at}")
 
 
 def reroute_document_on_error(document):
