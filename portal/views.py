@@ -1,19 +1,22 @@
 import os
 import json
+import time
+import threading
+import subprocess
+from django.db.models import Q
+from .forms import FeedbackForm
+from django.http import Http404
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
+from portal.models import RerouteHistory
+from django.utils.timezone import localtime
 from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
-from django.conf import settings
+from django.views.decorators.csrf import csrf_exempt
+from .models import AdminUser, Printer, Document, Payment
 from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
-from django.http import Http404
-from django.views.decorators.csrf import csrf_exempt
-from .forms import FeedbackForm
-from django.utils.timezone import localtime
-from .models import AdminUser, Printer, Document, Payment
-from django.db.models import Q
-from django.utils import timezone
-import time
-import subprocess
 
 
 now = timezone.now()
@@ -59,7 +62,6 @@ def dashboard(request):
 @csrf_exempt
 def search_customer(request):
     if request.method == 'POST':
-        import json
         data = json.loads(request.body)
         customer_id = data.get('customer_id', '').strip()
         
@@ -434,7 +436,6 @@ def deny_all_documents(request):
         # Trigger folder cleanup after deleting all documents
         subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
         return JsonResponse({'success': True, 'deleted_count': deleted})
-
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 @csrf_exempt
@@ -451,6 +452,9 @@ def approve_all_documents(request):
         qs = Document.objects.filter(customer_id__iexact=customer_id, doc_status='Pending')
         approved_doc_ids = list(qs.values_list('doc_id', flat=True))
         docs = list(qs)  # <-- EVALUATE the queryset BEFORE update!
+        if not docs:
+            return JsonResponse({'success': False, 'error': 'No pending documents found for this customer'})
+            
         # Update doc_status and status_updated_at for all docs
         for doc in docs:
             doc.doc_status = 'Queued'
@@ -480,8 +484,42 @@ def approve_all_documents(request):
                     payment.save()
                 except Payment.DoesNotExist:
                     pass
-
-        return JsonResponse({'success': True, 'updated_count': updated, 'admin_name': admin_name, 'approved_doc_ids': approved_doc_ids})
+                    
+        # Process documents through printer assignment
+        doc_printer_info = []
+        
+        for doc in docs:
+            # Get reroute history for the document
+            history_entries = RerouteHistory.objects.filter(document_id=doc.doc_id).select_related('printer').order_by('timestamp')
+            reroute_history = [entry.printer.printer_name for entry in history_entries if entry.printer]
+            
+            # Assign printer and queue for printing
+            printer = assign_document_to_printer(doc)
+            doc_info = {
+                'doc_id': doc.doc_id,
+                'reroute_history': reroute_history
+            }
+            
+            if printer:
+                doc_info['printer_id'] = printer.id
+                doc_info['printer_name'] = printer.printer_name
+                
+                # Start printing in background (don't wait for it to finish)
+                def print_document_async(doc):
+                    for page_num in doc.get_page_list():
+                        print_page(doc, page_num)
+                
+                threading.Thread(target=print_document_async, args=(doc,)).start()
+            
+            doc_printer_info.append(doc_info)
+            
+        return JsonResponse({
+            'success': True, 
+            'updated_count': updated, 
+            'admin_name': admin_name, 
+            'approved_doc_ids': approved_doc_ids,
+            'documents': doc_printer_info
+        })
 
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
@@ -519,7 +557,6 @@ def approve_document(request):
         if not doc_id:
             return JsonResponse({'success': False, 'error': 'Document ID is required'})
 
-        from django.utils import timezone
         now = timezone.now()
         try:
             doc = Document.objects.get(doc_id=doc_id, doc_status='Pending')
@@ -528,7 +565,7 @@ def approve_document(request):
             doc.save()
             updated = 1
         except Document.DoesNotExist:
-            updated = 0
+            return JsonResponse({'success': False, 'error': 'Document not found'})
 
         # Get admin name from session
         admin_name = None
@@ -548,7 +585,38 @@ def approve_document(request):
             except AdminUser.DoesNotExist:
                 pass  # If admin user not found, admin_name will be None
 
-        return JsonResponse({'success': True, 'updated_count': updated, 'admin_name': admin_name})
+        # Get reroute history for the document
+        reroute_history = []
+        history_entries = RerouteHistory.objects.filter(document_id=doc_id).select_related('printer').order_by('timestamp')
+        if history_entries.exists():
+            reroute_history = [entry.printer.printer_name for entry in history_entries if entry.printer]
+
+        # Call queue_and_print_document logic directly (instead of waiting for a separate POST)
+        printer = None
+        if doc.doc_status == 'Queued':
+            printer = assign_document_to_printer(doc)
+            if printer:
+                # Start printing process in background (don't wait for it to finish)
+                def print_document_async(doc):
+                    for page_num in doc.get_page_list():
+                        print_page(doc, page_num)
+                # Start printing in background
+                threading.Thread(target=print_document_async, args=(doc,)).start()
+
+        # Return document info along with printer and reroute history
+        response_data = {
+            'success': True, 
+            'updated_count': updated, 
+            'admin_name': admin_name,
+            'doc_id': doc_id,
+            'reroute_history': reroute_history
+        }
+        
+        if printer:
+            response_data['printer_id'] = printer.id
+            response_data['printer_name'] = printer.printer_name
+
+        return JsonResponse(response_data)
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 
@@ -597,8 +665,6 @@ def printer_status_event_stream():
                 'paper_assigned': getattr(printer, 'paper_assigned', ''),
                 'paper_quality': getattr(printer, 'paper_quality', ''),
             })
-        import json
-        import time
         json_data = json.dumps({'printers': data})
         if json_data != last_data:
             yield f"data: {json_data}\n\n"
@@ -638,7 +704,6 @@ def dashboard_status_event_stream():
             'pending_customers_count': pending_customers_count,
             'completed_documents': completed_docs_data,
         }
-        import json
         json_data = json.dumps(data)
         if json_data != last_data:
             yield f"data: {json_data}\n\n"
@@ -652,13 +717,13 @@ def add_printer(request):
         printer_name = request.POST.get('printer_name')
         ip_address = request.POST.get('ip_address')
         if printer_name and ip_address:
-            from django.utils import timezone
             now = timezone.now()
             printer = Printer(printer_name=printer_name, ip_address=ip_address, last_checked=now)
             printer.save()
             return JsonResponse({'success': True, 'printer_id': printer.id})
         return JsonResponse({'success': False, 'error': 'Missing fields'})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
+
 
 @csrf_exempt
 def edit_printer(request):
@@ -677,3 +742,213 @@ def edit_printer(request):
         except Printer.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Printer not found'})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+
+def weighted_round_robin(printers, paper_size):
+    # Filter printers by paper size and status
+    available = [
+        p for p in printers
+        if paper_size == p.paper_assigned and p.printer_status in ['Ready', 'Sleep']
+    ]
+    if not available:
+        return None
+    # Sort by last_checked (least recently used first)
+    available.sort(key=lambda p: p.last_checked or timezone.now())
+    return available[0]
+
+
+@transaction.atomic
+def assign_document_to_printer(document):
+    printers = Printer.objects.all()
+    # Filter printers by status, paper size, and paper quality
+    available = [
+        p for p in printers
+        if p.printer_status in ['Ready', 'Sleep']
+        and getattr(p, 'paper_assigned', None) == getattr(document, 'paper_size', None)
+        and getattr(p, 'paper_quality', None) == getattr(document, 'paper_quality', None)
+    ]
+    # Sort by last_checked (least recently used first)
+    if available:
+        available.sort(key=lambda p: p.last_checked or timezone.now())
+        printer = available[0]
+        document.printer_assigned = printer
+        document.doc_status = 'Printing'
+        document.save()
+        # Log assignment in reroute history
+        RerouteHistory.objects.create(document=document, printer=printer, status='Assigned')
+        return printer
+    else:
+        # No available printer, print to console
+        print(f"No available printer for {document.paper_size} ({getattr(document, 'paper_quality', None)}). Document {document.doc_id} paused.")
+        return None
+
+
+def print_page(document, page_num):
+    # Extract print preferences from document
+    copies = getattr(document, 'copies', 1)
+    orientation = getattr(document, 'orientation', 'portrait')
+    color_mode = getattr(document, 'color_mode', 'color')
+    paper_size = getattr(document, 'paper_size', 'A4')
+    paper_quality = getattr(document, 'paper_quality', 'Standard')
+    stored_name = getattr(document, 'stored_name', None)
+    session_key = getattr(document, 'session_key', None)
+    # Find the file path
+    if stored_name:
+        uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
+        # If session_key is present, use it, else search for file
+        if session_key:
+            file_path = os.path.join(uploads_dir, session_key, stored_name)
+        else:
+            # Search for file in uploads_dir
+            file_path = None
+            for root, dirs, files in os.walk(uploads_dir):
+                if stored_name in files:
+                    file_path = os.path.join(root, stored_name)
+                    break
+        # Only send the page if file_path found
+        if file_path and os.path.isfile(file_path):
+            # Get assigned printer
+            printer = document.printer_assigned
+            if printer:
+                # Format printer name for lp
+                model_name = getattr(printer, 'model_name', printer.printer_name)
+                if model_name.lower().startswith('brother '):
+                    model_name = model_name[8:]
+                model_name = model_name.replace('-', '').replace(' ', '')
+                # Build lp command for single page
+                # Note: orientation, color_mode, paper_size, paper_quality can be passed as options if supported by PPD
+                lp_cmd = [
+                    'lp',
+                    '-d', model_name,
+                    '-n', str(copies),
+                    '-o', f'page-ranges={page_num}',
+                    '-o', f'orientation-requested={"4" if orientation=="Landscape" else "3"}',
+                    '-o', f'ColorModel={"Color" if color_mode=="Color" else "Gray" if color_mode=="Black and White" else "Color"}',
+                    '-o', f'media={paper_size}',
+                    file_path
+                ]
+                try:
+                    subprocess.run(lp_cmd, check=True)
+                except Exception as e:
+                    # Mark printer error and reroute
+                    document.printer_assigned.printer_status = 'Error'
+                    document.printer_assigned.save()
+                    reroute_document_on_error(document)
+                    return
+    # Mark page as printed in DB
+    document.mark_page_printed(page_num)
+    # If all pages printed, set status to Finished
+    if len(document.get_remaining_pages()) == 0:
+        document.doc_status = 'Finished'
+        document.status_updated_at = timezone.now()
+        document.save()
+
+
+def reroute_document_on_error(document):
+    remaining_pages = document.get_remaining_pages()
+    next_printer = assign_document_to_printer(document)
+    if next_printer:
+        # Continue printing remaining pages
+        for page_num in remaining_pages:
+            print_page(document, page_num)
+        # Log reroute
+        RerouteHistory.objects.create(document=document, printer=next_printer, status='Rerouted')
+    else:
+        # No available printer, notify admin
+        Feedback.objects.create(
+            category='Report a Problem',
+            message=f"Reroute failed: No available printer for {document.paper_size}. Document {document.doc_id} paused."
+        )
+
+
+@csrf_exempt
+def queue_and_print_document(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        doc_id = data.get('doc_id')
+        if not doc_id:
+            return JsonResponse({'success': False, 'error': 'Document ID is required'})
+        try:
+            document = Document.objects.get(doc_id=doc_id)
+            if document.doc_status == 'Queued':
+                # Get reroute history for the document
+                reroute_history = []
+                history_entries = RerouteHistory.objects.filter(document_id=doc_id).select_related('printer').order_by('timestamp')
+                if history_entries.exists():
+                    reroute_history = [entry.printer.printer_name for entry in history_entries if entry.printer]
+                
+                # WRR and print management
+                printer = assign_document_to_printer(document)
+                if printer:
+                    # Get updated reroute history after assignment
+                    updated_history = []
+                    updated_entries = RerouteHistory.objects.filter(document_id=doc_id).select_related('printer').order_by('timestamp')
+                    if updated_entries.exists():
+                        updated_history = [entry.printer.printer_name for entry in updated_entries if entry.printer]
+                    
+                    # Start printing in background (don't wait for it to finish)
+                    def print_document_async(doc):
+                        for page_num in doc.get_page_list():
+                            print_page(doc, page_num)
+                    # Start printing in background
+                    threading.Thread(target=print_document_async, args=(document,)).start()
+                    
+                    # Return success with printer info and reroute history
+                    return JsonResponse({
+                        'success': True, 
+                        'printer_id': printer.id, 
+                        'printer_name': printer.printer_name,
+                        'reroute_history': updated_history
+                    })
+                else:
+                    return JsonResponse({'success': False, 'error': 'No available printer'})
+            else:
+                return JsonResponse({'success': False, 'error': 'Document not in Queued status'})
+        except Document.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Document not found'})
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+# Example API endpoint to reroute a document on error
+@csrf_exempt
+def reroute_document_api(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        doc_id = data.get('doc_id')
+        if not doc_id:
+            return JsonResponse({'success': False, 'error': 'Document ID is required'})
+        try:
+            document = Document.objects.get(doc_id=doc_id)
+            
+            # Get current reroute history
+            current_history = []
+            history_entries = RerouteHistory.objects.filter(document_id=doc_id).select_related('printer').order_by('timestamp')
+            if history_entries.exists():
+                current_history = [entry.printer.printer_name for entry in history_entries if entry.printer]
+            
+            # Perform rerouting
+            reroute_document_on_error(document)
+            
+            # Get updated history after rerouting
+            updated_history = []
+            updated_entries = RerouteHistory.objects.filter(document_id=doc_id).select_related('printer').order_by('timestamp')
+            if updated_entries.exists():
+                updated_history = [entry.printer.printer_name for entry in updated_entries if entry.printer]
+            
+            # Get assigned printer
+            printer = document.printer_assigned
+            
+            response_data = {
+                'success': True,
+                'reroute_history': updated_history,
+                'doc_id': doc_id
+            }
+            
+            if printer:
+                response_data['printer_id'] = printer.id
+                response_data['printer_name'] = printer.printer_name
+                
+            return JsonResponse(response_data)
+        except Document.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Document not found'})
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
