@@ -3422,11 +3422,11 @@ input:focus::placeholder {
     background: #16A163;
 }
 
-.printer-queued {
+.printer-queued, .printer-assigned{
     background: #dd9c11;
 }
 
-.printer-error {
+.printer-Rerouted {
     background: #D52323;
 }
 

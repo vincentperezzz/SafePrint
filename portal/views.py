@@ -850,7 +850,7 @@ def print_page(document, page_num):
         '-n', str(copies),
         '-o', f'page-ranges={page_num}',
         '-o', f'orientation-requested={"4" if orientation=="Landscape" else "3"}',
-        '-o', f'ColorModel={"Color" if color_mode=="Color" else "Gray" if color_mode=="Black and White" else "Color"}',
+        '-o', f'{"BRMonoColor=Mono" if color_mode=="Black and White" else "ColorModel=Color"}',
         '-o', f'media={paper_size}',
         file_path
     ]
@@ -863,14 +863,23 @@ def print_page(document, page_num):
         print(f"[REROUTE] Rerouting remaining pages of document {document.doc_id}")
         reroute_document_on_error(document)
         return
-    # Wait for printer status to become 'Printing'
+    # Wait for printer status to become 'Printing', abort if document is canceled/deleted
     while True:
         printer.refresh_from_db()
+        # Check if document still exists and is not canceled/deleted
+        try:
+            doc_check = Document.objects.get(doc_id=document.doc_id)
+        except Document.DoesNotExist:
+            print(f"[CANCELLED] Document {document.doc_id} was deleted during printing. Aborting print job for page {page_num}.")
+            return
+        if doc_check.doc_status not in ['Queued', 'Printing']:
+            print(f"[CANCELLED] Document {document.doc_id} status is {doc_check.doc_status}. Aborting print job for page {page_num}.")
+            return
         if printer.printer_status == 'Printing':
             print(f"[SUCCESS] Printed page {page_num} of document {document.doc_id} on printer {printer.printer_name}")
             break
         print(f"[WAIT] Waiting for printer {printer.printer_name} to start printing page {page_num}...")
-        time.sleep(2)
+        time.sleep(1)
     # Wait for printer status to become 'Ready' after printing
     while True:
         printer.refresh_from_db()
@@ -878,7 +887,7 @@ def print_page(document, page_num):
             print(f"[READY] Printer {printer.printer_name} is ready after printing page {page_num}.")
             break
         print(f"[WAIT] Waiting for printer {printer.printer_name} to finish printing page {page_num}...")
-        time.sleep(2)
+        time.sleep(1)
     # Mark page as printed in DB only after successful print and status transitions
     document.mark_page_printed(page_num)
     print(f"[MARKED] Page {page_num} of document {document.doc_id} marked as printed.")
@@ -905,98 +914,6 @@ def reroute_document_on_error(document):
         # No available printer, notify admin
         Feedback.objects.create(
             category='Report a Problem',
+            name='[SYSTEM GENERATED]',
             message=f"Reroute failed: No available printer for {document.paper_size}. Document {document.doc_id} paused."
         )
-
-
-@csrf_exempt
-def queue_and_print_document(request):
-    if request.method == 'POST':
-        data = json.loads(request.body)
-        doc_id = data.get('doc_id')
-        if not doc_id:
-            return JsonResponse({'success': False, 'error': 'Document ID is required'})
-        try:
-            document = Document.objects.get(doc_id=doc_id)
-            if document.doc_status == 'Queued':
-                # Get reroute history for the document
-                reroute_history = []
-                history_entries = RerouteHistory.objects.filter(document_id=doc_id).select_related('printer').order_by('timestamp')
-                if history_entries.exists():
-                    reroute_history = [entry.printer.printer_name for entry in history_entries if entry.printer]
-                
-                # WRR and print management
-                printer = assign_document_to_printer(document)
-                if printer:
-                    # Get updated reroute history after assignment
-                    updated_history = []
-                    updated_entries = RerouteHistory.objects.filter(document_id=doc_id).select_related('printer').order_by('timestamp')
-                    if updated_entries.exists():
-                        updated_history = [entry.printer.printer_name for entry in updated_entries if entry.printer]
-                    
-                    # Start printing in background (don't wait for it to finish)
-                    def print_document_async(doc):
-                        for page_num in doc.get_page_list():
-                            print_page(doc, page_num)
-                    # Start printing in background
-                    threading.Thread(target=print_document_async, args=(document,)).start()
-                    
-                    # Return success with printer info and reroute history
-                    return JsonResponse({
-                        'success': True, 
-                        'printer_id': printer.id, 
-                        'printer_name': printer.printer_name,
-                        'reroute_history': updated_history
-                    })
-                else:
-                    return JsonResponse({'success': False, 'error': 'No available printer'})
-            else:
-                return JsonResponse({'success': False, 'error': 'Document not in Queued status'})
-        except Document.DoesNotExist:
-            return JsonResponse({'success': False, 'error': 'Document not found'})
-    return JsonResponse({'success': False, 'error': 'Invalid request method'})
-
-
-# Example API endpoint to reroute a document on error
-@csrf_exempt
-def reroute_document_api(request):
-    if request.method == 'POST':
-        data = json.loads(request.body)
-        doc_id = data.get('doc_id')
-        if not doc_id:
-            return JsonResponse({'success': False, 'error': 'Document ID is required'})
-        try:
-            document = Document.objects.get(doc_id=doc_id)
-            
-            # Get current reroute history
-            current_history = []
-            history_entries = RerouteHistory.objects.filter(document_id=doc_id).select_related('printer').order_by('timestamp')
-            if history_entries.exists():
-                current_history = [entry.printer.printer_name for entry in history_entries if entry.printer]
-            
-            # Perform rerouting
-            reroute_document_on_error(document)
-            
-            # Get updated history after rerouting
-            updated_history = []
-            updated_entries = RerouteHistory.objects.filter(document_id=doc_id).select_related('printer').order_by('timestamp')
-            if updated_entries.exists():
-                updated_history = [entry.printer.printer_name for entry in updated_entries if entry.printer]
-            
-            # Get assigned printer
-            printer = document.printer_assigned
-            
-            response_data = {
-                'success': True,
-                'reroute_history': updated_history,
-                'doc_id': doc_id
-            }
-            
-            if printer:
-                response_data['printer_id'] = printer.id
-                response_data['printer_name'] = printer.printer_name
-                
-            return JsonResponse(response_data)
-        except Document.DoesNotExist:
-            return JsonResponse({'success': False, 'error': 'Document not found'})
-    return JsonResponse({'success': False, 'error': 'Invalid request method'})
