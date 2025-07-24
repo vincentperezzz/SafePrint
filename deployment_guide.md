@@ -97,60 +97,6 @@ sudo lpadmin -p <old_name> -R printer-info -D "New Printer Name"
 sudo cp /home/safeprint/dev/SafePrint/nginx.conf /etc/nginx/sites-available/nanoprint.com && sudo ln -sf /etc/nginx/sites-available/nanoprint.com /etc/nginx/sites-enabled/nanoprint.com && sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 5. Troubleshooting
-
-If you encounter issues:
-
-### Check Gunicorn Logs
-```bash
-sudo tail -f /var/log/gunicorn/safeprint-error.log
-sudo tail -f /var/log/gunicorn/safeprint-access.log
-```
-
-### Check Nginx Logs
-```bash
-sudo tail -f /var/log/nginx/error.log
-sudo tail -f /var/log/nginx/access.log
-```
-
-### Check the Socket File
-```bash
-ls -l /home/safeprint/dev/SafePrint/safeprint.sock
-```
-
-### Restart Services
-```bash
-sudo systemctl restart safeprint
-sudo systemctl reload nginx
-```
-
-### Clear Python Bytecode Cache (After Code Changes)
-When your code changes aren't being reflected after deployment:
-
-```bash
-#### Clears Cache and Restart Gunicorn and Nginx
-cd /home/safeprint/dev/SafePrint
-find . -name "*.pyc" -delete
-find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-find . -type f -name "*.pyc" -delete && find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-
-pkill -HUP gunicorn
-
-sudo systemctl stop safeprint && sleep 2 && sudo systemctl start safeprint
-
-find . -name "*.pyc" -delete && find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-source venv/bin/activate
-python manage.py collectstatic --noinput
-sudo systemctl restart safeprint
-sudo systemctl restart nginx
-```
-
-### Clear Static Files Cache
-```bash
-cd /home/safeprint/dev/SafePrint
-source venv/bin/activate
-python manage.py collectstatic --noinput --clear
-```
 
 ### Verify ChaCha20 Cipher and SSL Digital Signature
 To verify that your server supports ChaCha20 encryption and your SSL certificate is valid:
@@ -410,6 +356,49 @@ If you need to debug your Django application, you can temporarily stop Gunicorn 
    ```bash
    sudo systemctl start safeprint
    ```
+
+5. If you encounter issues:
+
+### Check Gunicorn Logs
+```bash
+sudo tail -f /var/log/gunicorn/safeprint-error.log
+sudo tail -f /var/log/gunicorn/safeprint-access.log
+```
+
+### Check Nginx Logs
+```bash
+sudo tail -f /var/log/nginx/error.log
+sudo tail -f /var/log/nginx/access.log
+```
+
+### Check the Socket File
+```bash
+ls -l /home/safeprint/dev/SafePrint/safeprint.sock
+```
+
+### Restart Services
+```bash
+sudo systemctl restart safeprint
+sudo systemctl reload nginx
+```
+
+### Clear Python Bytecode Cache (After Code Changes)
+When your code changes aren't being reflected after deployment:
+
+```bash
+#### Clears Cache and Restart Gunicorn and Nginx
+cd /home/safeprint/dev/SafePrint
+find . -name "*.pyc" -delete
+find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+find . -type f -name "*.pyc" -delete && find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+pkill -HUP gunicorn
+sudo systemctl stop safeprint && sleep 2 && sudo systemctl start safeprint
+find . -name "*.pyc" -delete && find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+source venv/bin/activate
+python manage.py collectstatic --noinput
+sudo systemctl restart safeprint
+sudo systemctl restart nginx
+```
 
 **Note:** The Django development server is for debugging only and should not be used in production.
 
