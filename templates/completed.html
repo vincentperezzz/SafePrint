@@ -42,7 +42,7 @@ Print Completed
                     </div>
                     <div class="completed-col doc-id">#{{ document.doc_id }}</div>
                     <div class="completed-col doc-customer">{{ document.customer_id }}</div>
-                    <div class="completed-col doc-printer">{{ printer_data.printer_name }}</div>
+                    <div class="completed-col doc-printer">{{ document.printed_at }}</div>
                     <div class="completed-col doc-action">
                         {% if document.handed_over %}
                             <span class="handed-over-status">✓ Handed Over</span>
