@@ -79,7 +79,7 @@ class Document(models.Model):
     customer_id = models.CharField(max_length=255)
     filename = models.CharField(max_length=255)
     num_copies = models.IntegerField()
-    pages_num = models.CharField(max_length=255) 
+    pages_num = models.CharField(max_length=255)
     orientation = models.CharField(max_length=50, choices=ORIENTATION_CHOICES)
     color_mode = models.CharField(max_length=50, choices=COLOR_MODE_CHOICES)
     paper_size = models.CharField(max_length=50, choices=PAPER_SIZE_CHOICES)
@@ -108,6 +108,8 @@ class Document(models.Model):
         on_delete=models.SET_NULL,
         db_column='printed_at'
     )
+    # Track which pages have been printed (list of ints)
+    pages_printed = models.JSONField(default=list, blank=True)
 
     def get_total_pages(self):
         """
@@ -131,6 +133,22 @@ class Document(models.Model):
                 total_pages += 1
         
         return total_pages
+
+    def mark_page_printed(self, page_num):
+        """
+        Mark a page as printed (add to pages_printed if not already present)
+        """
+        if page_num not in self.pages_printed:
+            self.pages_printed.append(page_num)
+            self.save(update_fields=['pages_printed'])
+
+    def get_remaining_pages(self):
+        """
+        Return a sorted list of pages that still need to be printed
+        """
+        all_pages = set(self.get_page_list())
+        printed = set(self.pages_printed)
+        return sorted(list(all_pages - printed))
 
     def get_page_list(self):
         """
