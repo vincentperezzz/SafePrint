@@ -108,8 +108,8 @@ Dashboard
                         <div class="jobs-item-wrapper">
                             <h6 title="{{ doc.filename }}">{{ doc.filename }}</h6>
                             <div class="Printer-Assigned">
-                                {% if doc.printer_assigned %}
-                                    {{ doc.printer_assigned.printer_name }}
+                                {% if doc.printed_at %}
+                                    {{ doc.printed_at }}
                                 {% else %}
                                     No Printer
                                 {% endif %}
