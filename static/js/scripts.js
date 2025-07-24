@@ -127,6 +127,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Store original file objects for retry
     const failedUploads = {};
 
+    // Track xhr and paused state per file
+    const uploadXhrs = {};
+    const uploadPaused = {};
+
     function uploadFile(file, retryFileId = null) {
         const fileId = retryFileId || (Date.now() + '_' + Math.random().toString(36).substr(2, 9));
         // If this is a retry, remove any previous failed record
@@ -141,6 +145,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const proceedButton = fileUploadContainer.querySelector('.proceed-btn');
         fileUploadContainer.insertBefore(fileElement, proceedButton);
 
+        // Add pause/resume event listener
+        const pauseIcon = fileElement.querySelector('.pause-icon');
+        if (pauseIcon) {
+            pauseIcon.addEventListener('click', function() {
+                if (!uploadPaused[fileId]) {
+                    // Pause: abort the xhr, mark as paused
+                    if (uploadXhrs[fileId]) {
+                        uploadXhrs[fileId].abort();
+                        uploadPaused[fileId] = true;
+                        pauseIcon.src = '/static/assets/play-icon.svg';
+                        pauseIcon.alt = 'Resume Icon';
+                        // Show paused status
+                        const fileNameSpan = fileElement.querySelector('.file-name');
+                        if (fileNameSpan) fileNameSpan.textContent = `Paused ${file.name}`;
+                    }
+                } else {
+                    // Resume: restart upload from scratch (no partial resume in XHR)
+                    uploadPaused[fileId] = false;
+                    pauseIcon.src = '/static/assets/pause-icon.svg';
+                    pauseIcon.alt = 'Pause Icon';
+                    // Remove and re-upload
+                    fileElement.remove();
+                    uploadFile(file, fileId);
+                }
+            });
+        }
+
         // Create FormData for upload
         const formData = new FormData();
         formData.append('file', file);
@@ -153,6 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         // Create XMLHttpRequest for progress tracking
         const xhr = new XMLHttpRequest();
+        uploadXhrs[fileId] = xhr;
 
         // Set timeout for large file uploads (30 minutes)
         xhr.timeout = 30 * 60 * 1000;
@@ -172,11 +204,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (progressBar) {
                 progressBar.classList.remove('scanning-pulse');
             }
-            
             // Reset scanning flag and update proceed button
             isScanning = false;
             updateProceedButton();
-            
+            // Remove xhr tracking
+            delete uploadXhrs[fileId];
+            delete uploadPaused[fileId];
             if (xhr.status === 200) {
                 try {
                     const response = JSON.parse(xhr.responseText);
@@ -194,7 +227,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Upload failed
                         updateFileStatus(fileId, 'error', file.name);
                         failedUploads[fileId] = file;
-                        
                         // Check if this is a virus detection
                         if (response.error && response.error.toLowerCase().includes('virus')) {
                             alert(`Security alert: The file "${file.name}" contains a virus and has been deleted.`);
@@ -216,6 +248,8 @@ document.addEventListener('DOMContentLoaded', () => {
             failedUploads[fileId] = file;
             isScanning = false;
             updateProceedButton();
+            delete uploadXhrs[fileId];
+            delete uploadPaused[fileId];
         });
 
         xhr.addEventListener('timeout', function() {
@@ -224,6 +258,8 @@ document.addEventListener('DOMContentLoaded', () => {
             alert(`Upload of "${file.name}" timed out. Please try again.`);
             isScanning = false;
             updateProceedButton();
+            delete uploadXhrs[fileId];
+            delete uploadPaused[fileId];
         });
 
         // Send the request
@@ -246,7 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="file-name">Uploading ${file.name}...</span>
                         <span class="file-size">0% • ${fileSizeText}</span>
                     </div>
-                    <img src="/static/assets/pause-icon.svg" alt="Pause Icon" class="pause-icon">
+                    <img src="/static/assets/pause-icon.svg" alt="Pause Icon" class="pause-icon" style="cursor:pointer;">
                     <img src="/static/assets/delete-icon.svg" alt="Delete Icon" class="delete-icon" onclick="cancelUpload('${fileId}')">
                 </div>
                 <div class="progress-bar">
