@@ -1202,26 +1202,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         if (typeof createAlert === "function") {
                                             createAlert('Success', 'Cancelled', 'Document cancelled.', 'success', true, true, 'pageMessages');
                                         }
-                                        // When updating the On Queue list and list is empty(after deny):
-                                        const onQueueList = document.querySelector('.on-queue-documents-list');
-                                        let noOnqueueRow = document.getElementById('no-onqueue-documents-row');
-                                        if (onQueueList) {
-                                            const remainingOnQueueRows = onQueueList.querySelectorAll('.on-queue-row[id^="onqueue-doc-"]');
-                                            if (remainingOnQueueRows.length === 0) {
-                                                if (!noOnqueueRow) {
-                                                    noOnqueueRow = document.createElement('div');
-                                                    noOnqueueRow.className = 'on-queue-row';
-                                                    noOnqueueRow.id = 'no-onqueue-documents-row';
-                                                    noOnqueueRow.style.display = 'flex';
-                                                    noOnqueueRow.innerHTML = `<div class="queue-col" style="width: 100%; text-align: center;">No documents in queue.</div>`;
-                                                    onQueueList.appendChild(noOnqueueRow);
-                                                } else {
-                                                    noOnqueueRow.style.display = 'flex';
-                                                }
-                                            } else if (noOnqueueRow) {
-                                                noOnqueueRow.style.display = 'none';
-                                            }
-                                        }
+                                        updateOnQueueEmptyState();
                                     } else {
                                         alert('Cancel failed: ' + (data.error || 'Unknown error.'));
                                     }
@@ -1262,18 +1243,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (typeof createAlert === "function") {
                         createAlert('Success', 'Cancelled', 'Document cancelled.', 'success', true, true, 'pageMessages');
                     }
-                    // When updating the on-queue list (e.g., after cancel/deny/approve):
-                    const onQueueList = document.querySelector('.on-queue-documents-list');
-                    const noOnqueueRow = document.getElementById('no-onqueue-documents-row');
-                    if (onQueueList && noOnqueueRow) {
-                        // Only count actual on-queue docs, not the empty/match rows
-                        const remainingRows = onQueueList.querySelectorAll('.on-queue-row[id^="onqueue-doc-"]');
-                        if (remainingRows.length === 0) {
-                            noOnqueueRow.style.display = 'flex';
-                        } else {
-                            noOnqueueRow.style.display = 'none';
-                        }
-                    }
+                    updateOnQueueEmptyState();
                 } else {
                     alert('Cancel failed: ' + (data.error || 'Unknown error.'));
                 }
@@ -1582,6 +1552,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
 });
 
+// Utility function to update the On Queue empty state
+function updateOnQueueEmptyState() {
+    const onQueueList = document.querySelector('.on-queue-documents-list');
+    let noOnqueueRow = document.getElementById('no-onqueue-documents-row');
+    if (onQueueList) {
+        const remainingOnQueueRows = onQueueList.querySelectorAll('.on-queue-row[id^="onqueue-doc-"]');
+        if (remainingOnQueueRows.length === 0) {
+            if (!noOnqueueRow) {
+                noOnqueueRow = document.createElement('div');
+                noOnqueueRow.className = 'on-queue-row';
+                noOnqueueRow.id = 'no-onqueue-documents-row';
+                noOnqueueRow.style.display = 'flex';
+                noOnqueueRow.innerHTML = `<div class="queue-col" style="width: 100%; text-align: center;">No documents in queue.</div>`;
+                onQueueList.appendChild(noOnqueueRow);
+            } else {
+                noOnqueueRow.style.display = 'flex';
+            }
+        } else if (noOnqueueRow) {
+            noOnqueueRow.style.display = 'none';
+        }
+    }
+}
 
 // Printer Status Edit Button
 let currentEditPrinterId = null;
@@ -1591,19 +1583,23 @@ function openPrinterEditPopup(printerName, printerIP, printerId) {
   document.getElementById('editPrinterIP').value = printerIP || '';
   currentEditPrinterId = printerId;
 }
+
 function closePrinterEditPopup() {
   document.getElementById('printerEditPopup').style.display = 'none';
   currentEditPrinterId = null;
 }
+
 // Printer Status Add Printer Button modal control
 function openAddPrinterPopup() {
   var popup = document.getElementById('addPrinterPopup');
   if (popup) popup.style.display = 'flex';
 }
+
 function closeAddPrinterPopup() {
   var popup = document.getElementById('addPrinterPopup');
   if (popup) popup.style.display = 'none';
 }
+
 document.getElementById('printerEditForm').onsubmit = function(e) {
   e.preventDefault();
   var printerName = document.getElementById('editPrinterName').value;
