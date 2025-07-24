@@ -37,6 +37,60 @@ sudo systemctl enable safeprint  # Enable to start on boot
 sudo systemctl status safeprint
 ```
 
+## 4. Printer Installation Guide (Linux/CUPS)
+
+### 1. Download the Brother Printer Driver
+
+- Visit the official Brother support page for your printer model.
+- Alternatively, use the following command to download the installer (replace `<model>` with your actual printer model, e.g., HL-L2350DW):
+
+```bash
+cd ~/Documents
+curl -O https://download.brother.com/welcome/dlf006893/linux-brprinter-installer-2.2.3-1.gz
+```
+
+### 2. Extract and Run the Installer
+
+```bash
+gunzip linux-brprinter-installer-2.2.3-1.gz
+sudo bash linux-brprinter-installer-2.2.4-1 DCP-T510W
+```
+- When prompted, enter your printer model (e.g., HL-L2350DW).
+- Follow the on-screen instructions to complete the installation.
+
+### 3. Select Device URI
+
+- During installation, you may be asked to select the Device URI.
+- Choose the correct connection type (USB, network, etc.).
+- For network printers, select the URI that matches your printer's IP address.
+
+### 4. Test the Printer
+
+- After installation, verify the printer is recognized:
+
+```bash
+lpstat -p
+```
+- Send a test print:
+
+```bash
+lp -d DCPT510W /etc/nsswitch.conf
+```
+- Replace `<DCPT510W>` with the name shown by `lpstat -p`.
+
+### 5. Troubleshooting for Printer
+
+- If you need to rename the printer:
+
+```bash
+sudo lpadmin -p <old_name> -R printer-info -D "New Printer Name"
+```
+- Access the CUPS web interface at http://localhost:631 for advanced configuration.
+
+---
+
+**Note:** For other printer models, download the appropriate driver from the manufacturer's website and follow similar steps.
+
 ## 4. Configure Nginx Site
 
 ```bash
