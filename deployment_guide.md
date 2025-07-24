@@ -387,9 +387,6 @@ If you need to debug your Django application, you can temporarily stop Gunicorn 
    If Gunicorn is running as a systemd service:
    ```bash
    sudo systemctl stop safeprint
-   ```
-   Or, if you started Gunicorn manually, use:
-   ```bash
    pkill gunicorn
    ```
 
@@ -398,14 +395,14 @@ If you need to debug your Django application, you can temporarily stop Gunicorn 
    ```bash
    cd /home/safeprint/dev/SafePrint
    source venv/bin/activate
-   python manage.py runserver 0.0.0.0:8080
+   python manage.py runserver 0.0.0.0:8000
    ```
-   This will start Django on port 8080 and show debugging output in your terminal and browser.
+   This will start Django on port 8000 and show debugging output in your terminal and browser.
 
 3. **Access the Site**
    Open your browser and go to:
    ```
-   http://<server_ip>:8080
+   http://localhost:8000
    ```
 
 4. **Restore Gunicorn**
