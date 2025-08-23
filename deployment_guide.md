@@ -2,7 +2,7 @@
 
 This guide explains how to deploy your SafePrint Django application with Nginx and Gunicorn.
 
-## 1. Install Required Packages
+## Install Required Packages
 
 ```bash
 # Install Gunicorn in your Python virtual environment
@@ -14,7 +14,7 @@ pip install gunicorn
 echo "gunicorn" >> requirements.txt
 ```
 
-## 2. Create Log Directory for Gunicorn
+## Create Log Directory for Gunicorn
 
 ```bash
 # Create log directory
@@ -22,7 +22,7 @@ sudo mkdir -p /var/log/gunicorn
 sudo chown safeprint:www-data /var/log/gunicorn
 ```
 
-## 3. Install and Configure the Systemd Service
+## Install and Configure the Systemd Service
 
 ```bash
 # Copy the service file to systemd
@@ -37,9 +37,9 @@ sudo systemctl enable safeprint  # Enable to start on boot
 sudo systemctl status safeprint
 ```
 
-## 4. Printer Installation Guide (Linux/CUPS)
+## Printer Installation Guide (Linux/CUPS)
 
-### 1. Download the Brother Printer Driver
+### Download the Brother Printer Driver
 
 - Visit the official Brother support page for your printer model.
 - Alternatively, use the following command to download the installer (replace `<model>` with your actual printer model, e.g., HL-L2350DW):
@@ -49,7 +49,7 @@ cd ~/Documents
 curl -O https://download.brother.com/welcome/dlf006893/linux-brprinter-installer-2.2.3-1.gz
 ```
 
-### 2. Extract and Run the Installer
+### Extract and Run the Installer
 
 ```bash
 gunzip linux-brprinter-installer-2.2.3-1.gz
@@ -58,13 +58,13 @@ sudo bash linux-brprinter-installer-2.2.4-1 DCP-T510W
 - When prompted, enter your printer model (e.g., HL-L2350DW).
 - Follow the on-screen instructions to complete the installation.
 
-### 3. Select Device URI
+### Select Device URI
 
 - During installation, you may be asked to select the Device URI.
 - Choose the correct connection type (USB, network, etc.).
 - For network printers, select the URI that matches your printer's IP address.
 
-### 4. Test the Printer
+### Test the Printer
 
 - After installation, verify the printer is recognized:
 
@@ -78,7 +78,7 @@ lp -d DCPT510W /etc/nsswitch.conf
 ```
 - Replace `<DCPT510W>` with the name shown by `lpstat -p`.
 
-### 5. Troubleshooting for Printer
+### Troubleshooting for Printer
 
 - If you need to rename the printer:
 
@@ -91,7 +91,7 @@ sudo lpadmin -p <old_name> -R printer-info -D "New Printer Name"
 
 **Note:** For other printer models, download the appropriate driver from the manufacturer's website and follow similar steps.
 
-## 4. Configure Nginx Site
+## Configure Nginx Site
 
 ```bash
 sudo cp /home/safeprint/dev/SafePrint/nginx.conf /etc/nginx/sites-available/nanoprint.com && sudo ln -sf /etc/nginx/sites-available/nanoprint.com /etc/nginx/sites-enabled/nanoprint.com && sudo nginx -t && sudo systemctl reload nginx
@@ -101,19 +101,19 @@ sudo cp /home/safeprint/dev/SafePrint/nginx.conf /etc/nginx/sites-available/nano
 ### Verify ChaCha20 Cipher and SSL Digital Signature
 To verify that your server supports ChaCha20 encryption and your SSL certificate is valid:
 
-#### 1. Check ChaCha20 Cipher Support
+#### Check ChaCha20 Cipher Support
 ```bash
 openssl s_client -connect nanoprint.duckdns.org:443 -cipher 'ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305' -tls1_2
 ```
 - If the connection is successful and you see a line like `Cipher    : ECDHE-RSA-CHACHA20-POLY1305`, then ChaCha20 is enabled and working.
 
-#### 2. Check SSL Certificate Digital Signature
+#### Check SSL Certificate Digital Signature
 ```bash
 openssl s_client -connect nanoprint.duckdns.org:443 -tls1_2
 ```
 - Look for the `Signature Algorithm` in the certificate details to verify the digital signature is present and valid.
 
-## 6. Additional Notes
+## Additional Notes
 
 - Make sure file permissions are correct
 - Ensure your Django settings are configured for production
@@ -123,30 +123,30 @@ openssl s_client -connect nanoprint.duckdns.org:443 -tls1_2
 - Use graceful reload (`pkill -HUP gunicorn`) for minimal downtime
 
 
-## 7. Enable HTTPS with DuckDNS and Let's Encrypt
+## Enable HTTPS with DuckDNS and Let's Encrypt
 
-### 1. Install Certbot
+### Install Certbot
 
 ```bash
 sudo apt update
 sudo apt install certbot python3-certbot-nginx
 ```
 
-### 2. Open Firewall Ports
+### Open Firewall Ports
 
 ```bash
 sudo ufw allow 80
 sudo ufw allow 443
 ```
 
-### 3. Request SSL Certificate
+### Request SSL Certificate
 
 ```bash
 sudo certbot --nginx -d nanoprint.duckdns.org
 ```
 Follow the prompts to complete the certificate setup.
 
-### 4. Update Nginx Configuration
+### Update Nginx Configuration
 
 Edit `/etc/nginx/sites-available/nanoprint.com` to use SSL:
 
@@ -174,14 +174,14 @@ server {
 }
 ```
 
-### 5. Reload Nginx
+### Reload Nginx
 
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### 6. Test Your Site
+### Test Your Site
 
 Open your browser and go to:
 ```
@@ -189,7 +189,7 @@ https://nanoprint.duckdns.org
 ```
 You should see your SafePrint app with a secure connection.
 
-## 8. SSL Certificate Renewal
+## SSL Certificate Renewal
 
 Let's Encrypt certificates are valid for 90 days. Certbot can automatically renew them using a systemd timer or a cron job.
 
@@ -217,7 +217,7 @@ Add this line:
 ```
 This will renew certificates twice daily and reload Nginx if renewed.
 
-## 9. DuckDNS DNS Challenge (Manual or Automated)
+## DuckDNS DNS Challenge (Manual or Automated)
 
 If you use the DNS challenge for Let's Encrypt (for example, if you cannot open port 80), you need to set a TXT record in DuckDNS for your domain.
 
@@ -282,23 +282,23 @@ This is a simple setup to poll printers for status every second using cron.
 
 ### How to Install
 
-1. Make sure the script is executable:
+- Make sure the script is executable:
    ```
    chmod +x /home/safeprint/dev/SafePrint/scripts/poll_printers_daemon.sh
    ```
 
-2. Install the cron job by editing your crontab:
+- Install the cron job by editing your crontab:
    ```
    crontab -e
    ```
 
-3. Add these lines:
+- Add these lines:
    ```
    @reboot /home/safeprint/dev/SafePrint/scripts/poll_printers_daemon.sh
    @hourly /home/safeprint/dev/SafePrint/scripts/poll_printers_daemon.sh
    ```
 
-4. Save and exit the editor
+- Save and exit the editor
 
 ### How to Test
 
@@ -329,14 +329,14 @@ If you need to debug your Django application, you can temporarily stop Gunicorn 
 
 ### Steps:
 
-1. **Stop Gunicorn**
+- Stop Gunicorn
    If Gunicorn is running as a systemd service:
    ```bash
    sudo systemctl stop safeprint
    pkill gunicorn
    ```
 
-2. **Run Django Development Server**
+- Run Django Development Server
    Activate your virtual environment and start the server:
    ```bash
    cd /home/safeprint/dev/SafePrint
@@ -345,19 +345,19 @@ If you need to debug your Django application, you can temporarily stop Gunicorn 
    ```
    This will start Django on port 8000 and show debugging output in your terminal and browser.
 
-3. **Access the Site**
+- Access the Site
    Open your browser and go to:
    ```
    http://localhost:8000
    ```
 
-4. **Restore Gunicorn**
+- Restore Gunicorn
    When finished debugging, stop the development server (Ctrl+C) and restart Gunicorn:
    ```bash
    sudo systemctl start safeprint
    ```
 
-5. If you encounter issues:
+If you encounter issues:
 
 ### Check Gunicorn Logs
 ```bash
