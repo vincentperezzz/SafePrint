@@ -358,7 +358,7 @@ def finalize_uploads_view(request):
             if paper_size == 'Unsupported':
                 paper_size_errors.append({
                     'file': original_name,
-                    'reason': 'This document has a paper size that is not supported.'
+                    'reason': 'This document has a paper size or is password protected that is not supported.'
                 })
                 continue
 
