@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+import time
 
 
 UPLOADS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../media/uploads'))
@@ -36,7 +37,10 @@ def get_valid_stored_names():
         sys.exit(1)
 
 
-def delete_orphan_files(valid_names, dry_run=False):
+GRACE_SECONDS = 10 * 60  # 10 minutes
+
+
+def delete_orphan_files(valid_names):
     """
     Delete files under media/uploads/<session_key>/ that are not referenced in the DB.
     Returns the count of deleted files.
@@ -56,16 +60,24 @@ def delete_orphan_files(valid_names, dry_run=False):
                 file_path = os.path.join(dir_path, fname)
                 if not os.path.isfile(file_path):
                     continue
+
+                # Skip very recent files (within the grace period)
+                try:
+                    mtime = os.path.getmtime(file_path)
+                    if (time.time() - mtime) < GRACE_SECONDS:
+                        # Within grace period; do not delete
+                        continue
+                except Exception:
+                    # If stat fails, proceed with caution (treat as eligible)
+                    pass
+
                 if fname not in valid_names:
-                    if dry_run:
-                        print(f"[DRY-RUN] Would delete orphan file: {file_path}")
-                    else:
-                        try:
-                            os.remove(file_path)
-                            print(f"Deleted orphan file: {file_path}")
-                            deleted += 1
-                        except Exception as e:
-                            print(f"Failed to delete file {file_path}: {e}")
+                    try:
+                        os.remove(file_path)
+                        print(f"Deleted orphan file: {file_path}")
+                        deleted += 1
+                    except Exception as e:
+                        print(f"Failed to delete file {file_path}: {e}")
         except Exception as e:
             print(f"Failed to list directory {dir_path}: {e}")
 
@@ -92,7 +104,6 @@ def delete_empty_upload_folders():
 
 def main():
     parser = argparse.ArgumentParser(description='Clean orphan uploads and empty folders.')
-    parser.add_argument('--dry-run', action='store_true', help='Show what would be deleted without removing files')
     args = parser.parse_args()
 
     if not os.path.exists(UPLOADS_DIR):
@@ -103,11 +114,8 @@ def main():
     valid_names = get_valid_stored_names()
     print(f"Found {len(valid_names)} file references in DB.")
 
-    deleted_files = delete_orphan_files(valid_names, dry_run=args.dry_run)
-    if args.dry_run:
-        print(f"[DRY-RUN] Orphan files that would be deleted: {deleted_files}")
-    else:
-        print(f"Orphan files deleted: {deleted_files}")
+    deleted_files = delete_orphan_files(valid_names)
+    print(f"Orphan files deleted: {deleted_files}")
 
     removed_folders = delete_empty_upload_folders()
     if removed_folders == 0:
