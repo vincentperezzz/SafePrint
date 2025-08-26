@@ -1,0 +1,13 @@
+[Unit]
+Description=Configure Tailscale as exit node
+After=network.target tailscaled.service
+Wants=tailscaled.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/safeprint/dev/SafePrint/unix/home/safeprint/dev/SafePrint/tailscale-startup.sh
+RemainAfterExit=yes
+User=root
+
+[Install]
+WantedBy=multi-user.target
