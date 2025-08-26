@@ -754,19 +754,6 @@ def edit_printer(request):
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
 
-def weighted_round_robin(printers, paper_size):
-    # Filter printers by paper size and status
-    available = [
-        p for p in printers
-        if paper_size == p.paper_assigned and p.printer_status in ['Ready', 'Sleep']
-    ]
-    if not available:
-        return None
-    # Sort by last_checked (least recently used first)
-    available.sort(key=lambda p: p.last_checked or timezone.now())
-    return available[0]
-
-
 @transaction.atomic
 def assign_document_to_printer(document):
     import time
