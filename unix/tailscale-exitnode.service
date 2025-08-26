@@ -5,7 +5,7 @@ Wants=tailscaled.service
 
 [Service]
 Type=oneshot
-ExecStart=/home/safeprint/dev/SafePrint/unix/home/safeprint/dev/SafePrint/tailscale-startup.sh
+ExecStart=/home/safeprint/dev/SafePrint/unix/tailscale-startup.sh
 RemainAfterExit=yes
 User=root
 
