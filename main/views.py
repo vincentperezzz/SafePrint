@@ -116,7 +116,11 @@ def upload_file_view(request):
                     default_storage.delete(file_path)
                     return JsonResponse({
                         'success': False,
-                        'error': 'The uploaded file contains a virus and has been deleted.'
+                        'paper_size_errors': [{
+                            'file': uploaded_file.name,
+                            'reason': 'File contains a virus and has been deleted.'
+                        }],
+                        'error': 'File contains a virus.'
                     })
             except Exception as scan_exc:
                 # If ClamAV fails, treat as error
@@ -312,6 +316,35 @@ def get_paper_size(width, height):
     return 'Custom'
 
 
+def is_pdf_password_protected(file_path):
+    try:
+        with default_storage.open(file_path, 'rb') as f:
+            reader = PyPDF2.PdfReader(f)
+            # First check if explicitly encrypted
+            if reader.is_encrypted:
+                print(f"PDF file is explicitly encrypted: {file_path}")
+                return True
+                
+            # Try accessing page content to verify we can actually read it
+            if len(reader.pages) > 0:
+                try:
+                    # Try to access content to verify no encryption issues
+                    _ = reader.pages[0].extract_text()
+                    return False
+                except Exception as content_err:
+                    print(f"Could not extract text from PDF: {file_path}, error: {str(content_err)}")
+                    return True
+            return False
+    except PyPDF2.errors.PdfReadError as pdf_err:
+        # This typically happens with encrypted files
+        print(f"PdfReadError for file {file_path}: {str(pdf_err)}")
+        return True
+    except Exception as e:
+        # Other issues might also indicate encryption or corruption
+        print(f"Error checking PDF encryption for {file_path}: {str(e)}")
+        return True
+
+
 @csrf_exempt
 def finalize_uploads_view(request):
     if request.method == 'POST':
@@ -327,9 +360,24 @@ def finalize_uploads_view(request):
         except Exception as e:
             return JsonResponse({'success': False, 'error': f'Invalid data: {str(e)}'})
         docs_data = []
-        paper_size_errors = []
+        file_errors = []  
         allowed_paper_sizes = {'A4', 'Letter', 'Long'}
+        
         for file_path in files:
+            stored_name = os.path.basename(file_path)
+            original_name = original_names.get(file_path, stored_name)
+            has_error = False
+            
+            # First check for password protection
+            if is_pdf_password_protected(file_path):
+                file_errors.append({
+                    'file': original_name,
+                    'reason': 'Password protected or encrypted. Please remove protection.'
+                })
+                has_error = True
+                continue  # Skip further processing for this file
+            
+            # Now check paper size if not password protected
             try:
                 with default_storage.open(file_path, 'rb') as f:
                     reader = PyPDF2.PdfReader(f)
@@ -340,27 +388,34 @@ def finalize_uploads_view(request):
                         height = float(page.mediabox.height)
                         orientation = 'Landscape' if width > height else 'Portrait'
                         paper_size = get_paper_size(width, height)
-                        # Assign 'Unsupported' if not in allowed set
+                        # Check if paper size is supported
                         if paper_size not in allowed_paper_sizes:
-                            paper_size = 'Unsupported'
+                            file_errors.append({
+                                'file': original_name,
+                                'reason': 'Unsupported paper size. Only A4, Letter, or Long are allowed.'
+                            })
+                            has_error = True
+                            continue
                     else:
-                        orientation = 'Portrait'
-                        paper_size = 'Unsupported'
-            except Exception:
-                num_pages = 1
-                orientation = 'Portrait'
-                paper_size = 'Unsupported'
-            file_size = default_storage.size(file_path)
-            stored_name = os.path.basename(file_path)
-            original_name = original_names.get(file_path, stored_name)
-
-            # If paper_size is 'Unsupported', inform user and skip creation
-            if paper_size == 'Unsupported':
-                paper_size_errors.append({
+                        file_errors.append({
+                            'file': original_name,
+                            'reason': 'Document contains no pages.'
+                        })
+                        has_error = True
+                        continue
+            except Exception as e:
+                file_errors.append({
                     'file': original_name,
-                    'reason': 'This document has a paper size or is password protected that is not supported.'
+                    'reason': f'Error analyzing document: {str(e)}'
                 })
+                has_error = True
                 continue
+                
+            # Skip to next file if there's an error
+            if has_error:
+                continue
+                
+            file_size = default_storage.size(file_path)
 
             while True:
                 doc_id = 'DOC-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
@@ -399,11 +454,11 @@ def finalize_uploads_view(request):
                 'paper_quality': doc.paper_quality,
                 'color_mode': doc.color_mode,
             })
-        if paper_size_errors:
+        if file_errors:
             return JsonResponse({
                 'success': False,
-                'error': 'Some files have undetected or unsupported paper size.',
-                'paper_size_errors': paper_size_errors
+                'error': 'Some files have issues and cannot be processed.',
+                'reason': file_errors 
             })
         return JsonResponse({'success': True, 'documents': docs_data, 'customer_id': customer_id})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
