@@ -466,13 +466,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
                 .then(res => res.json())
                 .then(data => {
-                    if (!data.success && data.paper_size_errors) {
+                    if (!data.success && data.reason) {
                         // Show a detailed alert for the user
-                        let msg = "Paper Size Error:\n";
-                        data.paper_size_errors.forEach(err => {
-                            msg += `- ${err.file}: ${err.reason}\n`;
+                        let msg = "ERROR:\n";
+                        data.reason.forEach(err => {
+                            msg += `• ${err.file} » ${err.reason}\n`;
                         });
-                        msg += "\nPlease remove this file and approach our store personnel for custom paper size.";
+                        msg += "\nIf need further help please approach to our store personnel.";
                         alert(msg); // Or use your custom alert system
                         if (overlay) overlay.style.display = 'none';
                         return; // Stop further processing
