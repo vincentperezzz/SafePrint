@@ -206,6 +206,10 @@ html {
     .menu li {
         margin: 20px 0;
     }
+
+    .file-upload{
+        max-width: 650px;
+    }
 }
 
 #loading-overlay {
@@ -1865,7 +1869,11 @@ input:focus::placeholder {
         width: 36px;
         height: 36px;
     }
-    .file-upload, .uploaded, .confirmation {
+    .file-upload {
+        max-width: 590px;
+    }
+
+    .uploaded, .confirmation {
         padding: 10px;
     }
     .file-upload-title, .confirmation-title {
