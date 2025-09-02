@@ -1503,45 +1503,134 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
+    // Global SSE for dashboard stats across all portal pages (for tab title flashing).
+    if (window.location.pathname.startsWith('/portal/')) {
+        let baseTitle = document.title;
+        let titleFlashInterval = null;
+        
+        function startTitleFlash(completedCount) {
+            // Coerce and guard: if 0 or invalid, stop flashing
+            completedCount = parseInt(String(completedCount), 10) || 0;
+            if (completedCount <= 0) {
+                stopTitleFlash();
+                return;
+            }
+            // Reset any existing interval before starting
+            if (titleFlashInterval) {
+                clearInterval(titleFlashInterval);
+                titleFlashInterval = null;
+            }
+            let showCompleted = true;
+            titleFlashInterval = setInterval(() => {
+                document.title = showCompleted ? `(${completedCount}) Print Jobs Completed` : baseTitle;
+                showCompleted = !showCompleted;
+            }, 1000);
+        }
 
-    // SSE for real-time dashboard stats (printer status, completed jobs, pending customers, completed documents)
-    if (window.location.pathname.includes('/portal/dashboard/')) {
-        const evtSource = new EventSource('/sse/dashboard-status/');
-        evtSource.onmessage = function(event) {
+        function stopTitleFlash() {
+            if (titleFlashInterval) {
+                clearInterval(titleFlashInterval);
+                titleFlashInterval = null;
+            }
+            document.title = baseTitle;
+        }
+
+    const evtSourceDash = new EventSource('/sse/dashboard-status/');
+        evtSourceDash.onmessage = function(event) {
             try {
-                const stats = JSON.parse(event.data);
-                // Update Print Jobs Completed
-                const completedElem = document.querySelector('.stat-card.green p');
-                if (completedElem) completedElem.textContent = stats.completed_jobs_count;
-                // Update Printer Errors
-                const errorElem = document.querySelector('.stat-card.red p');
-                if (errorElem) errorElem.textContent = stats.printer_errors_count;
-                // Update Pending Customers
-                const pendingElem = document.querySelector('.stat-card.yellow p');
-                if (pendingElem) pendingElem.textContent = stats.pending_customers_count;
+        const stats = JSON.parse(event.data);
+                // Use the "Print Jobs Completed" value directly for the flashing count (coerced to number).
+                let completedCount = parseInt(String(stats.completed_jobs_count), 10);
+                if (Number.isNaN(completedCount)) {
+                    completedCount = Array.isArray(stats.completed_documents)
+                        ? stats.completed_documents.length
+                        : 0;
+                }
+                completedCount = Math.max(0, completedCount);
+                if (completedCount > 0) {
+                    startTitleFlash(completedCount);
+                    console.log(completedCount)
+                } else {
+                    stopTitleFlash();
+                }
 
-                // Update Completed Jobs List (dashboard-right)
-                const jobsItem = document.querySelector('.jobs-item');
-                if (jobsItem && Array.isArray(stats.completed_documents)) {
-                    jobsItem.innerHTML = '';
-                    if (stats.completed_documents.length > 0) {
-                        stats.completed_documents.forEach(doc => {
-                            const wrapper = document.createElement('div');
-                            wrapper.className = 'jobs-item-wrapper';
-                            wrapper.innerHTML = `
-                                <h6 title="${doc.filename}">${doc.filename}</h6>
-                                <div class="Printer-Assigned">${doc.printer_name || 'No Printer'}</div>
-                                <button class="jobs-done-btn" data-doc-id="${doc.doc_id}">Done</button>
+                // Only update dashboard DOM when on dashboard page (support with/without trailing slash)
+                if (window.location.pathname.includes('/portal/dashboard')) {
+                    // Update Print Jobs Completed
+                    const completedElem = document.querySelector('.stat-card.green p');
+                    if (completedElem && stats.hasOwnProperty('completed_jobs_count')) {
+                        completedElem.textContent = String(stats.completed_jobs_count);
+                    }
+                    // Update Printer Errors
+                    const errorElem = document.querySelector('.stat-card.red p');
+                    if (errorElem && stats.hasOwnProperty('printer_errors_count')) {
+                        errorElem.textContent = String(stats.printer_errors_count);
+                    }
+                    // Update Pending Customers
+                    const pendingElem = document.querySelector('.stat-card.yellow p');
+                    if (pendingElem && stats.hasOwnProperty('pending_customers_count')) {
+                        pendingElem.textContent = String(stats.pending_customers_count);
+                    }
+
+                    // Update Completed Jobs List (dashboard-right)
+                    const completedSection = document.querySelector('.completed-jobs');
+                    if (completedSection && Array.isArray(stats.completed_documents)) {
+                        const docs = stats.completed_documents;
+
+                        // Ensure title row exists/visibility when there are docs
+                        let titleRow = completedSection.querySelector('.completedJobs-item-title');
+                        const headerRow = completedSection.querySelector('.dashboard-rows');
+                        if (docs.length > 0) {
+                            if (!titleRow) {
+                                titleRow = document.createElement('div');
+                                titleRow.className = 'completedJobs-item-title';
+                                titleRow.innerHTML = '<span>Document Name</span><p>Printer Assigned</p>';
+                                if (headerRow && headerRow.parentNode) {
+                                    headerRow.parentNode.insertBefore(titleRow, headerRow.nextSibling);
+                                } else {
+                                    completedSection.prepend(titleRow);
+                                }
+                            } else {
+                                titleRow.style.display = '';
+                            }
+                        } else if (titleRow) {
+                            // Hide title when no docs
+                            titleRow.style.display = 'none';
+                        }
+
+                        // Ensure the container exists
+                        let jobsItem = completedSection.querySelector('.jobs-item');
+                        if (!jobsItem) {
+                            jobsItem = document.createElement('div');
+                            jobsItem.className = 'jobs-item';
+                            completedSection.appendChild(jobsItem);
+                        }
+
+                        // Remove any outer no-jobs placeholders inside the section
+                        completedSection.querySelectorAll('.no-jobs').forEach(el => el.remove());
+
+                        // Populate list or show empty state
+                        if (docs.length > 0) {
+                            jobsItem.innerHTML = '';
+                            docs.forEach(doc => {
+                                const wrapper = document.createElement('div');
+                                wrapper.className = 'jobs-item-wrapper';
+                                const printerAssigned = doc.printer_name || doc.printed_at || 'No Printer';
+                                wrapper.innerHTML = `
+                                    <h6 title="${doc.filename}">${doc.filename}</h6>
+                                    <div class="Printer-Assigned">${printerAssigned}</div>
+                                    <button class="jobs-done-btn" data-doc-id="${doc.doc_id}">Done</button>
+                                `;
+                                jobsItem.appendChild(wrapper);
+                            });
+                        } else {
+                            jobsItem.innerHTML = `
+                                <div class="no-jobs">
+                                    <img src="/static/assets/empty-jobs.png" alt="Completed Jobs">
+                                    <p>All Completed!</p>
+                                </div>
                             `;
-                            jobsItem.appendChild(wrapper);
-                        });
-                    } else {
-                        jobsItem.innerHTML = `
-                            <div class="no-jobs">
-                                <img src="/static/assets/empty-jobs.png" alt="Completed Jobs">
-                                <p>All Completed!</p>
-                            </div>
-                        `;
+                        }
                     }
                 }
             } catch (e) {
