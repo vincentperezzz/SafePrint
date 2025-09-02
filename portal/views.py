@@ -831,6 +831,11 @@ def print_page(document, page_num):
     if model_name.lower().startswith('brother '):
         model_name = model_name[8:]
     model_name = model_name.replace('-', '').replace(' ', '')
+    # Map paper_size to printer-compatible media
+    if paper_size == 'Long':
+        media_size = 'Folio'  
+    else:
+        media_size = paper_size
     lp_cmd = [
         'lp',
         '-d', model_name,
@@ -838,7 +843,7 @@ def print_page(document, page_num):
         '-o', f'page-ranges={page_num}',
         '-o', f'orientation-requested={"4" if orientation=="Landscape" else "3"}',
         '-o', f'{"BRMonoColor=Mono" if color_mode=="Black and White" else "ColorModel=Color"}',
-        '-o', f'media={paper_size}',
+        '-o', f'media={media_size}',  # Updated to use mapped media_size
         file_path
     ]
     try:
