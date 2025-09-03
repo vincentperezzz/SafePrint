@@ -13,12 +13,44 @@ class AdminUser(models.Model):
     password = models.CharField(max_length=255)
     role = models.CharField(max_length=50)
     profile_image = models.ImageField(upload_to='profile_images/', null=True, blank=True)
+    notification_sound = models.ForeignKey('NotificationSound', null=True, blank=True, on_delete=models.SET_NULL)
+    sound_enabled = models.BooleanField(default=True)
+    sound_volume = models.PositiveSmallIntegerField(default=100)  # 0-100
 
     def __str__(self):
         return self.username
 
     class Meta:
         db_table = 'admin_users'
+
+    def save(self, *args, **kwargs):
+        # On create, if no sound selected, default to 'chime' when available
+        if not self.pk and not self.notification_sound_id:
+            try:
+                from django.apps import apps
+                NotificationSound = apps.get_model('portal', 'NotificationSound')
+                chime = NotificationSound.objects.filter(slug='chime', is_active=True).first()
+                if chime:
+                    self.notification_sound = chime
+            except Exception:
+                # If sounds not migrated yet or any error, skip defaulting
+                pass
+        super().save(*args, **kwargs)
+
+
+class NotificationSound(models.Model):
+    slug = models.SlugField(max_length=64, unique=True)
+    display_name = models.CharField(max_length=100)
+    file_path = models.CharField(max_length=255)  # example: /static/sounds/chime.mp3
+    is_active = models.BooleanField(default=True)
+    default_volume = models.PositiveSmallIntegerField(default=100)
+
+    class Meta:
+        db_table = 'notification_sounds'
+        ordering = ['display_name']
+
+    def __str__(self):
+        return self.display_name
 
 class Printer(models.Model):
     PAPER_SIZE_CHOICES = [
