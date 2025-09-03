@@ -664,6 +664,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const printerId = this.dataset.printerId;
                 const field = this.dataset.field;
                 const value = this.value;
+                // Only handle printer status dropdowns that declare both data attributes
+                if (!printerId || !field) return;
                 
                 // Form data for the request
                 const formData = new FormData();
@@ -1764,7 +1766,7 @@ document.getElementById('addPrinterForm').onsubmit = function(e) {
   closeAddPrinterPopup();
 };
 
-// Settings page: Notification sound preferences
+// Settings page: Notification sound preferences (autosave + auto-preview)
 document.addEventListener('DOMContentLoaded', function () {
     if (!window.location.pathname.includes('/portal/settings')) return;
 
@@ -1772,9 +1774,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const enabledToggle = document.getElementById('sound-enabled');
     const volumeRange = document.getElementById('sound-volume');
     const volumeValue = document.getElementById('sound-volume-value');
-    const previewBtn = document.getElementById('preview-sound');
     const previewAudio = document.getElementById('sound-preview');
-    const saveBtn = document.getElementById('save-sound-prefs');
 
     if (!soundSelect || !previewAudio) return; // nothing to do
 
@@ -1792,55 +1792,94 @@ document.addEventListener('DOMContentLoaded', function () {
         if (src) previewAudio.src = src;
     }
 
+    function savePrefs(payload, onSuccess) {
+        fetch('/api/update-notification-prefs/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': typeof csrfToken !== 'undefined' ? csrfToken : '',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success) {
+                if (typeof createAlert === 'function') {
+                    createAlert('Success', 'Saved', 'Notification preferences updated.', 'success', true, true, 'pageMessages');
+                }
+                if (onSuccess) onSuccess();
+            } else {
+                if (typeof createAlert === 'function') {
+                    createAlert('Error', 'Save Failed', (data && data.error) || 'Unable to save preferences.', 'danger', true, true, 'pageMessages');
+                }
+            }
+        })
+        .catch(() => {
+            if (typeof createAlert === 'function') {
+                createAlert('Error', 'Save Failed', 'Network error saving preferences.', 'danger', true, true, 'pageMessages');
+            }
+        });
+    }
+
+    // Autosave: sound change -> save and auto preview
+    soundSelect.addEventListener('change', function () {
+        const slug = soundSelect.value || null;
+        setPreviewSrc();
+        try { previewAudio.currentTime = 0; } catch (e) {}
+        previewAudio.play().catch(() => {});
+        savePrefs({
+            sound_slug: slug,
+            sound_enabled: !!(enabledToggle && enabledToggle.checked),
+            sound_volume: volumeRange ? parseInt(volumeRange.value, 10) : 100
+        });
+    });
+
+    // Autosave: enabled toggle (supports keyboard on label, too)
+    function handleEnabledChange() {
+        savePrefs({
+            sound_slug: soundSelect.value || null,
+            sound_enabled: !!(enabledToggle && enabledToggle.checked),
+            sound_volume: volumeRange ? parseInt(volumeRange.value, 10) : 100
+        });
+    }
+    if (enabledToggle) {
+        enabledToggle.addEventListener('change', handleEnabledChange);
+        enabledToggle.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                enabledToggle.checked = !enabledToggle.checked;
+                enabledToggle.dispatchEvent(new Event('change'));
+            }
+        });
+        const enabledLabel = document.querySelector('label[for="sound-enabled"], .switch-label[for="sound-enabled"]');
+        if (enabledLabel && enabledLabel.classList.contains('switch-label')) {
+            enabledLabel.addEventListener('click', () => {
+                enabledToggle.checked = !enabledToggle.checked;
+                enabledToggle.dispatchEvent(new Event('change'));
+            });
+        }
+    }
+
+    // Autosave: volume slider with debounce and live preview volume
+    let volTimer = null;
     if (volumeRange && volumeValue) {
-        volumeRange.addEventListener('input', function () {
-            volumeValue.textContent = this.value;
-            const v = parseInt(this.value, 10);
+        const pushVol = () => {
+            const v = parseInt(volumeRange.value, 10);
+            volumeValue.textContent = isNaN(v) ? '0' : String(v);
             previewAudio.volume = clamp01((isNaN(v) ? 0 : v) / 100);
-        });
-    }
-
-    if (previewBtn) {
-        previewBtn.addEventListener('click', function () {
-            setPreviewSrc();
-            try { previewAudio.currentTime = 0; } catch (e) {}
-            previewAudio.play().catch(() => {});
-        });
-    }
-
-    if (saveBtn) {
-        saveBtn.addEventListener('click', function () {
-            const payload = {
+            savePrefs({
                 sound_slug: soundSelect.value || null,
                 sound_enabled: !!(enabledToggle && enabledToggle.checked),
-                sound_volume: volumeRange ? parseInt(volumeRange.value, 10) : 100
-            };
-            fetch('/api/update-notification-prefs/', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': typeof csrfToken !== 'undefined' ? csrfToken : '',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data && data.success) {
-                        if (typeof createAlert === 'function') {
-                            createAlert('Success', 'Saved', 'Notification preferences updated.', 'success', true, true, 'pageMessages');
-                        }
-                    } else {
-                        if (typeof createAlert === 'function') {
-                            createAlert('Error', 'Save Failed', (data && data.error) || 'Unable to save preferences.', 'danger', true, true, 'pageMessages');
-                        }
-                    }
-                })
-                .catch(() => {
-                    if (typeof createAlert === 'function') {
-                        createAlert('Error', 'Save Failed', 'Network error saving preferences.', 'danger', true, true, 'pageMessages');
-                    }
-                });
+                sound_volume: v
+            });
+        };
+        volumeRange.addEventListener('input', function () {
+            const v = parseInt(this.value, 10);
+            volumeValue.textContent = isNaN(v) ? '0' : String(v);
+            previewAudio.volume = clamp01((isNaN(v) ? 0 : v) / 100);
+            if (volTimer) clearTimeout(volTimer);
+            volTimer = setTimeout(pushVol, 300);
         });
+        volumeRange.addEventListener('change', pushVol);
     }
 
     // Initialize preview state
