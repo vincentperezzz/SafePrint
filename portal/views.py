@@ -123,7 +123,8 @@ def printing_queue(request):
         raise Http404("User not found in session")
     
     # Pending Documents
-    pending_documents = Document.objects.filter(doc_status='pending').order_by('-time_submitted')
+    # Use consistent casing for status values
+    pending_documents = Document.objects.filter(doc_status='Pending').order_by('-time_submitted')
 
     # Queue Documents
     on_queue_documents = Document.objects.filter(doc_status__in=['Queued', 'Printing']).select_related('printed_at').order_by('-time_submitted')
@@ -221,7 +222,48 @@ def account_settings(request):
     user_id = request.session.get('admin_user_id')
     if not request.session.get('admin_user_id'):
         raise Http404("User not found in session") 
+    # Fetch current user notification preferences for display
     user = AdminUser.objects.get(id=user_id)
+    prefs_changed = False
+
+    # Ensure there is a selected notification sound; default to 'chime' or first active
+    if not getattr(user, 'notification_sound_id', None):
+        try:
+            default_sound = NotificationSound.objects.filter(is_active=True, slug='chime').first()
+            if not default_sound:
+                default_sound = NotificationSound.objects.filter(is_active=True).order_by('display_name').first()
+            if default_sound:
+                user.notification_sound = default_sound
+                prefs_changed = True
+        except Exception:
+            pass
+
+    # Clamp or backfill volume (0-100); if invalid, use sound's default or 100
+    try:
+        vol = int(getattr(user, 'sound_volume', 100))
+    except Exception:
+        vol = 100
+    if vol < 0 or vol > 100:
+        fallback = getattr(getattr(user, 'notification_sound', None), 'default_volume', 100) or 100
+        user.sound_volume = max(0, min(100, int(fallback)))
+        prefs_changed = True
+
+    # sound_enabled is a BooleanField with default=True; nothing to fix unless None sneaks in
+    if getattr(user, 'sound_enabled', True) is None:
+        user.sound_enabled = True
+        prefs_changed = True
+
+    if prefs_changed:
+        # Persist any normalization so next render is consistent
+        save_fields = []
+        if hasattr(user, 'notification_sound_id'):
+            save_fields.append('notification_sound')
+        save_fields += ['sound_volume', 'sound_enabled']
+        try:
+            user.save(update_fields=list(set(save_fields)))
+        except Exception:
+            # If targeted save fails (e.g., during migrations), do a full save as a fallback
+            user.save()
     users = AdminUser.objects.exclude(role="Manager")
     feedback_comments = Feedback.objects.filter(category='Comment').order_by('-submitted_at')
     problem_reports = Feedback.objects.filter(category='Report a Problem').order_by('-submitted_at')
