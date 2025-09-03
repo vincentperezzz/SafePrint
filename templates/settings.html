@@ -56,6 +56,33 @@ Account Settings
         </div>
     </div>
 
+  <div class="settings-section">
+    <span class="settings-title">Notifications</span>
+    <div class="settings-field-row">
+      <div class="settings-field" style="flex:2">
+        <label for="notification-sound">Sound</label>
+        <select id="notification-sound">
+          {% for s in notification_sounds %}
+            <option value="{{ s.slug }}" data-filepath="{{ s.file_path }}" {% if user.notification_sound and user.notification_sound.slug == s.slug %}selected{% endif %}>{{ s.display_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="settings-field" style="flex:1">
+        <label for="sound-enabled">Enabled</label>
+        <input type="checkbox" id="sound-enabled" {% if user.sound_enabled %}checked{% endif %}>
+      </div>
+      <div class="settings-field" style="flex:2">
+        <label for="sound-volume">Volume: <span id="sound-volume-value">{{ user.sound_volume|default:100 }}</span>%</label>
+        <input type="range" id="sound-volume" min="0" max="100" value="{{ user.sound_volume|default:100 }}">
+      </div>
+      <button class="general-btn" id="save-sound-prefs">Save</button>
+    </div>
+    <div class="settings-field-row">
+      <audio id="sound-preview" preload="auto" style="display:none"></audio>
+      <button class="general-btn" id="preview-sound">Preview</button>
+    </div>
+  </div>
+
     {% if user.role == "Manager" %}
     <div class="settings-section" id="manager">
         <div class="manage-settings-header">
@@ -292,6 +319,6 @@ Account Settings
 </div>
 
 <script>
-    var csrfToken = "{{ csrf_token }}";
+  var csrfToken = "{{ csrf_token }}";
 </script>
 {% endblock %}

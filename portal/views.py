@@ -14,7 +14,7 @@ from django.utils.timezone import localtime
 from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
 from django.views.decorators.csrf import csrf_exempt
-from .models import AdminUser, Printer, Document, Payment
+from .models import AdminUser, Printer, Document, Payment, NotificationSound
 from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
 
@@ -225,11 +225,13 @@ def account_settings(request):
     users = AdminUser.objects.exclude(role="Manager")
     feedback_comments = Feedback.objects.filter(category='Comment').order_by('-submitted_at')
     problem_reports = Feedback.objects.filter(category='Report a Problem').order_by('-submitted_at')
+    notification_sounds = NotificationSound.objects.filter(is_active=True).order_by('display_name')
     return render(request, 'settings.html', {
         'user': user,
         'users': users,
         'feedback_comments': feedback_comments,
         'problem_reports': problem_reports,
+        'notification_sounds': notification_sounds,
     })
 
 
@@ -628,6 +630,63 @@ def approve_document(request):
         }
         return JsonResponse(response_data)
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+@csrf_exempt
+def update_notification_prefs(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Not authenticated'})
+    try:
+        user = AdminUser.objects.get(id=user_id)
+    except AdminUser.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'User not found'})
+
+    try:
+        data = json.loads(request.body.decode('utf-8')) if request.body else {}
+    except Exception:
+        data = request.POST
+
+    sound_slug = data.get('sound_slug') or None
+    sound_id = data.get('sound_id') or None
+    sound_enabled = data.get('sound_enabled')
+    sound_volume = data.get('sound_volume')
+
+    # Update sound selection if provided
+    if sound_id or sound_slug:
+        sound = None
+        if sound_id:
+            try:
+                sound = NotificationSound.objects.get(id=sound_id, is_active=True)
+            except NotificationSound.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Sound not found'})
+        elif sound_slug:
+            try:
+                sound = NotificationSound.objects.get(slug=sound_slug, is_active=True)
+            except NotificationSound.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Sound not found'})
+        user.notification_sound = sound
+
+    # Update enabled flag
+    if sound_enabled is not None:
+        if isinstance(sound_enabled, bool):
+            user.sound_enabled = sound_enabled
+        else:
+            user.sound_enabled = str(sound_enabled).lower() in ['1', 'true', 'yes', 'on']
+
+    # Update volume
+    if sound_volume is not None:
+        try:
+            vol = int(sound_volume)
+            vol = max(0, min(100, vol))
+            user.sound_volume = vol
+        except ValueError:
+            return JsonResponse({'success': False, 'error': 'Invalid volume'})
+
+    user.save()
+    return JsonResponse({'success': True})
 
 
 def printer_status_stream(request):

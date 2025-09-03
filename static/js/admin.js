@@ -1763,3 +1763,88 @@ document.getElementById('addPrinterForm').onsubmit = function(e) {
   }
   closeAddPrinterPopup();
 };
+
+// Settings page: Notification sound preferences
+document.addEventListener('DOMContentLoaded', function () {
+    if (!window.location.pathname.includes('/portal/settings')) return;
+
+    const soundSelect = document.getElementById('notification-sound');
+    const enabledToggle = document.getElementById('sound-enabled');
+    const volumeRange = document.getElementById('sound-volume');
+    const volumeValue = document.getElementById('sound-volume-value');
+    const previewBtn = document.getElementById('preview-sound');
+    const previewAudio = document.getElementById('sound-preview');
+    const saveBtn = document.getElementById('save-sound-prefs');
+
+    if (!soundSelect || !previewAudio) return; // nothing to do
+
+    // Build a sound map from option data attributes
+    const soundMap = {};
+    Array.from(soundSelect.options || []).forEach(opt => {
+        soundMap[opt.value] = opt.getAttribute('data-filepath') || '';
+    });
+
+    function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+    function setPreviewSrc() {
+        const slug = soundSelect.value;
+        const src = soundMap[slug];
+        if (src) previewAudio.src = src;
+    }
+
+    if (volumeRange && volumeValue) {
+        volumeRange.addEventListener('input', function () {
+            volumeValue.textContent = this.value;
+            const v = parseInt(this.value, 10);
+            previewAudio.volume = clamp01((isNaN(v) ? 0 : v) / 100);
+        });
+    }
+
+    if (previewBtn) {
+        previewBtn.addEventListener('click', function () {
+            setPreviewSrc();
+            try { previewAudio.currentTime = 0; } catch (e) {}
+            previewAudio.play().catch(() => {});
+        });
+    }
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function () {
+            const payload = {
+                sound_slug: soundSelect.value || null,
+                sound_enabled: !!(enabledToggle && enabledToggle.checked),
+                sound_volume: volumeRange ? parseInt(volumeRange.value, 10) : 100
+            };
+            fetch('/api/update-notification-prefs/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': typeof csrfToken !== 'undefined' ? csrfToken : '',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.success) {
+                        if (typeof createAlert === 'function') {
+                            createAlert('Success', 'Saved', 'Notification preferences updated.', 'success', true, true, 'pageMessages');
+                        }
+                    } else {
+                        if (typeof createAlert === 'function') {
+                            createAlert('Error', 'Save Failed', (data && data.error) || 'Unable to save preferences.', 'danger', true, true, 'pageMessages');
+                        }
+                    }
+                })
+                .catch(() => {
+                    if (typeof createAlert === 'function') {
+                        createAlert('Error', 'Save Failed', 'Network error saving preferences.', 'danger', true, true, 'pageMessages');
+                    }
+                });
+        });
+    }
+
+    // Initialize preview state
+    setPreviewSrc();
+    const initVol = volumeRange ? parseInt(volumeRange.value, 10) : 100;
+    previewAudio.volume = clamp01((isNaN(initVol) ? 1 : initVol) / 100);
+});
