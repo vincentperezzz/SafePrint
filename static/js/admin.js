@@ -1772,8 +1772,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const soundSelect = document.getElementById('notification-sound');
     const enabledToggle = document.getElementById('sound-enabled');
-    const volumeRange = document.getElementById('sound-volume');
-    const volumeValue = document.getElementById('sound-volume-value');
+    // Volume removed
     const previewAudio = document.getElementById('sound-preview');
 
     if (!soundSelect || !previewAudio) return; // nothing to do
@@ -1829,8 +1828,7 @@ document.addEventListener('DOMContentLoaded', function () {
         previewAudio.play().catch(() => {});
         savePrefs({
             sound_slug: slug,
-            sound_enabled: !!(enabledToggle && enabledToggle.checked),
-            sound_volume: volumeRange ? parseInt(volumeRange.value, 10) : 100
+            sound_enabled: !!(enabledToggle && enabledToggle.checked)
         });
     });
 
@@ -1838,8 +1836,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function handleEnabledChange() {
         savePrefs({
             sound_slug: soundSelect.value || null,
-            sound_enabled: !!(enabledToggle && enabledToggle.checked),
-            sound_volume: volumeRange ? parseInt(volumeRange.value, 10) : 100
+            sound_enabled: !!(enabledToggle && enabledToggle.checked)
         });
     }
     if (enabledToggle) {
@@ -1859,31 +1856,10 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // Autosave: volume slider with debounce and live preview volume
-    let volTimer = null;
-    if (volumeRange && volumeValue) {
-        const pushVol = () => {
-            const v = parseInt(volumeRange.value, 10);
-            volumeValue.textContent = isNaN(v) ? '0' : String(v);
-            previewAudio.volume = clamp01((isNaN(v) ? 0 : v) / 100);
-            savePrefs({
-                sound_slug: soundSelect.value || null,
-                sound_enabled: !!(enabledToggle && enabledToggle.checked),
-                sound_volume: v
-            });
-        };
-        volumeRange.addEventListener('input', function () {
-            const v = parseInt(this.value, 10);
-            volumeValue.textContent = isNaN(v) ? '0' : String(v);
-            previewAudio.volume = clamp01((isNaN(v) ? 0 : v) / 100);
-            if (volTimer) clearTimeout(volTimer);
-            volTimer = setTimeout(pushVol, 300);
-        });
-        volumeRange.addEventListener('change', pushVol);
-    }
+    // Volume removed: no slider to wire
 
     // Initialize preview state
     setPreviewSrc();
-    const initVol = volumeRange ? parseInt(volumeRange.value, 10) : 100;
-    previewAudio.volume = clamp01((isNaN(initVol) ? 1 : initVol) / 100);
+    // Default preview volume
+    previewAudio.volume = 1;
 });
