@@ -15,7 +15,6 @@ class AdminUser(models.Model):
     profile_image = models.ImageField(upload_to='profile_images/', null=True, blank=True)
     notification_sound = models.ForeignKey('NotificationSound', null=True, blank=True, on_delete=models.SET_NULL)
     sound_enabled = models.BooleanField(default=True)
-    sound_volume = models.PositiveSmallIntegerField(default=100)  # 0-100
 
     def __str__(self):
         return self.username
@@ -43,7 +42,6 @@ class NotificationSound(models.Model):
     display_name = models.CharField(max_length=100)
     file_path = models.CharField(max_length=255)  # example: /static/sounds/chime.mp3
     is_active = models.BooleanField(default=True)
-    default_volume = models.PositiveSmallIntegerField(default=100)
 
     class Meta:
         db_table = 'notification_sounds'

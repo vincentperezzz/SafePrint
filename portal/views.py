@@ -238,16 +238,6 @@ def account_settings(request):
         except Exception:
             pass
 
-    # Clamp or backfill volume (0-100); if invalid, use sound's default or 100
-    try:
-        vol = int(getattr(user, 'sound_volume', 100))
-    except Exception:
-        vol = 100
-    if vol < 0 or vol > 100:
-        fallback = getattr(getattr(user, 'notification_sound', None), 'default_volume', 100) or 100
-        user.sound_volume = max(0, min(100, int(fallback)))
-        prefs_changed = True
-
     # sound_enabled is a BooleanField with default=True; nothing to fix unless None sneaks in
     if getattr(user, 'sound_enabled', True) is None:
         user.sound_enabled = True
@@ -258,7 +248,7 @@ def account_settings(request):
         save_fields = []
         if hasattr(user, 'notification_sound_id'):
             save_fields.append('notification_sound')
-        save_fields += ['sound_volume', 'sound_enabled']
+        save_fields += ['sound_enabled']
         try:
             user.save(update_fields=list(set(save_fields)))
         except Exception:
@@ -694,7 +684,7 @@ def update_notification_prefs(request):
     sound_slug = data.get('sound_slug') or None
     sound_id = data.get('sound_id') or None
     sound_enabled = data.get('sound_enabled')
-    sound_volume = data.get('sound_volume')
+    # volume removed
 
     # Update sound selection if provided
     if sound_id or sound_slug:
@@ -718,14 +708,7 @@ def update_notification_prefs(request):
         else:
             user.sound_enabled = str(sound_enabled).lower() in ['1', 'true', 'yes', 'on']
 
-    # Update volume
-    if sound_volume is not None:
-        try:
-            vol = int(sound_volume)
-            vol = max(0, min(100, vol))
-            user.sound_volume = vol
-        except ValueError:
-            return JsonResponse({'success': False, 'error': 'Invalid volume'})
+    # Volume was removed from preferences
 
     user.save()
     return JsonResponse({'success': True})

@@ -86,11 +86,6 @@ Account Settings
           </span>
         </div>
       </div>
-
-      <div class="settings-field-row">
-        <div class="sound-volume">Volume: <span id="sound-volume-value">{{ user.sound_volume|default:100 }}</span>%</div>
-        <input type="range" id="sound-volume" min="0" max="100" value="{{ user.sound_volume|default:100 }}">
-      </div>
     </div>
 
     <!-- Hidden audio element used for automatic preview playback -->
