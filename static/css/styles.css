@@ -4294,6 +4294,7 @@ input:focus::placeholder {
 .sound-enabled, .notification-sound, .sound-volume {
     display: flex;
     flex: 1;
+    gap: 2px;
     font-weight: 500;
 }
 
