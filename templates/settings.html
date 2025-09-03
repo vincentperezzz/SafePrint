@@ -54,34 +54,47 @@ Account Settings
             </div>
             <button class="general-btn" onclick="showPopupOverlay('editPasswordOverlay')">Change Password</button>
         </div>
-    </div>
 
-  <div class="settings-section">
-    <span class="settings-title">Notifications</span>
-    <div class="settings-field-row">
-      <div class="settings-field" style="flex:2">
-        <label for="notification-sound">Sound</label>
-        <select id="notification-sound">
-          {% for s in notification_sounds %}
-            <option value="{{ s.slug }}" data-filepath="{{ s.file_path }}" {% if user.notification_sound and user.notification_sound.slug == s.slug %}selected{% endif %}>{{ s.display_name }}</option>
-          {% endfor %}
-        </select>
+      <div class="notification-title">Notifications</div>
+      <div class="settings-field-row">
+        <div class="sound-enabled">Enable Notification Sound</div>
+        <div class="switch">
+          <input type="checkbox" class="switch-input-blue" id="sound-enabled" {% if user.sound_enabled %}checked{% endif %} tabindex="0">
+          <label class="switch-label-blue" for="sound-enabled">
+            <span class="switch-circle">
+              <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none">
+                <rect x="1" y="1" width="34" height="34" rx="17" fill="white" stroke="#18191F" stroke-width="2"/>
+                <rect x="11" y="11" width="14" height="14" rx="7" stroke="#18191F" stroke-width="2"/>
+              </svg>
+            </span>
+          </label>
+        </div>
       </div>
-      <div class="settings-field" style="flex:1">
-        <label for="sound-enabled">Enabled</label>
-        <input type="checkbox" id="sound-enabled" {% if user.sound_enabled %}checked{% endif %}>
+
+      <div class="settings-field-row">
+        <div class="notification-sound">Sound</div>
+  <div class="dropdown dropdown-compact">
+          <select id="notification-sound" class="dropdown-select">
+            {% for s in notification_sounds %}
+              <option value="{{ s.slug }}" data-filepath="{{ s.file_path }}" {% if user.notification_sound and user.notification_sound.slug == s.slug %}selected{% endif %}>{{ s.display_name }}</option>
+            {% endfor %}
+          </select>
+          <span class="dropdown-arrow">
+            <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </div>
       </div>
-      <div class="settings-field" style="flex:2">
-        <label for="sound-volume">Volume: <span id="sound-volume-value">{{ user.sound_volume|default:100 }}</span>%</label>
+
+      <div class="settings-field-row">
+        <div class="sound-volume">Volume: <span id="sound-volume-value">{{ user.sound_volume|default:100 }}</span>%</div>
         <input type="range" id="sound-volume" min="0" max="100" value="{{ user.sound_volume|default:100 }}">
       </div>
-      <button class="general-btn" id="save-sound-prefs">Save</button>
     </div>
-    <div class="settings-field-row">
-      <audio id="sound-preview" preload="auto" style="display:none"></audio>
-      <button class="general-btn" id="preview-sound">Preview</button>
-    </div>
-  </div>
+
+    <!-- Hidden audio element used for automatic preview playback -->
+    <audio id="sound-preview" preload="auto" style="display:none"></audio>
 
     {% if user.role == "Manager" %}
     <div class="settings-section" id="manager">
@@ -153,8 +166,6 @@ Account Settings
         <a href="#" class="settings-problem-btn">View CX Problem Reports</a>
     </div>
     {% endif %}
-
-</div>
 
 <!-- Feedback Comments Modal -->
 <div id="feedbackModal" class="modal">
