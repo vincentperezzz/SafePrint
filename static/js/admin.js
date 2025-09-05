@@ -785,7 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (window.location.pathname.includes('/portal/settings/')) {
-
+    
         // NOTIFICATIONS SETTINGS API
         const soundSelect = document.getElementById('notification-sound');
         const enabledToggle = document.getElementById('sound-enabled');
@@ -796,14 +796,55 @@ document.addEventListener('DOMContentLoaded', () => {
         Array.from(soundSelect.options || []).forEach(opt => {
             soundMap[opt.value] = opt.dataset.filepath || '';
         });
-
+    
         function setPreviewSrc() {
             const selectedSound = soundSelect.value;
             if (selectedSound && soundMap[selectedSound]) {
                 previewAudio.src = soundMap[selectedSound];
             }
         }
-
+    
+        // Fetch current settings from server first when page loads
+        function fetchNotificationPrefs() {
+            console.log("Fetching notification preferences from server...");
+            fetch('/api/get-notification-prefs/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log("Received notification preferences from server:", data);
+                    
+                    // Update the UI with server values
+                    if (data.sound_slug && soundSelect.querySelector(`option[value="${data.sound_slug}"]`)) {
+                        soundSelect.value = data.sound_slug;
+                    }
+                    enabledToggle.checked = data.sound_enabled;
+                    
+                    // Update localStorage with server values
+                    localStorage.setItem('sound_slug', data.sound_slug);
+                    localStorage.setItem('sound_enabled', data.sound_enabled ? 'true' : 'false');
+                    
+                    // Update preview source
+                    setPreviewSrc();
+                    
+                    console.log("Updated settings from server - Sound enabled:", data.sound_enabled, "Sound slug:", data.sound_slug);
+                } else {
+                    console.error("Failed to fetch notification preferences:", data.error);
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching notification preferences:", error);
+            });
+        }
+    
+        // Fetch preferences from server when settings page loads
+        fetchNotificationPrefs();
+    
         function savePrefs(payload, onSuccess) {
             fetch('/api/update-notification-prefs/', {
                 method: 'POST',
@@ -837,7 +878,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
-
+    
         // Autosave: sound change -> save and auto preview
         soundSelect.addEventListener('change', function () {
             setPreviewSrc();
@@ -854,7 +895,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 sound_enabled: enabledToggle.checked
             });
         });
-
+    
         // Autosave: enabled toggle
         enabledToggle.addEventListener('change', function() {
             console.log('Toggle changed:', this.checked, soundSelect.value);
@@ -881,20 +922,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 enabledToggle.dispatchEvent(new Event('change'));
             });
         }
-
-        // Initialize from localStorage if available
-        const savedSoundSlug = localStorage.getItem('sound_slug');
-        const savedSoundEnabled = localStorage.getItem('sound_enabled');
-        
-        // Set UI from localStorage values
-        if (savedSoundSlug && soundSelect.querySelector(`option[value="${savedSoundSlug}"]`)) {
-            soundSelect.value = savedSoundSlug;
-        }
-        
-        if (savedSoundEnabled !== null) {
-            enabledToggle.checked = savedSoundEnabled === 'true';
-        }
-        
+    
         // Initialize preview state
         setPreviewSrc();
         // Default preview volume
