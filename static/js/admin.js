@@ -1644,38 +1644,53 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         function playNotificationSound() {
-        console.log("Attempting to play notification sound...");
-        // Check if sound is enabled in localStorage (saved from settings page)
-        const soundEnabled = localStorage.getItem('sound_enabled') === 'true';
-        let soundSlug = localStorage.getItem('sound_slug');
-        console.log("Sound enabled:", soundEnabled, "Sound slug:", soundSlug);
-        if (soundEnabled) {
-            // If sound settings are missing, fetch them first
+            console.log("Attempting to play notification sound...");
+            
+            // If sound settings are missing from localStorage, fetch them from server first
             if (!localStorage.getItem('sound_slug')) {
-                console.log("NOT IN LOCAL STORAGE: Fetching sound preferences...");
-                fetch('/api/get-notification-prefs/')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            // Save and play
-                            localStorage.setItem('sound_slug', data.sound_slug);
-                            localStorage.setItem('sound_enabled', data.sound_enabled);
-                            
-                            // Only play if actually enabled
-                            if (data.sound_enabled) {
-                                const soundPath = `/static/sounds/${data.sound_slug}.mp3`;
-                                notificationAudio.src = soundPath;
-                                notificationAudio.play().catch(e => console.error("Couldn't play notification sound:", e));
-                            }
+                console.log("Sound slug not in localStorage: Fetching from server...");
+                fetch('/api/get-notification-prefs/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Save to localStorage
+                        localStorage.setItem('sound_slug', data.sound_slug);
+                        localStorage.setItem('sound_enabled', data.sound_enabled ? 'true' : 'false');
+                        console.log("Received from server - Sound enabled:", data.sound_enabled, "Sound slug:", data.sound_slug);
+                        
+                        // Only play if actually enabled
+                        if (data.sound_enabled) {
+                            const soundPath = `/static/sounds/${data.sound_slug}.mp3`;
+                            notificationAudio.src = soundPath;
+                            notificationAudio.volume = 1.0;
+                            notificationAudio.play()
+                                .then(() => console.log("Sound played successfully"))
+                                .catch(e => console.error("Couldn't play notification sound:", e));
                         }
-                    })
-                    .catch(e => console.error("Couldn't fetch sound preferences:", e));
+                    }
+                })
+                .catch(e => console.error("Couldn't fetch sound preferences:", e));
             } else {
-                // Normal path - sound slug is available
-                console.log("IN LOCAL STORAGE: Playing sound:", soundSlug);
-                const soundPath = `/static/sounds/${soundSlug}.mp3`;
-                notificationAudio.src = soundPath;
-                notificationAudio.play().catch(e => console.error("Couldn't play notification sound:", e));
+                // Sound settings exist in localStorage
+                const soundEnabled = localStorage.getItem('sound_enabled') === 'true';
+                let soundSlug = localStorage.getItem('sound_slug');
+                console.log("From localStorage - Sound enabled:", soundEnabled, "Sound slug:", soundSlug);
+                
+                if (soundEnabled) {
+                    // Normal path - sound slug is available
+                    console.log("Playing sound:", soundSlug);
+                    const soundPath = `/static/sounds/${soundSlug}.mp3`;
+                    notificationAudio.src = soundPath;
+                    notificationAudio.volume = 1.0;
+                    notificationAudio.play()
+                        .then(() => console.log("Sound played successfully"))
+                        .catch(e => console.error("Couldn't play notification sound:", e));
                 }
             }
         }
