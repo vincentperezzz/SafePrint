@@ -784,6 +784,104 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    if (window.location.pathname.includes('/portal/settings/')) {
+
+        // NOTIFICATIONS SETTINGS API
+        const soundSelect = document.getElementById('notification-sound');
+        const enabledToggle = document.getElementById('sound-enabled');
+        const previewAudio = document.getElementById('sound-preview');
+        
+        // Build a sound map from option data attributes
+        const soundMap = {};
+        Array.from(soundSelect.options || []).forEach(opt => {
+            soundMap[opt.value] = opt.dataset.filepath || '';
+        });
+
+        function setPreviewSrc() {
+            const selectedSound = soundSelect.value;
+            if (selectedSound && soundMap[selectedSound]) {
+                previewAudio.src = soundMap[selectedSound];
+            }
+        }
+
+        function savePrefs(payload, onSuccess) {
+            fetch('/api/update-notification-prefs/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (typeof createAlert === "function") {
+                        createAlert('Success', 'Preferences Updated', 'Your notification preferences have been saved.', 'success', true, true, 'pageMessages');
+                    }
+                    if (onSuccess) onSuccess(data);
+                } else {
+                    if (typeof createAlert === "function") {
+                        createAlert('Error', 'Update Failed', data.error || 'Failed to update preferences.', 'danger', true, true, 'pageMessages');
+                    } else {
+                        alert(data.error || 'Failed to update preferences');
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error saving preferences:', error);
+                if (typeof createAlert === "function") {
+                    createAlert('Error', 'Update Failed', 'An error occurred while saving preferences.', 'danger', true, true, 'pageMessages');
+                } else {
+                    alert('An error occurred while saving preferences.');
+                }
+            });
+        }
+
+        // Autosave: sound change -> save and auto preview
+        soundSelect.addEventListener('change', function () {
+            setPreviewSrc();
+            // Play preview if enabled
+            if (enabledToggle.checked) {
+                previewAudio.play().catch(e => console.error("Couldn't play preview:", e));
+            }
+            // Save selection with both sound slug and enabled state
+            savePrefs({
+                sound_slug: this.value,
+                sound_enabled: enabledToggle.checked
+            });
+        });
+
+        // Autosave: enabled toggle
+        enabledToggle.addEventListener('change', function() {
+            console.log('Toggle changed:', this.checked, soundSelect.value);
+            savePrefs({
+                sound_enabled: this.checked,
+                sound_slug: soundSelect.value
+            });
+        });
+        
+        // Additional keyboard accessibility
+        enabledToggle.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                enabledToggle.checked = !enabledToggle.checked;
+                enabledToggle.dispatchEvent(new Event('change'));
+            }
+        });
+        const enabledLabel = document.querySelector('label[for="sound-enabled"], .switch-label[for="sound-enabled"]');
+        if (enabledLabel && enabledLabel.classList.contains('switch-label')) {
+            enabledLabel.addEventListener('click', () => {
+                enabledToggle.checked = !enabledToggle.checked;
+                enabledToggle.dispatchEvent(new Event('change'));
+            });
+        }
+
+        // Initialize preview state
+        setPreviewSrc();
+        // Default preview volume
+        previewAudio.volume = 1;
+    }
+
     // Printer Search Functionality
     const printerSearchInput = document.getElementById('printer-search');
     const tableRows = document.querySelectorAll('.printer-table-row');
@@ -1765,101 +1863,3 @@ document.getElementById('addPrinterForm').onsubmit = function(e) {
   }
   closeAddPrinterPopup();
 };
-
-// Settings page: Notification sound preferences (autosave + auto-preview)
-document.addEventListener('DOMContentLoaded', function () {
-    if (!window.location.pathname.includes('/portal/settings')) return;
-
-    const soundSelect = document.getElementById('notification-sound');
-    const enabledToggle = document.getElementById('sound-enabled');
-    // Volume removed
-    const previewAudio = document.getElementById('sound-preview');
-
-    if (!soundSelect || !previewAudio) return; // nothing to do
-
-    // Build a sound map from option data attributes
-    const soundMap = {};
-    Array.from(soundSelect.options || []).forEach(opt => {
-        soundMap[opt.value] = opt.getAttribute('data-filepath') || '';
-    });
-
-    function clamp01(x) { return Math.max(0, Math.min(1, x)); }
-
-    function setPreviewSrc() {
-        const slug = soundSelect.value;
-        const src = soundMap[slug];
-        if (src) previewAudio.src = src;
-    }
-
-    function savePrefs(payload, onSuccess) {
-        fetch('/api/update-notification-prefs/', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': typeof csrfToken !== 'undefined' ? csrfToken : '',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data && data.success) {
-                if (typeof createAlert === 'function') {
-                    createAlert('Success', 'Saved', 'Notification preferences updated.', 'success', true, true, 'pageMessages');
-                }
-                if (onSuccess) onSuccess();
-            } else {
-                if (typeof createAlert === 'function') {
-                    createAlert('Error', 'Save Failed', (data && data.error) || 'Unable to save preferences.', 'danger', true, true, 'pageMessages');
-                }
-            }
-        })
-        .catch(() => {
-            if (typeof createAlert === 'function') {
-                createAlert('Error', 'Save Failed', 'Network error saving preferences.', 'danger', true, true, 'pageMessages');
-            }
-        });
-    }
-
-    // Autosave: sound change -> save and auto preview
-    soundSelect.addEventListener('change', function () {
-        const slug = soundSelect.value || null;
-        setPreviewSrc();
-        try { previewAudio.currentTime = 0; } catch (e) {}
-        previewAudio.play().catch(() => {});
-        savePrefs({
-            sound_slug: slug,
-            sound_enabled: !!(enabledToggle && enabledToggle.checked)
-        });
-    });
-
-    // Autosave: enabled toggle (supports keyboard on label, too)
-    function handleEnabledChange() {
-        savePrefs({
-            sound_slug: soundSelect.value || null,
-            sound_enabled: !!(enabledToggle && enabledToggle.checked)
-        });
-    }
-    if (enabledToggle) {
-        enabledToggle.addEventListener('change', handleEnabledChange);
-        enabledToggle.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                enabledToggle.checked = !enabledToggle.checked;
-                enabledToggle.dispatchEvent(new Event('change'));
-            }
-        });
-        const enabledLabel = document.querySelector('label[for="sound-enabled"], .switch-label[for="sound-enabled"]');
-        if (enabledLabel && enabledLabel.classList.contains('switch-label')) {
-            enabledLabel.addEventListener('click', () => {
-                enabledToggle.checked = !enabledToggle.checked;
-                enabledToggle.dispatchEvent(new Event('change'));
-            });
-        }
-    }
-
-    // Volume removed: no slider to wire
-
-    // Initialize preview state
-    setPreviewSrc();
-    // Default preview volume
-    previewAudio.volume = 1;
-});
