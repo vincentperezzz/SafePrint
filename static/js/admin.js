@@ -1656,6 +1656,31 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Create notification audio element
         const notificationAudio = new Audio();
+
+        // Initialize sound settings from server on page load
+        function initSoundSettings() {
+            fetch('/api/get-notification-prefs/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    localStorage.setItem('sound_slug', data.sound_slug || 'chime');
+                    localStorage.setItem('sound_enabled', data.sound_enabled ? 'true' : 'false');
+                } else {
+                    console.error("Failed to fetch sound settings:", data.error);
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching sound settings:", error);
+            });
+        }
+    
+        initSoundSettings();
         
         // Request notification permission if we haven't asked before
         function requestNotificationPermission() {
@@ -1772,10 +1797,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     : 0;
             }
             completedCount = Math.max(0, completedCount);
-            
-            // Add debugging logs to see the counts
-            console.log("SSE update - Completed count:", completedCount, "Previous count:", previousCompletedCount);
-            
+                        
             // Track document IDs instead of just counts
             const currentDocIds = Array.isArray(stats.completed_documents) 
                 ? stats.completed_documents.map(doc => doc.doc_id)
