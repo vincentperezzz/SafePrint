@@ -25,10 +25,20 @@ class Command(BaseCommand):
             'iso.3.6.1.2.1.43.11.1.1.8.1.4', # Magenta
         ]
 
+        # Always get fresh data from the database to respect deletions
         printers = Printer.objects.all()
+        self.stdout.write(self.style.NOTICE(f"Found {len(printers)} printers in database"))
+        
         for printer in printers:
-            ip_address = printer.ip_address
-            self.stdout.write(self.style.NOTICE(f"Polling printer at IP: {ip_address}"))
+            # Re-check if printer still exists before polling
+            try:
+                # Refresh printer object to make sure it still exists
+                printer = Printer.objects.get(id=printer.id)
+                ip_address = printer.ip_address
+                self.stdout.write(self.style.NOTICE(f"Polling printer at IP: {ip_address}"))
+            except Printer.DoesNotExist:
+                self.stdout.write(self.style.WARNING(f"Printer ID {printer.id} no longer exists in database. Skipping."))
+                continue
             offline = False
             while True:
                 try:
@@ -85,10 +95,15 @@ class Command(BaseCommand):
                         ink_lows.append(None)
 
                 if offline:
-                    printer.printer_status = 'Offline'
-                    printer.last_checked = timezone.now()
-                    printer.save()
-                    self.stdout.write(self.style.WARNING(f"Printer at {ip_address} is Offline."))
+                    # Check if printer still exists in database before updating
+                    try:
+                        current_printer = Printer.objects.get(id=printer.id)
+                        current_printer.printer_status = 'Offline'
+                        current_printer.last_checked = timezone.now()
+                        current_printer.save()
+                        self.stdout.write(self.style.WARNING(f"Printer at {ip_address} is Offline."))
+                    except Printer.DoesNotExist:
+                        self.stdout.write(self.style.WARNING(f"Printer ID {printer.id} no longer exists in database. Skipping update."))
                     break
                 elif status and model and node:
                     import re
@@ -105,13 +120,18 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.SUCCESS(f"Node: {node_val}"))
                     # Ink status: 'OK' if all OK, else concatenated color codes of low ink (e.g., 'bc')
                     ink_status = 'OK' if ink_ok else ''.join(ink_low_indices)
-                    printer.printer_status = status_val
-                    printer.model_name = model_val
-                    printer.node_name = node_val
-                    printer.ink_status = ink_status
-                    printer.last_checked = timezone.now()
-                    printer.save()
-                    self.stdout.write(self.style.SUCCESS(f"Printer info updated in database for {ip_address}. Ink status: {ink_status}"))
+                    # Check if printer still exists in database before updating
+                    try:
+                        current_printer = Printer.objects.get(id=printer.id)
+                        current_printer.printer_status = status_val
+                        current_printer.model_name = model_val
+                        current_printer.node_name = node_val
+                        current_printer.ink_status = ink_status
+                        current_printer.last_checked = timezone.now()
+                        current_printer.save()
+                        self.stdout.write(self.style.SUCCESS(f"Printer info updated in database for {ip_address}. Ink status: {ink_status}"))
+                    except Printer.DoesNotExist:
+                        self.stdout.write(self.style.WARNING(f"Printer ID {printer.id} no longer exists in database. Skipping update."))
                     break
                 else:
                     self.stdout.write(self.style.WARNING(f"SNMP poll failed for {ip_address}, retrying in 3 seconds..."))
