@@ -17,6 +17,7 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import AdminUser, Printer, Document, Payment, NotificationSound
 from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
+from django.contrib.auth.decorators import login_required
 
 
 now = timezone.now()
@@ -713,6 +714,27 @@ def update_notification_prefs(request):
     user.save()
     return JsonResponse({'success': True})
 
+
+@csrf_exempt
+def get_notification_prefs(request):
+    """API endpoint to get user's notification sound preferences"""
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Not authenticated'})
+    
+    try:
+        admin_user = AdminUser.objects.get(id=user_id)
+        sound_enabled = admin_user.sound_enabled
+        sound_slug = admin_user.notification_sound.slug if admin_user.notification_sound else 'chime'
+        
+        return JsonResponse({
+            'success': True,
+            'sound_enabled': sound_enabled,
+            'sound_slug': sound_slug,
+            'sound_path': f'/static/sounds/{sound_slug}.mp3'
+        })
+    except AdminUser.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'User not found'})
 
 def printer_status_stream(request):
     # SSE headers

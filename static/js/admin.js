@@ -845,7 +845,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (enabledToggle.checked) {
                 previewAudio.play().catch(e => console.error("Couldn't play preview:", e));
             }
-            // Save selection with both sound slug and enabled state
+            // Save sound selection to localStorage
+            localStorage.setItem('sound_slug', this.value);
+            
+            // Save selection with both sound slug and enabled state to server
             savePrefs({
                 sound_slug: this.value,
                 sound_enabled: enabledToggle.checked
@@ -855,6 +858,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Autosave: enabled toggle
         enabledToggle.addEventListener('change', function() {
             console.log('Toggle changed:', this.checked, soundSelect.value);
+            // Save enabled state to localStorage
+            localStorage.setItem('sound_enabled', this.checked);
+            
             savePrefs({
                 sound_enabled: this.checked,
                 sound_slug: soundSelect.value
@@ -876,6 +882,19 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        // Initialize from localStorage if available
+        const savedSoundSlug = localStorage.getItem('sound_slug');
+        const savedSoundEnabled = localStorage.getItem('sound_enabled');
+        
+        // Set UI from localStorage values
+        if (savedSoundSlug && soundSelect.querySelector(`option[value="${savedSoundSlug}"]`)) {
+            soundSelect.value = savedSoundSlug;
+        }
+        
+        if (savedSoundEnabled !== null) {
+            enabledToggle.checked = savedSoundEnabled === 'true';
+        }
+        
         // Initialize preview state
         setPreviewSrc();
         // Default preview volume
@@ -1583,9 +1602,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = JSON.parse(event.data);
                 // Flexibly handle different data formats
                 const printers = Array.isArray(data) ? data : (data.printers || []);
-                
-                console.log('SSE parsed printer data:', printers); // Debug logging
-                
+                                
                 // Update each printer in the UI
                 printers.forEach(printer => {
                     console.log('Updating printer:', printer.printer_name);
@@ -1607,6 +1624,61 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window.location.pathname.startsWith('/portal/')) {
         let baseTitle = document.title;
         let titleFlashInterval = null;
+        let previousCompletedCount = 0; // Track previous count to detect changes
+        
+        // Create notification audio element
+        const notificationAudio = new Audio();
+        
+        // Request notification permission if we haven't asked before
+        function requestNotificationPermission() {
+            if ("Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission().then(permission => {
+                    console.log("Notification permission:", permission);
+                });
+            }
+        }
+        
+        // Request permission when dashboard page loads
+        if (window.location.pathname.includes('/portal/dashboard')) {
+            requestNotificationPermission();
+        }
+        
+        function playNotificationSound() {
+        console.log("Attempting to play notification sound...");
+        // Check if sound is enabled in localStorage (saved from settings page)
+        const soundEnabled = localStorage.getItem('sound_enabled') === 'true';
+        let soundSlug = localStorage.getItem('sound_slug');
+        console.log("Sound enabled:", soundEnabled, "Sound slug:", soundSlug);
+        if (soundEnabled) {
+            // If sound settings are missing, fetch them first
+            if (!localStorage.getItem('sound_slug')) {
+                console.log("NOT IN LOCAL STORAGE: Fetching sound preferences...");
+                fetch('/api/get-notification-prefs/')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Save and play
+                            localStorage.setItem('sound_slug', data.sound_slug);
+                            localStorage.setItem('sound_enabled', data.sound_enabled);
+                            
+                            // Only play if actually enabled
+                            if (data.sound_enabled) {
+                                const soundPath = `/static/sounds/${data.sound_slug}.mp3`;
+                                notificationAudio.src = soundPath;
+                                notificationAudio.play().catch(e => console.error("Couldn't play notification sound:", e));
+                            }
+                        }
+                    })
+                    .catch(e => console.error("Couldn't fetch sound preferences:", e));
+            } else {
+                // Normal path - sound slug is available
+                console.log("IN LOCAL STORAGE: Playing sound:", soundSlug);
+                const soundPath = `/static/sounds/${soundSlug}.mp3`;
+                notificationAudio.src = soundPath;
+                notificationAudio.play().catch(e => console.error("Couldn't play notification sound:", e));
+                }
+            }
+        }
         
         function startTitleFlash(completedCount) {
             // Coerce and guard: if 0 or invalid, stop flashing
@@ -1635,26 +1707,76 @@ document.addEventListener('DOMContentLoaded', function() {
             document.title = baseTitle;
         }
 
-    const evtSourceDash = new EventSource('/sse/dashboard-status/');
+        let evtSourceDash = new EventSource('/sse/dashboard-status/');
+        
+        evtSourceDash.onopen = function() {
+            console.log('Dashboard SSE connection established');
+        };
+        
+        evtSourceDash.onerror = function(err) {
+            console.error('Dashboard SSE connection error:', err);
+            
+            // Try to reconnect after a delay
+            setTimeout(() => {
+                evtSourceDash.close();
+                evtSourceDash = new EventSource('/sse/dashboard-status/');
+            }, 5000);
+        };
+        
         evtSourceDash.onmessage = function(event) {
-            try {
-        const stats = JSON.parse(event.data);
-                // Use the "Print Jobs Completed" value directly for the flashing count (coerced to number).
-                let completedCount = parseInt(String(stats.completed_jobs_count), 10);
-                if (Number.isNaN(completedCount)) {
-                    completedCount = Array.isArray(stats.completed_documents)
-                        ? stats.completed_documents.length
-                        : 0;
+        try {
+            const stats = JSON.parse(event.data);
+            // Use the "Print Jobs Completed" value directly for the flashing count
+            let completedCount = parseInt(String(stats.completed_jobs_count), 10);
+            if (Number.isNaN(completedCount)) {
+                completedCount = Array.isArray(stats.completed_documents)
+                    ? stats.completed_documents.length
+                    : 0;
+            }
+            completedCount = Math.max(0, completedCount);
+            
+            // Add debugging logs to see the counts
+            console.log("SSE update - Completed count:", completedCount, "Previous count:", previousCompletedCount);
+            
+            // Track document IDs instead of just counts
+            const currentDocIds = Array.isArray(stats.completed_documents) 
+                ? stats.completed_documents.map(doc => doc.doc_id)
+                : [];
+                
+            // Get previously seen document IDs from sessionStorage
+            const seenDocIds = JSON.parse(sessionStorage.getItem('seenDocIds') || '[]');
+            
+            // Find new document IDs that we haven't seen before
+            const newDocIds = currentDocIds.filter(id => !seenDocIds.includes(id));
+            
+            // If there are any new document IDs, play the notification
+            if (newDocIds.length > 0) {
+                console.log("New completed jobs detected:", newDocIds.length);
+                playNotificationSound();
+                
+                // Show browser notification if supported and permitted
+                if ("Notification" in window && Notification.permission === "granted") {
+                    new Notification("SafePrint", {
+                        body: `${newDocIds.length} new print job${newDocIds.length > 1 ? 's' : ''} completed`,
+                        icon: "/static/assets/favicon.ico"
+                    });
                 }
-                completedCount = Math.max(0, completedCount);
-                if (completedCount > 0) {
-                    startTitleFlash(completedCount);
-                    console.log(completedCount)
-                } else {
-                    stopTitleFlash();
-                }
+                
+                // Update the seen document IDs in sessionStorage
+                sessionStorage.setItem('seenDocIds', JSON.stringify(currentDocIds));
+            }
+            
+            // Update previous completed count
+            previousCompletedCount = completedCount;
+            
+            // Update UI elements for tab title flashing based on current count
+            if (completedCount > 0) {
+                startTitleFlash(completedCount);
+            } else {
+                stopTitleFlash();
+            }
 
-                // Only update dashboard DOM when on dashboard page (support with/without trailing slash)
+                // Only update dashboard DOM when on dashboard page
                 if (window.location.pathname.includes('/portal/dashboard')) {
                     // Update Print Jobs Completed
                     const completedElem = document.querySelector('.stat-card.green p');
