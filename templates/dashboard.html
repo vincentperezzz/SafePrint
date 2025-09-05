@@ -5,6 +5,15 @@
 Dashboard
 {% endblock %}
 
+{% block extra_head %}
+<!-- Preload notification sound for the current user -->
+{% if user.adminuser.notification_sound %}
+    <link rel="preload" href="{% static 'sounds/'|add:user.adminuser.notification_sound.slug|add:'.mp3' %}" as="audio">
+{% else %}
+    <link rel="preload" href="{% static 'sounds/chime.mp3' %}" as="audio">
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="dashboard-rows">
     <div class="header-left">

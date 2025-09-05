@@ -28,6 +28,7 @@ urlpatterns = [
     path('api/deny-document/', views.deny_document, name='deny_document'),
     path('api/approve-document/', views.approve_document, name='approve_document'),
     path('api/update-notification-prefs/', views.update_notification_prefs, name='update_notification_prefs'),
+    path('api/get-notification-prefs/', views.get_notification_prefs, name='get_notification_prefs'),
     path('sse/printer-status/', views.printer_status_stream, name='printer_status_stream'),
     path('sse/dashboard-status/', views.dashboard_status_stream, name='dashboard_status_stream'),
 ]
