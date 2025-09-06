@@ -860,6 +860,40 @@ def edit_printer(request):
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
 
+@csrf_exempt
+def delete_printer(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            printer_id = data.get('printer_id')
+            
+            if not printer_id:
+                return JsonResponse({'success': False, 'error': 'Printer ID is required'})
+                
+            try:
+                printer = Printer.objects.get(id=printer_id)
+                # Check if printer has any documents assigned to it
+                docs_count = Document.objects.filter(printer_assigned=printer).exclude(doc_status__in=['Finished', 'Denied']).count()
+                
+                if docs_count > 0:
+                    return JsonResponse({
+                        'success': False, 
+                        'error': f'Cannot delete printer with {docs_count} active documents assigned to it. Please reassign or complete these documents first.'
+                    })
+                
+                printer_name = printer.printer_name
+                printer.delete()
+                return JsonResponse({'success': True, 'message': f'Printer {printer_name} successfully deleted.'})
+                
+            except Printer.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Printer not found'})
+                
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON data'})
+            
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
 @transaction.atomic
 def assign_document_to_printer(document):
     import time

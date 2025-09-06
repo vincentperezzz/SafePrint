@@ -22,6 +22,7 @@ urlpatterns = [
     path('api/update_printer_field/', views.update_printer_field, name='update_printer_field'),
     path('api/add_printer/', views.add_printer, name='add_printer'),
     path('api/edit_printer/', views.edit_printer, name='edit_printer'),
+    path('api/delete_printer/', views.delete_printer, name='delete_printer'),
     path('api/search_customer/', views.search_customer, name='search_customer'),
     path('api/deny-all-documents/', views.deny_all_documents, name='deny_all_documents'),
     path('api/approve-all-documents/', views.approve_all_documents, name='approve_all_documents'),
