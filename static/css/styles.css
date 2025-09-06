@@ -4310,3 +4310,32 @@ input:focus::placeholder {
     border: 1px solid black; 
     outline: none;
 }
+
+.printer-edit-btn-container {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.printer-delete-btn {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.printer-delete-btn:hover svg path {
+    fill: #ff0000;
+}
+
+.edit-btn {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.edit-btn:hover svg path {
+    fill: #3a3d4a;
+}

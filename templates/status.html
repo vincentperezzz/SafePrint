@@ -111,6 +111,12 @@ Printer Status
                       <path d="M2.49902 14.3761V17.5011H5.62402L14.8407 8.28444L11.7157 5.15944L2.49902 14.3761ZM17.2574 5.86777C17.5824 5.54277 17.5824 5.01777 17.2574 4.69277L15.3074 2.74277C14.9824 2.41777 14.4574 2.41777 14.1324 2.74277L12.6074 4.26777L15.7324 7.39277L17.2574 5.86777Z" fill="#5A5D6C"/>
                     </svg>
                 </div>
+                <!-- New delete button -->
+                <div class="printer-delete-btn" onclick="showDeletePrinterOverlay('{{ printer.id }}', '{{ printer.printer_name|escapejs }}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="23" height="22" viewBox="0 0 23 22" fill="none">
+                        <path d="M13.285 9.5975L11.3417 11.5408L9.38921 9.5975L8.09672 10.89L10.0492 12.8333L8.10588 14.7767L9.39838 16.0692L11.3417 14.1258L13.285 16.0692L14.5775 14.7767L12.6342 12.8333L14.5775 10.89L13.285 9.5975ZM14.55 3.66667L13.6334 2.75H9.05005L8.13338 3.66667H4.92505V5.5H17.7584V3.66667H14.55ZM5.84172 17.4167C5.84172 18.425 6.66672 19.25 7.67505 19.25H15.0084C16.0167 19.25 16.8417 18.425 16.8417 17.4167V6.41667H5.84172V17.4167ZM7.67505 8.25H15.0084V17.4167H7.67505V8.25Z" fill="#D70206"/>
+                    </svg>
+                </div>
             </div>
         </div>
         {% endfor %}
@@ -145,6 +151,21 @@ Printer Status
       <input type="text" id="editPrinterIP" name="ip_address" class="popup-input" placeholder="Enter IP Address" required>
       <button type="submit" class="popup-done-btn">Save Changes</button>
     </form>
+  </div>
+</div>
+
+<!-- Delete Printer Confirmation Popup -->
+<div class="popup-overlay" id="deletePrinterOverlay" style="display:none;">
+  <div class="delete-popup-box">
+    <div class="delete-popup-title">Are you sure?</div>
+    <div class="delete-popup-desc">
+      You are about to delete <span id="delete-printer-name"></span> and will <b>NOT</b> be able to restore.
+    </div>
+    <input type="hidden" id="delete-printer-id" value="">
+    <div class="delete-popup-actions">
+      <button class="delete-confirm-btn" id="deletePrinterConfirmBtn">Delete</button>
+      <button class="delete-cancel-btn" onclick="hidePopupOverlay('deletePrinterOverlay')">Cancel</button>
+    </div>
   </div>
 </div>
 </div>
