@@ -195,6 +195,12 @@ def printer_status(request):
     if not user_id:
         raise Http404("User not found in session")
     printers = Printer.objects.all()
+    
+    # Set N/A as default ink status for printers with null ink status or Offline status
+    for printer in printers:
+        if printer.ink_status is None or printer.printer_status == "Offline":
+            printer.ink_status = "N/A"
+    
     paper_size_choices = Printer.PAPER_SIZE_CHOICES
     gsm_choices = Printer.GSM_CHOICES
     return render(request, 'status.html', {
@@ -749,26 +755,30 @@ def printer_status_event_stream():
         printers = Printer.objects.all()
         data = []
         for printer in printers:
-            ink_status = printer.ink_status
-            
-            # If no ink_status is set in the database, calculate it based on individual ink levels
-            if not ink_status or ink_status == "OK":
-                low_ink_colors = []
+            # If ink status is None/NULL or printer is Offline, set ink status to "N/A"
+            if printer.ink_status is None or printer.printer_status == "Offline":
+                ink_status = "N/A"
+            else:
+                ink_status = printer.ink_status
                 
-                # Check each ink color
-                if hasattr(printer, 'ink_cyan') and printer.ink_cyan == 'LOW':
-                    low_ink_colors.append('cyan')
-                if hasattr(printer, 'ink_magenta') and printer.ink_magenta == 'LOW':
-                    low_ink_colors.append('magenta')
-                if hasattr(printer, 'ink_yellow') and printer.ink_yellow == 'LOW':
-                    low_ink_colors.append('yellow')
-                if hasattr(printer, 'ink_black') and printer.ink_black == 'LOW':
-                    low_ink_colors.append('black')
+                # If no ink_status is set in the database, calculate it based on individual ink levels
+                if not ink_status or ink_status == "OK":
+                    low_ink_colors = []
                     
-                if low_ink_colors:
-                    ink_status = ','.join(low_ink_colors)
-                else:
-                    ink_status = "OK"
+                    # Check each ink color
+                    if hasattr(printer, 'ink_cyan') and printer.ink_cyan == 'LOW':
+                        low_ink_colors.append('cyan')
+                    if hasattr(printer, 'ink_magenta') and printer.ink_magenta == 'LOW':
+                        low_ink_colors.append('magenta')
+                    if hasattr(printer, 'ink_yellow') and printer.ink_yellow == 'LOW':
+                        low_ink_colors.append('yellow')
+                    if hasattr(printer, 'ink_black') and printer.ink_black == 'LOW':
+                        low_ink_colors.append('black')
+                        
+                    if low_ink_colors:
+                        ink_status = ','.join(low_ink_colors)
+                    else:
+                        ink_status = "OK"
                 
             data.append({
                 'id': printer.id,

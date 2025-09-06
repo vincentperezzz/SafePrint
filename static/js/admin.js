@@ -1550,7 +1550,15 @@ document.addEventListener('DOMContentLoaded', function() {
         if (inkBarsContainer) {
             inkBarsContainer.innerHTML = '';
             
-            if (printer.ink_status === 'OK') {
+            if (printer.ink_status === 'N/A') {
+                // For N/A status (Offline printer), show no ink bars and black text
+                const inkStatusSpan = row.querySelector('.ink-status');
+                if (inkStatusSpan) {
+                    inkStatusSpan.textContent = 'N/A';
+                    inkStatusSpan.className = 'ink-status';
+                    inkStatusSpan.style.color = '#000000'; // Black font
+                }
+            } else if (printer.ink_status === 'OK') {
                 // For OK status, show all colors (b, y, c, m)
                 ['b', 'y', 'c', 'm'].forEach(color => {
                     const inkSpan = document.createElement('span');
@@ -1563,6 +1571,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (inkStatusSpan) {
                     inkStatusSpan.textContent = 'OK';
                     inkStatusSpan.className = 'ink-status ok';
+                    inkStatusSpan.style.removeProperty('color'); // Use default color from class
                 }
             } else if (printer.ink_status && printer.ink_status !== 'OK') {
                 // For LOW INK status, only show the specific colors listed
@@ -1585,6 +1594,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (inkStatusSpan) {
                     inkStatusSpan.textContent = 'LOW INK';
                     inkStatusSpan.className = 'ink-status low';
+                    inkStatusSpan.style.removeProperty('color'); // Use default color from class
                 }
             }
         }

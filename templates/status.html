@@ -63,6 +63,8 @@ Printer Status
                         <span class="ink y"></span>
                         <span class="ink c"></span>
                         <span class="ink m"></span>
+                    {% elif printer.ink_status == 'N/A' %}
+                        <!-- No ink bars for N/A status -->
                     {% else %}
                         {% for color in printer.ink_status|cut:"," %}
                             {% if color %}
@@ -73,6 +75,8 @@ Printer Status
                 </div>
                 {% if printer.ink_status == 'OK' %}
                     <span class="ink-status ok">OK</span>
+                {% elif printer.ink_status == 'N/A' %}
+                    <span class="ink-status" style="color: #000000;">N/A</span>
                 {% else %}
                     <span class="ink-status low">LOW INK</span>
                 {% endif %}
