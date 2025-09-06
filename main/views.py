@@ -306,14 +306,14 @@ def get_paper_size(width, height):
         'A4': [(595, 842), (842, 595)],
         'Letter': [(612, 792), (792, 612)],
         'Legal': [(612, 1008), (1008, 612)],  # 8.5x14 inches
-        'Long': [(612, 1008), (1008, 612)],   # Make Legal paper classify as "Long"
+        'Long': [(612, 936), (936, 612)],  # 8.5x13 inches
     }
     for name, dims in sizes.items():
         for w, h in dims:
             if (math.isclose(width, w, abs_tol=10) and math.isclose(height, h, abs_tol=10)) or \
                (math.isclose(width, h, abs_tol=10) and math.isclose(height, w, abs_tol=10)):
                 # Special case to return "Long" for Legal sized paper
-                if name == 'Legal':
+                if name == 'Legal' or name == 'Long':
                     return 'Long'
                 return name
     return 'Custom'
