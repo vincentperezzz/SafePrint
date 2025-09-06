@@ -664,6 +664,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const printerId = this.dataset.printerId;
                 const field = this.dataset.field;
                 const value = this.value;
+                // Only handle printer status dropdowns that declare both data attributes
+                if (!printerId || !field) return;
                 
                 // Form data for the request
                 const formData = new FormData();
@@ -780,6 +782,151 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (noOnqueueMatchRow) noOnqueueMatchRow.style.display = anyVisible ? 'none' : '';
             }
         });
+    }
+
+    if (window.location.pathname.includes('/portal/settings/')) {
+    
+        // NOTIFICATIONS SETTINGS API
+        const soundSelect = document.getElementById('notification-sound');
+        const enabledToggle = document.getElementById('sound-enabled');
+        const previewAudio = document.getElementById('sound-preview');
+        
+        // Build a sound map from option data attributes
+        const soundMap = {};
+        Array.from(soundSelect.options || []).forEach(opt => {
+            soundMap[opt.value] = opt.dataset.filepath || '';
+        });
+    
+        function setPreviewSrc() {
+            const selectedSound = soundSelect.value;
+            if (selectedSound && soundMap[selectedSound]) {
+                previewAudio.src = soundMap[selectedSound];
+            }
+        }
+    
+        // Fetch current settings from server first when page loads
+        function fetchNotificationPrefs() {
+            console.log("Fetching notification preferences from server...");
+            fetch('/api/get-notification-prefs/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log("Received notification preferences from server:", data);
+                    
+                    // Update the UI with server values
+                    if (data.sound_slug && soundSelect.querySelector(`option[value="${data.sound_slug}"]`)) {
+                        soundSelect.value = data.sound_slug;
+                    }
+                    enabledToggle.checked = data.sound_enabled;
+                    
+                    // Update localStorage with server values
+                    localStorage.setItem('sound_slug', data.sound_slug);
+                    localStorage.setItem('sound_enabled', data.sound_enabled ? 'true' : 'false');
+                    
+                    // Update preview source
+                    setPreviewSrc();
+                    
+                    console.log("Updated settings from server - Sound enabled:", data.sound_enabled, "Sound slug:", data.sound_slug);
+                } else {
+                    console.error("Failed to fetch notification preferences:", data.error);
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching notification preferences:", error);
+            });
+        }
+    
+        // Fetch preferences from server when settings page loads
+        fetchNotificationPrefs();
+    
+        function savePrefs(payload, onSuccess) {
+            fetch('/api/update-notification-prefs/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (typeof createAlert === "function") {
+                        createAlert('Success', 'Preferences Updated', 'Your notification preferences have been saved.', 'success', true, true, 'pageMessages');
+                    }
+                    if (onSuccess) onSuccess(data);
+                } else {
+                    if (typeof createAlert === "function") {
+                        createAlert('Error', 'Update Failed', data.error || 'Failed to update preferences.', 'danger', true, true, 'pageMessages');
+                    } else {
+                        alert(data.error || 'Failed to update preferences');
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error saving preferences:', error);
+                if (typeof createAlert === "function") {
+                    createAlert('Error', 'Update Failed', 'An error occurred while saving preferences.', 'danger', true, true, 'pageMessages');
+                } else {
+                    alert('An error occurred while saving preferences.');
+                }
+            });
+        }
+    
+        // Autosave: sound change -> save and auto preview
+        soundSelect.addEventListener('change', function () {
+            setPreviewSrc();
+            // Play preview if enabled
+            if (enabledToggle.checked) {
+                previewAudio.play().catch(e => console.error("Couldn't play preview:", e));
+            }
+            // Save sound selection to localStorage
+            localStorage.setItem('sound_slug', this.value);
+            
+            // Save selection with both sound slug and enabled state to server
+            savePrefs({
+                sound_slug: this.value,
+                sound_enabled: enabledToggle.checked
+            });
+        });
+    
+        // Autosave: enabled toggle
+        enabledToggle.addEventListener('change', function() {
+            console.log('Toggle changed:', this.checked, soundSelect.value);
+            // Save enabled state to localStorage
+            localStorage.setItem('sound_enabled', this.checked);
+            
+            savePrefs({
+                sound_enabled: this.checked,
+                sound_slug: soundSelect.value
+            });
+        });
+        
+        // Additional keyboard accessibility
+        enabledToggle.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                enabledToggle.checked = !enabledToggle.checked;
+                enabledToggle.dispatchEvent(new Event('change'));
+            }
+        });
+        const enabledLabel = document.querySelector('label[for="sound-enabled"], .switch-label[for="sound-enabled"]');
+        if (enabledLabel && enabledLabel.classList.contains('switch-label')) {
+            enabledLabel.addEventListener('click', () => {
+                enabledToggle.checked = !enabledToggle.checked;
+                enabledToggle.dispatchEvent(new Event('change'));
+            });
+        }
+    
+        // Initialize preview state
+        setPreviewSrc();
+        // Default preview volume
+        previewAudio.volume = 1;
     }
 
     // Printer Search Functionality
@@ -1403,7 +1550,15 @@ document.addEventListener('DOMContentLoaded', function() {
         if (inkBarsContainer) {
             inkBarsContainer.innerHTML = '';
             
-            if (printer.ink_status === 'OK') {
+            if (printer.ink_status === 'N/A') {
+                // For N/A status (Offline printer), show no ink bars and black text
+                const inkStatusSpan = row.querySelector('.ink-status');
+                if (inkStatusSpan) {
+                    inkStatusSpan.textContent = 'N/A';
+                    inkStatusSpan.className = 'ink-status';
+                    inkStatusSpan.style.color = '#000000'; // Black font
+                }
+            } else if (printer.ink_status === 'OK') {
                 // For OK status, show all colors (b, y, c, m)
                 ['b', 'y', 'c', 'm'].forEach(color => {
                     const inkSpan = document.createElement('span');
@@ -1416,6 +1571,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (inkStatusSpan) {
                     inkStatusSpan.textContent = 'OK';
                     inkStatusSpan.className = 'ink-status ok';
+                    inkStatusSpan.style.removeProperty('color'); // Use default color from class
                 }
             } else if (printer.ink_status && printer.ink_status !== 'OK') {
                 // For LOW INK status, only show the specific colors listed
@@ -1438,6 +1594,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (inkStatusSpan) {
                     inkStatusSpan.textContent = 'LOW INK';
                     inkStatusSpan.className = 'ink-status low';
+                    inkStatusSpan.style.removeProperty('color'); // Use default color from class
                 }
             }
         }
@@ -1483,9 +1640,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = JSON.parse(event.data);
                 // Flexibly handle different data formats
                 const printers = Array.isArray(data) ? data : (data.printers || []);
-                
-                console.log('SSE parsed printer data:', printers); // Debug logging
-                
+                                
                 // Update each printer in the UI
                 printers.forEach(printer => {
                     console.log('Updating printer:', printer.printer_name);
@@ -1503,45 +1658,271 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
+    // Global SSE for dashboard stats across all portal pages (for tab title flashing).
+    if (window.location.pathname.startsWith('/portal/')) {
+        let baseTitle = document.title;
+        let titleFlashInterval = null;
+        let previousCompletedCount = 0; // Track previous count to detect changes
+        
+        // Create notification audio element
+        const notificationAudio = new Audio();
 
-    // SSE for real-time dashboard stats (printer status, completed jobs, pending customers, completed documents)
-    if (window.location.pathname.includes('/portal/dashboard/')) {
-        const evtSource = new EventSource('/sse/dashboard-status/');
-        evtSource.onmessage = function(event) {
-            try {
-                const stats = JSON.parse(event.data);
-                // Update Print Jobs Completed
-                const completedElem = document.querySelector('.stat-card.green p');
-                if (completedElem) completedElem.textContent = stats.completed_jobs_count;
-                // Update Printer Errors
-                const errorElem = document.querySelector('.stat-card.red p');
-                if (errorElem) errorElem.textContent = stats.printer_errors_count;
-                // Update Pending Customers
-                const pendingElem = document.querySelector('.stat-card.yellow p');
-                if (pendingElem) pendingElem.textContent = stats.pending_customers_count;
+        // Initialize sound settings from server on page load
+        function initSoundSettings() {
+            fetch('/api/get-notification-prefs/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    localStorage.setItem('sound_slug', data.sound_slug || 'chime');
+                    localStorage.setItem('sound_enabled', data.sound_enabled ? 'true' : 'false');
+                } else {
+                    console.error("Failed to fetch sound settings:", data.error);
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching sound settings:", error);
+            });
+        }
+    
+        initSoundSettings();
+        
+        // Request notification permission if we haven't asked before
+        function requestNotificationPermission() {
+            if ("Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission().then(permission => {
+                    console.log("Notification permission:", permission);
+                });
+            }
+        }
+        
+        // Request permission when dashboard page loads
+        if (window.location.pathname.includes('/portal/dashboard')) {
+            requestNotificationPermission();
+        }
+        
+        function playNotificationSound() {
+            
+            // If sound settings are missing from localStorage, fetch them from server first
+            if (!localStorage.getItem('sound_slug')) {
+                fetch('/api/get-notification-prefs/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Save to localStorage
+                        localStorage.setItem('sound_slug', data.sound_slug);
+                        localStorage.setItem('sound_enabled', data.sound_enabled ? 'true' : 'false');
+                        
+                        // Only play if actually enabled
+                        if (data.sound_enabled) {
+                            const soundPath = `/static/sounds/${data.sound_slug}.mp3`;
+                            notificationAudio.src = soundPath;
+                            notificationAudio.volume = 1.0;
+                            notificationAudio.play()
+                                .then(() => console.log("Sound played successfully"))
+                                .catch(e => console.error("Couldn't play notification sound:", e));
+                        }
+                    }
+                })
+                .catch(e => console.error("Couldn't fetch sound preferences:", e));
+            } else {
+                // Sound settings exist in localStorage
+                const soundEnabled = localStorage.getItem('sound_enabled') === 'true';
+                let soundSlug = localStorage.getItem('sound_slug');
+                
+                if (soundEnabled) {
+                    // Normal path - sound slug is available
+                    const soundPath = `/static/sounds/${soundSlug}.mp3`;
+                    notificationAudio.src = soundPath;
+                    notificationAudio.volume = 1.0;
+                    notificationAudio.play()
+                        .then(() => console.log("Sound played successfully"))
+                        .catch(e => console.error("Couldn't play notification sound:", e));
+                }
+            }
+        }
+        
+        function startTitleFlash(completedCount) {
+            // Coerce and guard: if 0 or invalid, stop flashing
+            completedCount = parseInt(String(completedCount), 10) || 0;
+            if (completedCount <= 0) {
+                stopTitleFlash();
+                return;
+            }
+            // Reset any existing interval before starting
+            if (titleFlashInterval) {
+                clearInterval(titleFlashInterval);
+                titleFlashInterval = null;
+            }
+            let showCompleted = true;
+            titleFlashInterval = setInterval(() => {
+                document.title = showCompleted ? `(${completedCount}) Print Jobs Completed` : baseTitle;
+                showCompleted = !showCompleted;
+            }, 1000);
+        }
 
-                // Update Completed Jobs List (dashboard-right)
-                const jobsItem = document.querySelector('.jobs-item');
-                if (jobsItem && Array.isArray(stats.completed_documents)) {
-                    jobsItem.innerHTML = '';
-                    if (stats.completed_documents.length > 0) {
-                        stats.completed_documents.forEach(doc => {
-                            const wrapper = document.createElement('div');
-                            wrapper.className = 'jobs-item-wrapper';
-                            wrapper.innerHTML = `
-                                <h6 title="${doc.filename}">${doc.filename}</h6>
-                                <div class="Printer-Assigned">${doc.printer_name || 'No Printer'}</div>
-                                <button class="jobs-done-btn" data-doc-id="${doc.doc_id}">Done</button>
+        function stopTitleFlash() {
+            if (titleFlashInterval) {
+                clearInterval(titleFlashInterval);
+                titleFlashInterval = null;
+            }
+            document.title = baseTitle;
+        }
+
+        let evtSourceDash = new EventSource('/sse/dashboard-status/');
+        
+        evtSourceDash.onopen = function() {
+            console.log('Dashboard SSE connection established');
+        };
+        
+        evtSourceDash.onerror = function(err) {
+            console.error('Dashboard SSE connection error:', err);
+            
+            // Try to reconnect after a delay
+            setTimeout(() => {
+                evtSourceDash.close();
+                evtSourceDash = new EventSource('/sse/dashboard-status/');
+            }, 5000);
+        };
+        
+        evtSourceDash.onmessage = function(event) {
+        try {
+            const stats = JSON.parse(event.data);
+            // Use the "Print Jobs Completed" value directly for the flashing count
+            let completedCount = parseInt(String(stats.completed_jobs_count), 10);
+            if (Number.isNaN(completedCount)) {
+                completedCount = Array.isArray(stats.completed_documents)
+                    ? stats.completed_documents.length
+                    : 0;
+            }
+            completedCount = Math.max(0, completedCount);
+                        
+            // Track document IDs instead of just counts
+            const currentDocIds = Array.isArray(stats.completed_documents) 
+                ? stats.completed_documents.map(doc => doc.doc_id)
+                : [];
+                
+            // Get previously seen document IDs from sessionStorage
+            const seenDocIds = JSON.parse(sessionStorage.getItem('seenDocIds') || '[]');
+            
+            // Find new document IDs that we haven't seen before
+            const newDocIds = currentDocIds.filter(id => !seenDocIds.includes(id));
+            
+            // If there are any new document IDs, play the notification
+            if (newDocIds.length > 0) {
+                console.log("New completed jobs detected:", newDocIds.length);
+                playNotificationSound();
+                
+                // Show browser notification if supported and permitted
+                if ("Notification" in window && Notification.permission === "granted") {
+                    new Notification("SafePrint", {
+                        body: `${newDocIds.length} new print job${newDocIds.length > 1 ? 's' : ''} completed`,
+                        icon: "/static/assets/favicon.ico"
+                    });
+                }
+                
+                // Update the seen document IDs in sessionStorage
+                sessionStorage.setItem('seenDocIds', JSON.stringify(currentDocIds));
+            }
+            
+            // Update previous completed count
+            previousCompletedCount = completedCount;
+            
+            // Update UI elements for tab title flashing based on current count
+            if (completedCount > 0) {
+                startTitleFlash(completedCount);
+            } else {
+                stopTitleFlash();
+            }
+
+                // Only update dashboard DOM when on dashboard page
+                if (window.location.pathname.includes('/portal/dashboard')) {
+                    // Update Print Jobs Completed
+                    const completedElem = document.querySelector('.stat-card.green p');
+                    if (completedElem && stats.hasOwnProperty('completed_jobs_count')) {
+                        completedElem.textContent = String(stats.completed_jobs_count);
+                    }
+                    // Update Printer Errors
+                    const errorElem = document.querySelector('.stat-card.red p');
+                    if (errorElem && stats.hasOwnProperty('printer_errors_count')) {
+                        errorElem.textContent = String(stats.printer_errors_count);
+                    }
+                    // Update Pending Customers
+                    const pendingElem = document.querySelector('.stat-card.yellow p');
+                    if (pendingElem && stats.hasOwnProperty('pending_customers_count')) {
+                        pendingElem.textContent = String(stats.pending_customers_count);
+                    }
+
+                    // Update Completed Jobs List (dashboard-right)
+                    const completedSection = document.querySelector('.completed-jobs');
+                    if (completedSection && Array.isArray(stats.completed_documents)) {
+                        const docs = stats.completed_documents;
+
+                        // Ensure title row exists/visibility when there are docs
+                        let titleRow = completedSection.querySelector('.completedJobs-item-title');
+                        const headerRow = completedSection.querySelector('.dashboard-rows');
+                        if (docs.length > 0) {
+                            if (!titleRow) {
+                                titleRow = document.createElement('div');
+                                titleRow.className = 'completedJobs-item-title';
+                                titleRow.innerHTML = '<span>Document Name</span><p>Printer Assigned</p>';
+                                if (headerRow && headerRow.parentNode) {
+                                    headerRow.parentNode.insertBefore(titleRow, headerRow.nextSibling);
+                                } else {
+                                    completedSection.prepend(titleRow);
+                                }
+                            } else {
+                                titleRow.style.display = '';
+                            }
+                        } else if (titleRow) {
+                            // Hide title when no docs
+                            titleRow.style.display = 'none';
+                        }
+
+                        // Ensure the container exists
+                        let jobsItem = completedSection.querySelector('.jobs-item');
+                        if (!jobsItem) {
+                            jobsItem = document.createElement('div');
+                            jobsItem.className = 'jobs-item';
+                            completedSection.appendChild(jobsItem);
+                        }
+
+                        // Remove any outer no-jobs placeholders inside the section
+                        completedSection.querySelectorAll('.no-jobs').forEach(el => el.remove());
+
+                        // Populate list or show empty state
+                        if (docs.length > 0) {
+                            jobsItem.innerHTML = '';
+                            docs.forEach(doc => {
+                                const wrapper = document.createElement('div');
+                                wrapper.className = 'jobs-item-wrapper';
+                                const printerAssigned = doc.printer_name || doc.printed_at || 'No Printer';
+                                wrapper.innerHTML = `
+                                    <h6 title="${doc.filename}">${doc.filename}</h6>
+                                    <div class="Printer-Assigned">${printerAssigned}</div>
+                                    <button class="jobs-done-btn" data-doc-id="${doc.doc_id}">Done</button>
+                                `;
+                                jobsItem.appendChild(wrapper);
+                            });
+                        } else {
+                            jobsItem.innerHTML = `
+                                <div class="no-jobs">
+                                    <img src="/static/assets/empty-jobs.png" alt="Completed Jobs">
+                                    <p>All Completed!</p>
+                                </div>
                             `;
-                            jobsItem.appendChild(wrapper);
-                        });
-                    } else {
-                        jobsItem.innerHTML = `
-                            <div class="no-jobs">
-                                <img src="/static/assets/empty-jobs.png" alt="Completed Jobs">
-                                <p>All Completed!</p>
-                            </div>
-                        `;
+                        }
                     }
                 }
             } catch (e) {
@@ -1587,6 +1968,13 @@ function openPrinterEditPopup(printerName, printerIP, printerId) {
 function closePrinterEditPopup() {
   document.getElementById('printerEditPopup').style.display = 'none';
   currentEditPrinterId = null;
+}
+
+// Printer Delete Function
+function showDeletePrinterOverlay(printerId, printerName) {
+  document.getElementById('delete-printer-id').value = printerId;
+  document.getElementById('delete-printer-name').textContent = printerName;
+  showPopupOverlay('deletePrinterOverlay');
 }
 
 // Printer Status Add Printer Button modal control
@@ -1637,6 +2025,45 @@ document.getElementById('printerEditForm').onsubmit = function(e) {
   }
   closePrinterEditPopup();
 };
+
+// Add event listener for delete printer confirmation button
+document.addEventListener('DOMContentLoaded', function() {
+  const deletePrinterBtn = document.getElementById('deletePrinterConfirmBtn');
+  if (deletePrinterBtn) {
+    deletePrinterBtn.addEventListener('click', function() {
+      const printerId = document.getElementById('delete-printer-id').value;
+      
+      if (!printerId) return;
+      
+      fetch('/api/delete_printer/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({ printer_id: printerId })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          createAlert('Success', 'Printer Deleted', 'Printer has been successfully deleted.', 'success', true, true, 'pageMessages');
+          // Reload the page to show updated printer list
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        } else {
+          createAlert('Error', 'Delete Failed', data.error || 'Failed to delete printer.', 'danger', true, true, 'pageMessages');
+        }
+        hidePopupOverlay('deletePrinterOverlay');
+      })
+      .catch(error => {
+        console.error('Error deleting printer:', error);
+        createAlert('Error', 'Delete Failed', 'An error occurred while deleting the printer.', 'danger', true, true, 'pageMessages');
+        hidePopupOverlay('deletePrinterOverlay');
+      });
+    });
+  }
+});
 
 // Printer Status Add Printer Button
 document.getElementById('addPrinterForm').onsubmit = function(e) {

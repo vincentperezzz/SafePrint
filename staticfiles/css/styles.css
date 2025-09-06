@@ -1328,7 +1328,7 @@ input:focus::placeholder {
     display: inline-block;
 }
 
-.switch-input {
+.switch-input, .switch-input-blue {
     opacity: 0; 
     width: 100%; 
     height: 100%;
@@ -1343,7 +1343,7 @@ input:focus::placeholder {
     outline: none;
 }
 
-.switch-label {
+.switch-label, .switch-label-blue {
     position: absolute;
     top: 0;
     left: 0;
@@ -1411,6 +1411,22 @@ input:focus::placeholder {
     pointer-events: none;
     background-color: var(--primary-color); 
     border-radius: 0 13px 13px 0; 
+}
+
+.dropdown-compact {
+    min-width: 0;
+    max-width: 150px;
+    position: relative;
+}
+.dropdown-compact .dropdown-select {
+    font-size: 13px;
+    padding: 4px 24px 4px 8px;
+    height: 35px;
+    min-width: 60px;
+    border-radius: 8px;
+}
+.dropdown-compact .dropdown-arrow {
+    background: none;
 }
 
 .dropdown-arrow svg{
@@ -3606,6 +3622,13 @@ input:focus::placeholder {
     flex: 1;
 }
 
+.notification-title {
+    font-size: 20px;
+    font-weight: 700;
+    flex: 1;
+    margin-bottom: 16px;
+}
+
 .settings-header {
     display: flex;
     align-items: center;
@@ -4266,4 +4289,53 @@ input:focus::placeholder {
 .delete-confirm-btn:active {
     transform: translateY(2px);
     box-shadow: 0 2px 0 #18191F;
+}
+
+.sound-enabled, .notification-sound, .sound-volume {
+    display: flex;
+    flex: 1;
+    gap: 2px;
+    font-weight: 500;
+}
+
+.switch-input-blue:checked + .switch-label-blue {
+    background: #3bbbe6;
+}
+
+.switch-input-blue:checked + .switch-label-blue .switch-circle {
+    transform: translateX(24px); 
+}
+
+.switch-input-blue:focus + .switch-label-blue {
+    border: 1px solid black; 
+    outline: none;
+}
+
+.printer-edit-btn-container {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.printer-delete-btn {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.printer-delete-btn:hover svg path {
+    fill: #ff0000;
+}
+
+.edit-btn {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.edit-btn:hover svg path {
+    fill: #3a3d4a;
 }
