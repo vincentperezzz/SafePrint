@@ -1960,6 +1960,13 @@ function closePrinterEditPopup() {
   currentEditPrinterId = null;
 }
 
+// Printer Delete Function
+function showDeletePrinterOverlay(printerId, printerName) {
+  document.getElementById('delete-printer-id').value = printerId;
+  document.getElementById('delete-printer-name').textContent = printerName;
+  showPopupOverlay('deletePrinterOverlay');
+}
+
 // Printer Status Add Printer Button modal control
 function openAddPrinterPopup() {
   var popup = document.getElementById('addPrinterPopup');
@@ -2008,6 +2015,45 @@ document.getElementById('printerEditForm').onsubmit = function(e) {
   }
   closePrinterEditPopup();
 };
+
+// Add event listener for delete printer confirmation button
+document.addEventListener('DOMContentLoaded', function() {
+  const deletePrinterBtn = document.getElementById('deletePrinterConfirmBtn');
+  if (deletePrinterBtn) {
+    deletePrinterBtn.addEventListener('click', function() {
+      const printerId = document.getElementById('delete-printer-id').value;
+      
+      if (!printerId) return;
+      
+      fetch('/api/delete_printer/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({ printer_id: printerId })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          createAlert('Success', 'Printer Deleted', 'Printer has been successfully deleted.', 'success', true, true, 'pageMessages');
+          // Reload the page to show updated printer list
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        } else {
+          createAlert('Error', 'Delete Failed', data.error || 'Failed to delete printer.', 'danger', true, true, 'pageMessages');
+        }
+        hidePopupOverlay('deletePrinterOverlay');
+      })
+      .catch(error => {
+        console.error('Error deleting printer:', error);
+        createAlert('Error', 'Delete Failed', 'An error occurred while deleting the printer.', 'danger', true, true, 'pageMessages');
+        hidePopupOverlay('deletePrinterOverlay');
+      });
+    });
+  }
+});
 
 // Printer Status Add Printer Button
 document.getElementById('addPrinterForm').onsubmit = function(e) {
