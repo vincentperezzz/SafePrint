@@ -122,6 +122,18 @@ def upload_file_view(request):
                         }],
                         'error': 'File contains a virus.'
                     })
+                # Check exit code as well (1 means virus found, 0 means clean)
+                if result.returncode == 1:
+                    # This is a backup check in case 'FOUND' string is not detected
+                    default_storage.delete(file_path)
+                    return JsonResponse({
+                        'success': False,
+                        'paper_size_errors': [{
+                            'file': uploaded_file.name,
+                            'reason': 'File contains a virus and has been deleted.'
+                        }],
+                        'error': 'File contains a virus.'
+                    })
             except Exception as scan_exc:
                 # If ClamAV fails, treat as error
                 default_storage.delete(file_path)
