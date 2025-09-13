@@ -843,79 +843,12 @@ def add_printer(request):
         printer_name = request.POST.get('printer_name')
         ip_address = request.POST.get('ip_address')
         if printer_name and ip_address:
-            # Step 1: Add to database
             now = timezone.now()
             printer = Printer(printer_name=printer_name, ip_address=ip_address, last_checked=now)
             printer.save()
-            
-            # Step 2: Start background task to poll printer and register in CUPS
-            threading.Thread(target=configure_printer_in_system, args=(printer.id, ip_address)).start()
-            
-            return JsonResponse({'success': True, 'printer_id': printer.id, 'message': 'Printer added to database. System configuration started.'})
+            return JsonResponse({'success': True, 'printer_id': printer.id})
         return JsonResponse({'success': False, 'error': 'Missing fields'})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
-
-def configure_printer_in_system(printer_id, ip_address):
-    """Background task to poll printer via SNMP and configure in CUPS"""
-    try:
-        # Step 1: Wait for SNMP to poll and update DB
-        time.sleep(5)
-        
-        # Step 2: Get updated printer data
-        try:
-            printer = Printer.objects.get(id=printer_id)
-        except Printer.DoesNotExist:
-            print(f"[ERROR] Printer {printer_id} no longer exists in database")
-            return
-        
-        # Step 3: Determine CUPS queue name
-        queue_name = None
-        if printer.node_name:
-            # Use node_name as is if available (from SNMP, like "BRW2C6FC9187DBE")
-            # Brother node names are already CUPS-compatible
-            queue_name = printer.node_name
-        elif printer.model_name:
-            # Fallback to model_name if available
-            model_name = printer.model_name
-            if model_name.lower().startswith('brother '):
-                model_name = model_name[8:]
-            queue_name = model_name.replace('-', '').replace(' ', '')
-        else:
-            # Last resort - use sanitized printer_name
-            queue_name = printer.printer_name.replace(' ', '_')
-        
-        # Step 4: Execute lpadmin command
-        try:
-            # Get sudo password from env (if needed)
-            sudo_password = getattr(settings, 'CUPS_SUDO_PASSWORD', None)
-            
-            if sudo_password:
-                # Use sudo with password
-                cmd = f"echo '{sudo_password}' | sudo -S lpadmin -p {queue_name} -E -v ipp://{ip_address}/ipp/print -m everywhere"
-                process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            else:
-                # Try without password (using NOPASSWD sudo config)
-                cmd = f"sudo lpadmin -p {queue_name} -E -v ipp://{ip_address}/ipp/print -m everywhere"
-                process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                
-            stdout, stderr = process.communicate()
-            
-            if process.returncode != 0:
-                print(f"[ERROR] Failed to add printer to CUPS: {stderr.decode().strip()}")
-                # Update printer record with error
-                printer.printer_status = "Configuration Error"
-                printer.save()
-            else:
-                print(f"[SUCCESS] Added printer {queue_name} to CUPS with IP {ip_address}")
-                # Update the node_name in DB if it was generated from model_name
-                if not printer.node_name and queue_name:
-                    printer.node_name = queue_name
-                    printer.save()
-                    
-        except Exception as e:
-            print(f"[ERROR] Exception adding printer to CUPS: {str(e)}")
-    except Exception as e:
-        print(f"[ERROR] Error in configure_printer_in_system: {str(e)}")
 
 
 @csrf_exempt
@@ -1045,17 +978,10 @@ def print_page(document, page_num):
     # Send print job
     print(f"[PRINT] Sending page {page_num} of document {document.doc_id} to printer {printer.printer_name} ({printer.printer_status})")
     
-    # Determine printer queue name for CUPS
-    # 1. Try node_name if available (like "BRW2C6FC9187DBE" from SNMP)
-    # 2. Fallback to model_name (with Brother prefix removed if present)
-    # 3. Last resort: use printer_name
-    if getattr(printer, 'node_name', None):
-        model_name = printer.node_name
-    elif getattr(printer, 'model_name', None):
+    if getattr(printer, 'model_name', None):
         model_name = printer.model_name
-        if model_name.lower().startswith('brother '):
-            model_name = model_name[8:]
-        model_name = model_name.replace('-', '').replace(' ', '')
+        # Convert spaces and dashes to underscores, preserving the Brother prefix
+        model_name = model_name.replace('-', '_').replace(' ', '_')
     else:
         model_name = printer.printer_name.replace(' ', '_')
         
@@ -1071,7 +997,7 @@ def print_page(document, page_num):
         '-n', str(copies),
         '-o', f'page-ranges={page_num}',
         '-o', f'orientation-requested={"4" if orientation=="Landscape" else "3"}',
-        '-o', f'{"BRMonoColor=Mono" if color_mode=="Black and White" else "ColorModel=Color"}',
+        '-o', f'{"print-color-mode=monochrome" if color_mode=="Black and White" else "print-color-mode=color"}',
         '-o', f'media={media_size}',  # Updated to use mapped media_size
         file_path
     ]
