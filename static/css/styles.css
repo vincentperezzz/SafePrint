@@ -3303,7 +3303,7 @@ input:focus::placeholder {
     display: flex;
     align-items: center;
     width: 100%;
-    height: 69px;
+    min-height: 69px;
     padding: 16px;
     border-radius: 12px;
     box-sizing: border-box;
