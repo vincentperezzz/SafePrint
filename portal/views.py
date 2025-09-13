@@ -918,15 +918,42 @@ def assign_document_to_printer(document):
             print(f"[CANCELLED] Document {document.doc_id} is no longer queued (status: {doc.doc_status}). Aborting printer assignment.")
             return None
         printers = Printer.objects.all()
+        
+        # Check if this is a rerouted document (has reroute history)
+        is_rerouted = RerouteHistory.objects.filter(document=doc).exists()
+        
+        # Skip printers in error state or with non-operational status
         available = [
             p for p in printers
-            if p.printer_status in ['Ready', 'Sleep']
+            if p.printer_status in ['Ready', 'Sleep']  # Only use printers in operational status
             and getattr(p, 'paper_assigned', None) == getattr(document, 'paper_size', None)
             and getattr(p, 'paper_quality', None) == getattr(document, 'paper_quality', None)
+            # Skip the previous failed printer if rerouting due to error
+            and (not hasattr(document, 'previous_failed_printer') or p.id != document.previous_failed_printer)
         ]
         if available:
+            # Sort by idle time (longer idle time first)
+            # For rerouted documents, prioritize by idle time (WRR nonpreemptive approach)
+            # The printer with the longest idle time gets selected
             available.sort(key=lambda p: p.last_checked or timezone.now())
+            
+            # For debugging
+            if len(available) > 1:
+                print(f"[WRR] Available printers for document {doc.doc_id}:")
+                for p in available:
+                    last_check = p.last_checked or timezone.now()
+                    idle_time = (timezone.now() - last_check).total_seconds()
+                    print(f"  - {p.printer_name}: Status={p.printer_status}, Idle time={idle_time:.1f}s")
+            
+            # Select the printer with longest idle time
             printer = available[0]
+            
+            # Log WRR selection
+            if is_rerouted:
+                print(f"[WRR] Selected printer {printer.printer_name} for rerouted document {doc.doc_id} based on longest idle time")
+            else:
+                print(f"[WRR] Selected printer {printer.printer_name} for document {doc.doc_id} based on longest idle time")
+                
             doc.printer_assigned = printer
             doc.doc_status = 'Printing'
             doc.save()
@@ -971,10 +998,49 @@ def print_page(document, page_num):
         print(f"[ERROR] No printer assigned for document {document.doc_id}. Cannot print page {page_num}.")
         return
     # Wait until printer is Ready or Sleep
-    while printer.printer_status not in ['Ready', 'Sleep']:
-        print(f"[WAIT] Printer {printer.printer_name} is {printer.printer_status}. Waiting for Ready/Sleep...")
-        time.sleep(2)
-        printer.refresh_from_db()
+    # Monitor printer status from database more aggressively for error detection
+    retries = 0
+    max_retries = 5  # Try 5 times before giving up on this printer
+    
+    # First, check if the document has been rerouted and we have a new printer
+    # Fetch latest document info to ensure we're using the most recent printer assignment
+    document.refresh_from_db()
+    if document.printer_assigned and document.printer_assigned.id != printer.id:
+        print(f"[REROUTED] Document {document.doc_id} was rerouted from {printer.printer_name} to {document.printer_assigned.printer_name}. Skipping wait for original printer.")
+        # Use the new printer for printing
+        printer = document.printer_assigned
+    
+    # Only wait for Ready/Sleep if this is the current assigned printer
+    if document.printer_assigned and document.printer_assigned.id == printer.id:
+        while printer.printer_status not in ['Ready', 'Sleep']:
+            print(f"[WAIT] Printer {printer.printer_name} is {printer.printer_status}. Waiting for Ready/Sleep...")
+            time.sleep(2)
+            printer.refresh_from_db()
+            
+            # Check again if document has been rerouted to a different printer
+            document.refresh_from_db()
+            if not document.printer_assigned or document.printer_assigned.id != printer.id:
+                print(f"[REROUTED] Document {document.doc_id} was rerouted during wait. Skipping original printer.")
+                return  # Exit this function, let the rerouting process handle printing
+            
+            # Increment retry counter
+            retries += 1
+            
+            # If printer is stuck in error state or other non-operational state for too long
+            if retries >= max_retries:
+                print(f"[ERROR] Printer {printer.printer_name} is not becoming Ready or Sleep (status: {printer.printer_status}). Rerouting document.")
+                
+                # Log the failed printer in reroute history
+                RerouteHistory.objects.create(
+                    document=document, 
+                    printer=printer,
+                    status=f"Error: {printer.printer_status}"
+                )
+            
+            # Implement preemptive approach - immediately reroute the document
+            print(f"[PREEMPTIVE] Initiating preemptive rerouting for document {document.doc_id} from printer {printer.printer_name}")
+            reroute_document_on_error(document)
+            return
     # Send print job
     print(f"[PRINT] Sending page {page_num} of document {document.doc_id} to printer {printer.printer_name} ({printer.printer_status})")
     
@@ -1011,29 +1077,151 @@ def print_page(document, page_num):
         reroute_document_on_error(document)
         return
     # Wait for printer status to become 'Printing', abort if document is canceled/deleted
+    wait_cycles = 0
+    max_wait_cycles = 30  # Maximum time to wait for printer to start printing (30 seconds)
+    error_cycles = 0
+    max_error_cycles = 3  # Maximum consecutive error cycles before rerouting (3 seconds)
+    
     while True:
         printer.refresh_from_db()
         # Check if document still exists and is not canceled/deleted
         try:
             doc_check = Document.objects.get(doc_id=document.doc_id)
+            # Check if document has been rerouted to a different printer
+            if doc_check.printer_assigned and doc_check.printer_assigned.id != printer.id:
+                print(f"[REROUTED] Document {document.doc_id} was rerouted from {printer.printer_name} to {doc_check.printer_assigned.printer_name} during waiting phase. Stopping original print job.")
+                return
         except Document.DoesNotExist:
             print(f"[CANCELLED] Document {document.doc_id} was deleted during printing. Aborting print job for page {page_num}.")
             return
         if doc_check.doc_status not in ['Queued', 'Printing']:
             print(f"[CANCELLED] Document {document.doc_id} status is {doc_check.doc_status}. Aborting print job for page {page_num}.")
             return
+            
+        # If the printer starts printing, proceed
         if printer.printer_status == 'Printing':
             print(f"[SUCCESS] Printed page {page_num} of document {document.doc_id} on printer {printer.printer_name}")
             break
-        print(f"[WAIT] Waiting for printer {printer.printer_name} to start printing page {page_num}...")
+            
+        # Detect if printer is in error state or has issues (like no paper)
+        if printer.printer_status not in ['Ready', 'Sleep', 'Printing']:
+            wait_cycles += 1
+            error_cycles += 1
+            print(f"[WARNING] Printer {printer.printer_name} is in '{printer.printer_status}' state. Error cycle {error_cycles}/{max_error_cycles}, Wait cycle {wait_cycles}/{max_wait_cycles}")
+            
+            # If the printer remains in error state for several consecutive cycles, reroute the document
+            if error_cycles >= max_error_cycles:
+                print(f"[ERROR] Printer {printer.printer_name} failed to start printing and is in '{printer.printer_status}' state for {error_cycles} consecutive cycles. Rerouting document.")
+                # Log the error in reroute history
+                RerouteHistory.objects.create(
+                    document=document,
+                    printer=printer,
+                    status=f"Failed to start: {printer.printer_status}",
+                    timestamp=timezone.now()
+                )
+                # Reroute the document
+                reroute_document_on_error(document)
+                return
+        else:
+            # Reset error cycles if printer returns to a normal state
+            error_cycles = 0
+            wait_cycles += 1
+            
+        # If we've waited too long regardless of status, consider rerouting
+        if wait_cycles >= max_wait_cycles:
+            print(f"[TIMEOUT] Printer {printer.printer_name} has been waiting to start printing for too long ({max_wait_cycles} seconds). Rerouting document.")
+            RerouteHistory.objects.create(
+                document=document,
+                printer=printer,
+                status=f"Timeout waiting to start printing: {printer.printer_status}",
+                timestamp=timezone.now()
+            )
+            reroute_document_on_error(document)
+            return
+        else:
+            # Reset wait cycles if printer is in a normal state
+            wait_cycles = 0
+            
+        print(f"[WAIT] Waiting for printer {printer.printer_name} to start printing page {page_num}... (cycle {wait_cycles})")
         time.sleep(1)
     # Wait for printer status to become 'Ready' after printing
+    wait_cycles = 0
+    max_wait_cycles = 60  # Maximum time to wait for printer to finish (60 seconds)
+    error_cycles = 0
+    max_error_cycles = 5  # Maximum consecutive error cycles before rerouting (5 seconds)
+    
     while True:
         printer.refresh_from_db()
+        
+        # Also check if the document still exists and hasn't been canceled
+        try:
+            doc_check = Document.objects.get(doc_id=document.doc_id)
+            # Check if document has been rerouted to a different printer
+            if doc_check.printer_assigned and doc_check.printer_assigned.id != printer.id:
+                print(f"[REROUTED] Document {document.doc_id} was rerouted from {printer.printer_name} to {doc_check.printer_assigned.printer_name} during printing. Stopping monitoring of original printer.")
+                return
+                
+            if doc_check.doc_status not in ['Queued', 'Printing']:
+                print(f"[CANCELLED] Document {document.doc_id} status changed to {doc_check.doc_status} while waiting. Aborting.")
+                return
+        except Document.DoesNotExist:
+            print(f"[CANCELLED] Document {document.doc_id} was deleted while waiting for printer to finish. Aborting.")
+            return
+            
+        # If printer returned to Ready state, printing is successful
         if printer.printer_status == 'Ready':
             print(f"[READY] Printer {printer.printer_name} is ready after printing page {page_num}.")
             break
-        print(f"[WAIT] Waiting for printer {printer.printer_name} to finish printing page {page_num}...")
+            
+        # If printer is in Sleep state (some printers go to sleep after printing)
+        if printer.printer_status == 'Sleep':
+            print(f"[SLEEP] Printer {printer.printer_name} went to sleep after printing page {page_num}.")
+            break
+        
+        # If printer is in error state or stuck in a non-operational state
+        if printer.printer_status not in ['Printing', 'Sleep', 'Ready']:
+            error_cycles += 1
+            wait_cycles += 1
+            
+            print(f"[WARNING] Printer {printer.printer_name} is in error state '{printer.printer_status}' (error cycle {error_cycles}/{max_error_cycles}, wait cycle {wait_cycles}/{max_wait_cycles})")
+            
+            # After several consecutive error states, initiate rerouting
+            if error_cycles >= max_error_cycles:
+                print(f"[ERROR] Printer {printer.printer_name} is stuck in error state '{printer.printer_status}' for {error_cycles} consecutive cycles. Initiating reroute.")
+                # Log the error printer in reroute history
+                RerouteHistory.objects.create(
+                    document=document, 
+                    printer=printer,
+                    status=f"Error: {printer.printer_status}",
+                    timestamp=timezone.now()
+                )
+                # Reroute remaining pages (preemptive approach)
+                reroute_document_on_error(document)
+                return
+        else:
+            # Reset error cycles if printer returns to a normal state
+            error_cycles = 0
+            wait_cycles += 1
+            
+            # If the printer is still printing, log status periodically
+            if printer.printer_status == 'Printing' and wait_cycles % 10 == 0:
+                print(f"[PRINTING] Printer {printer.printer_name} is still printing page {page_num}... (wait cycle {wait_cycles}/{max_wait_cycles})")
+        
+        # If we've waited too long regardless of status, consider rerouting
+        if wait_cycles >= max_wait_cycles:
+            print(f"[TIMEOUT] Printer {printer.printer_name} has been printing for too long ({max_wait_cycles} seconds). Initiating reroute.")
+            # Log the timeout in reroute history
+            RerouteHistory.objects.create(
+                document=document, 
+                printer=printer,
+                status=f"Timeout: Stuck in {printer.printer_status}",
+                timestamp=timezone.now()
+            )
+            # Reroute remaining pages
+            reroute_document_on_error(document)
+            return
+            
+        print(f"[WAIT] Waiting for printer {printer.printer_name} to finish printing page {page_num}... (cycle {wait_cycles})")
         time.sleep(1)
     # Mark page as printed in DB only after successful print and status transitions
     document.mark_page_printed(page_num)
@@ -1049,18 +1237,139 @@ def print_page(document, page_num):
 
 
 def reroute_document_on_error(document):
+    """
+    Implements the Weighted Round Robin (WRR) approach for rerouting:
+    - Preemptive: Document with error is immediately stopped and rerouted (already handled by caller)
+    - Nonpreemptive: Rerouted document gets priority in the queue but doesn't interrupt current printing
+    """
     remaining_pages = document.get_remaining_pages()
+    
+    # Store current printer ID as previous failed printer to avoid choosing it again
+    current_printer_name = "Unknown"
+    if document.printer_assigned:
+        # We'll use a temporary attribute to track the failed printer
+        # This won't be persisted to database but will be used during this rerouting process
+        document.previous_failed_printer = document.printer_assigned.id
+        current_printer_name = document.printer_assigned.printer_name
+        print(f"[REROUTE] Marked printer {current_printer_name} as failed for document {document.doc_id}")
+        
+        # Record the error printer in reroute history (if not already done by caller)
+        # We can't use get_or_create here because timestamp makes entries unique
+        # and we might have multiple error entries for the same printer/document
+        error_status = f"Error: {document.printer_assigned.printer_status}"
+        
+        # Create a new reroute history entry with current timestamp
+        RerouteHistory.objects.create(
+            document=document,
+            printer=document.printer_assigned,
+            status=error_status,
+            timestamp=timezone.now()
+        )
+    
+    # Try to find a new printer - the WRR nonpreemptive approach is implemented in assign_document_to_printer
+    # where we select printers with longest idle time and set the document to highest priority
     next_printer = assign_document_to_printer(document)
     if next_printer:
         # Continue printing remaining pages
+        print(f"[REROUTE] Successfully rerouted document {document.doc_id} from {current_printer_name} to {next_printer.printer_name}")
+        
+        # Log successful reroute
+        RerouteHistory.objects.create(
+            document=document, 
+            printer=next_printer,
+            status='Rerouted'
+        )
+        
+        # Continue printing remaining pages on new printer
         for page_num in remaining_pages:
             print_page(document, page_num)
-        # Log reroute
-        RerouteHistory.objects.create(document=document, printer=next_printer, status='Rerouted')
     else:
         # No available printer, notify admin
+        print(f"[REROUTE] Failed to find alternative printer for document {document.doc_id}")
         Feedback.objects.create(
             category='Report a Problem',
             name='[SYSTEM GENERATED]',
             message=f"Reroute failed: No available printer for {document.paper_size}. Document {document.doc_id} paused."
         )
+        # If we can't find a suitable printer, reset the document status to Queued
+        # so it can be retried later when a printer becomes available
+        document.doc_status = 'Queued'
+        document.save()
+        
+        # Notify about reroute failure
+        print(f"[QUEUED] Document {document.doc_id} placed back in queue for later processing when printers become available.")
+        
+        # Start a background check for available printers in a few seconds
+        # This gives printers time to recover or become available
+        threading.Timer(1.0, check_queued_documents).start()
+        print(f"[QUEUE-MONITOR] Scheduled queue check in 1 seconds to find printer for document {document.doc_id}")
+
+
+# Queue monitoring system for checking queued documents
+def check_queued_documents():
+    """
+    Check for documents in 'Queued' status and attempt to assign them to available printers.
+    This function is called periodically and also when a document is placed back in queue after a failed print.
+    """
+    print("[QUEUE-MONITOR] Running scheduled check for queued documents...")
+    
+    # Get all documents in 'Queued' status
+    queued_docs = Document.objects.filter(doc_status='Queued')
+    queued_count = queued_docs.count()
+    
+    if queued_count == 0:
+        print("[QUEUE-MONITOR] No queued documents found.")
+        return
+        
+    print(f"[QUEUE-MONITOR] Found {queued_count} queued documents. Attempting to assign printers...")
+    
+    # Get all available printers
+    available_printers = Printer.objects.filter(printer_status__in=['Ready', 'Sleep'])
+    available_count = available_printers.count()
+    
+    if available_count == 0:
+        print("[QUEUE-MONITOR] No available printers found. Will retry later.")
+        # Schedule another check in 1 seconds
+        threading.Timer(1.0, check_queued_documents).start()
+        return
+        
+    print(f"[QUEUE-MONITOR] Found {available_count} available printers.")
+    
+    # Process each queued document
+    for doc in queued_docs:
+        print(f"[QUEUE-MONITOR] Processing queued document {doc.doc_id}")
+        
+        # Create a function to handle this document in a thread
+        def process_document(document):
+            try:
+                # Assign printer and start printing
+                printer = assign_document_to_printer(document)
+                if printer:
+                    print(f"[QUEUE-MONITOR] Successfully assigned document {document.doc_id} to printer {printer.printer_name}")
+                    # Print all document pages
+                    remaining_pages = document.get_remaining_pages()
+                    for page_num in remaining_pages:
+                        print_page(document, page_num)
+                else:
+                    print(f"[QUEUE-MONITOR] Failed to assign document {document.doc_id} to a printer")
+            except Exception as e:
+                print(f"[QUEUE-MONITOR] Error processing document {document.doc_id}: {e}")
+                
+        # Start processing this document in a background thread
+        threading.Thread(target=process_document, args=(doc,)).start()
+    
+    # Schedule another check in 60 seconds to catch any new queued documents
+    # or documents that failed to get a printer this time
+    threading.Timer(60.0, check_queued_documents).start()
+    print("[QUEUE-MONITOR] Scheduled next queue check in 60 seconds")
+
+
+# Start the queue monitor when the module is loaded
+def start_queue_monitor():
+    """Initialize the queue monitoring system with a delay to let the system start up."""
+    print("[QUEUE-MONITOR] Initializing queue monitoring system...")
+    threading.Timer(1.0, check_queued_documents).start()
+    print("[QUEUE-MONITOR] Queue monitor scheduled to start in 1 seconds")
+
+# Start the queue monitor
+threading.Timer(1.0, start_queue_monitor).start()
