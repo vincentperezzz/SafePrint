@@ -76,6 +76,9 @@ lpstat -p
 ```bash
 lp -d DCPT510W /etc/nsswitch.conf
 ```
+```
+sudo lpadmin -p Brother_DCP_T820DW -E -v ipp://192.168.0.102/ipp/print -m everywhere
+```
 - Replace `<DCPT510W>` with the name shown by `lpstat -p`.
 
 ### Troubleshooting for Printer
