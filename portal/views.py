@@ -538,6 +538,7 @@ def approve_all_documents(request):
                         def print_document_async(doc):
                             # Always reload doc from DB before printing each page
                             page_list = doc.get_page_list()
+                            page_list.reverse()
                             for page_num in page_list:
                                 try:
                                     fresh_doc = Document.objects.get(doc_id=doc.doc_id)
