@@ -744,21 +744,21 @@ document.addEventListener('DOMContentLoaded', () => {
         renderUploadedDocumentsPreview();
     }
 
-    // Only run on confirmation page
-    if (document.querySelector('.confirmation')) {
-        // Redirect to homepage if no documents
-        const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
-        if (!docs || docs.length === 0) {
-            window.location.href = '/';
-        }
+    // // Only run on confirmation page
+    // if (document.querySelector('.confirmation')) {
+    //     // Redirect to homepage if no documents
+    //     const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
+    //     if (!docs || docs.length === 0) {
+    //         window.location.href = '/';
+    //     }
 
-        // Clear docs and customer_id from sessionStorage
-        sessionStorage.removeItem('documents');
-        sessionStorage.removeItem('customer_id');
+    //     // Clear docs and customer_id from sessionStorage
+    //     sessionStorage.removeItem('documents');
+    //     sessionStorage.removeItem('customer_id');
 
-        // Remove CID cookie if set as a cookie (optional)
-        document.cookie = "customer_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    }
+    //     // Remove CID cookie if set as a cookie (optional)
+    //     document.cookie = "customer_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    // }
 
     const finishBtn = document.getElementById('finish-transaction-btn');
     if (finishBtn) {
