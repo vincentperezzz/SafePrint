@@ -1591,8 +1591,8 @@ input:focus::placeholder {
     border: 2px solid black;
     border-radius: 12px;
     padding: 20px;
-    width: 80%;
-    max-width: 800px;
+    width: 90%;
+    max-width: 1000px;
     margin: auto;
     margin-bottom: 20px;
 }
@@ -1656,6 +1656,7 @@ input:focus::placeholder {
     display: flex;
     flex-direction: column;
     gap: 15px;
+    width: 40%;
 }
 
 .documents {
@@ -1667,7 +1668,7 @@ input:focus::placeholder {
     padding: 20px;
     box-shadow: 0px 5px 0px 0px #191A23;
     border: 1px solid var(--Dark, #191A23);
-    width: 61%;
+    width: 70%;
 }
 
 .document-item {
@@ -1746,6 +1747,117 @@ input:focus::placeholder {
     font-size: 1rem;
     font-weight: 600;
     text-align: right;
+}
+
+.card-payment-details {
+    display: flex;
+    flex-direction: column;
+    align-items: left;
+    background: #D4F2FF;
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid var(--Dark, #191A23);
+    box-shadow: 0px 5px 0px 0px #191A23;
+}
+
+.card-payment-details h3 {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 12px 0;
+}
+
+.card-payment-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.card-label {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #18191F;
+}
+
+.card-input {
+    width: 100%;
+    height: 40px;
+    border: 2px solid black;
+    border-radius: 15px;
+    background-color: #f0f0ff;
+    color: black;
+    font-size: 16px;
+    font-family: "Space Grotesk", sans-serif;
+    padding: 0 12px;
+}
+
+.card-input:focus {
+    background-color: #FFF;
+    border: 3px solid black;
+    outline: none;
+}
+
+.card-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.card-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.card-pay-btn {
+    margin-top: 6px;
+    height: 44px;
+    border-radius: 999px;
+    border: 2px solid #000;
+    background: #000;
+    color: #fff;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.card-pay-btn:hover {
+    transform: scale(1.02);
+}
+
+.card-pay-btn:active {
+    transform: scale(0.98);
+    box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.3) inset;
+}
+
+.paypal-btn {
+    height: 44px;
+    border-radius: 999px;
+    border: none;
+    background: #FFC53D;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.paypal-btn:hover {
+    transform: scale(1.02);
+}
+
+.paypal-btn:active {
+    transform: scale(0.98);
+    box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.2) inset;
+}
+
+.paypal-btn img {
+    height: 20px;
 }
 
 /* Feedback Section */

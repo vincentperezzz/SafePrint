@@ -118,6 +118,177 @@ def search_customer(request):
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 
+def payment(request):
+    """
+    Handle payment gateway for documents.
+    GET: Display payment form with documents and total price
+    POST: Process payment submission
+    """
+    # Default context to prevent auto-close
+    default_context = {
+        'customer_id': '',
+        'documents': [],
+        'total_price': 0,
+        'stars': range(1, 6),
+        'debug': False,
+        'error': None
+    }
+    
+    if request.method == 'GET':
+        customer_id = request.GET.get('customer_id', '')
+        documents_ids = request.GET.getlist('doc_ids', [])
+        debug = request.GET.get('debug', 'false').lower() == 'true'
+        
+        # Debug/Development mode with dummy data for UI testing
+        if debug:
+            dummy_documents = [
+                {
+                    'name': 'Abstract.pdf',
+                    'doc_id': 'DOC-1001',
+                    'price': 25.00,
+                    'status': 'Pending'
+                },
+                {
+                    'name': 'School Stuff.pdf',
+                    'doc_id': 'DOC-1002',
+                    'price': 20.00,
+                    'status': 'Pending'
+                }
+            ]
+            
+            context = default_context.copy()
+            context.update({
+                'customer_id': 'CID-4405',
+                'documents': dummy_documents,
+                'total_price': 45.00,
+                'debug': True
+            })
+            return render(request, 'payment.html', context)
+        
+        if not customer_id or not documents_ids:
+            context = default_context.copy()
+            context['error'] = 'Invalid customer ID or documents'
+            return render(request, 'payment.html', context)
+        
+        try:
+            # Normalize customer ID
+            if customer_id.upper().startswith('CID-'):
+                normalized_id = customer_id[4:]
+            else:
+                normalized_id = customer_id
+            
+            # Fetch documents with payment info
+            documents = Document.objects.filter(
+                doc_id__in=documents_ids,
+                doc_status='Pending'
+            ).order_by('-time_submitted')
+            
+            documents_data = []
+            total_price = 0.0
+            
+            for doc in documents:
+                try:
+                    payment_obj = Payment.objects.get(doc=doc)
+                    price = float(payment_obj.price)
+                except Payment.DoesNotExist:
+                    price = 0.0
+                
+                documents_data.append({
+                    'name': doc.filename,
+                    'doc_id': doc.doc_id,
+                    'price': price,
+                    'status': doc.doc_status
+                })
+                total_price += price
+            
+            # Generate star ratings (for feedback)
+            stars = range(1, 6)  # 5 stars
+            
+            context = default_context.copy()
+            context.update({
+                'customer_id': customer_id,
+                'documents': documents_data,
+                'total_price': round(total_price, 2),
+                'stars': stars,
+            })
+            
+            return render(request, 'payment.html', context)
+            
+        except Exception as e:
+            context = default_context.copy()
+            context['error'] = f'Error loading payment: {str(e)}'
+            return render(request, 'payment.html', context)
+    
+    elif request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            customer_id = data.get('customer_id', '').strip()
+            documents_ids = data.get('doc_ids', [])
+            payment_method = data.get('payment_method', '')  # 'card' or 'paypal'
+            amount = data.get('amount', 0)
+            rating = data.get('rating', 0)
+            
+            if not customer_id or not documents_ids or not payment_method:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Missing required payment information'
+                })
+            
+            # Validate payment method
+            if payment_method not in ['card', 'paypal']:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid payment method'
+                })
+            
+            # Update documents to mark as paid (you'll integrate actual payment gateway here)
+            # For now, this is a draft structure for the payment flow
+            documents = Document.objects.filter(doc_id__in=documents_ids)
+            
+            for doc in documents:
+                # Mark documents as approved/ready to print after payment
+                doc.doc_status = 'Approved'
+                doc.save()
+                
+                # Create or update payment record
+                Payment.objects.update_or_create(
+                    doc=doc,
+                    defaults={
+                        'payment_method': payment_method,
+                        'amount_paid': amount,
+                        'payment_status': 'Completed',
+                        'payment_date': timezone.now()
+                    }
+                )
+            
+            # Save feedback if rating provided
+            if rating > 0:
+                Feedback.objects.create(
+                    customer_id=customer_id,
+                    rating=rating,
+                    feedback_type='payment_experience'
+                )
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Payment processed successfully',
+                'redirect_url': '/thank-you/'
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid request format'
+            })
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'Payment processing error: {str(e)}'
+            })
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
 def printing_queue(request):
     user_id = request.session.get('admin_user_id')
     if not user_id:
