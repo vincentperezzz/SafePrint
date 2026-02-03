@@ -775,7 +775,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-
+    // Page range radio button listeners
+    const pageRangeRadios = document.querySelectorAll('.page-range-radio');
+    const specificPagesInput = document.getElementById('specific-pages-input');
+    
+    if (pageRangeRadios.length > 0 && specificPagesInput) {
+        pageRangeRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'specific') {
+                    specificPagesInput.disabled = false;
+                    specificPagesInput.focus();
+                } else {
+                    specificPagesInput.disabled = true;
+                    specificPagesInput.value = '';
+                }
+            });
+        });
+    }
 
 }); // END OF DOMContentLoaded
 
@@ -1148,15 +1164,24 @@ function hideProblemReportOverlay() {
         overlay.style.display = 'none';
         // Reset form
         document.getElementById('problem-description').value = '';
+        const altDescription = document.getElementById('problem-description-alt');
+        if (altDescription) altDescription.value = '';
+        document.getElementById('specific-pages-input').value = '';
         document.querySelectorAll('.problem-doc-checkbox').forEach(checkbox => {
             checkbox.checked = false;
         });
         document.querySelectorAll('.problem-type-radio').forEach(radio => {
             radio.checked = false;
         });
+        document.querySelectorAll('.page-range-radio').forEach(radio => {
+            if (radio.value === 'all') radio.checked = true;
+            else radio.checked = false;
+        });
+        document.getElementById('specific-pages-input').disabled = true;
         // Reset to first step
         document.querySelector('.problem-section-modal').style.display = 'block';
         document.querySelector('.problem-type-section').style.display = 'none';
+        document.querySelector('.problem-page-section').style.display = 'none';
         document.querySelector('.problem-form-section').style.display = 'none';
     }
 }
@@ -1221,10 +1246,36 @@ function nextProblemStep() {
     document.querySelector('.problem-type-section').style.display = 'block';
 }
 
-function submitProblemReport() {
+function nextToPageSelection() {
+    const selectedType = document.querySelector('.problem-type-radio:checked');
+    
+    if (!selectedType) {
+        alert('Please select a problem type.');
+        return;
+    }
+    
+    // Check if page selection is needed (quality or missing-pages)
+    if (selectedType.value === 'quality' || selectedType.value === 'missing-pages') {
+        // Show combined page selection and description step
+        document.querySelector('.problem-type-section').style.display = 'none';
+        document.querySelector('.problem-page-section').style.display = 'block';
+    } else {
+        // Show description only for other types
+        document.querySelector('.problem-type-section').style.display = 'none';
+        document.querySelector('.problem-form-section').style.display = 'block';
+    }
+}
+
+function previousToProblemType() {
+    document.querySelector('.problem-page-section').style.display = 'none';
+    document.querySelector('.problem-form-section').style.display = 'none';
+    document.querySelector('.problem-type-section').style.display = 'block';
+}
+
+function submitProblemReportAlt() {
     const selectedCheckboxes = document.querySelectorAll('.problem-doc-checkbox:checked');
     const selectedType = document.querySelector('.problem-type-radio:checked');
-    const description = document.getElementById('problem-description').value.trim();
+    const description = document.getElementById('problem-description-alt').value.trim();
     
     if (selectedCheckboxes.length === 0) {
         alert('Please select at least one document.');
@@ -1261,6 +1312,92 @@ function submitProblemReport() {
         problem_type: selectedType.value,
         description: description
     };
+    
+    // Send to backend
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                      document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+    
+    fetch('/api/submit-problem-report/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken || ''
+        },
+        body: JSON.stringify(reportData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Problem report submitted successfully!');
+            hideProblemReportOverlay();
+        } else {
+            alert('Error submitting report: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while submitting the report.');
+    });
+}
+
+function submitProblemReport() {
+    const selectedCheckboxes = document.querySelectorAll('.problem-doc-checkbox:checked');
+    const selectedType = document.querySelector('.problem-type-radio:checked');
+    const description = document.getElementById('problem-description').value.trim();
+    const pageRangeRadio = document.querySelector('.page-range-radio:checked');
+    const specificPagesInput = document.getElementById('specific-pages-input');
+    
+    if (selectedCheckboxes.length === 0) {
+        alert('Please select at least one document.');
+        return;
+    }
+    
+    if (!selectedType) {
+        alert('Please select a problem type.');
+        return;
+    }
+    
+    // Validate specific pages if that option is selected
+    if (pageRangeRadio && pageRangeRadio.value === 'specific' && !specificPagesInput.value.trim()) {
+        alert('Please specify which pages were affected.');
+        specificPagesInput.focus();
+        return;
+    }
+    
+    if (!description) {
+        alert('Please describe the issue.');
+        document.getElementById('problem-description').focus();
+        return;
+    }
+    
+    // Collect selected document data
+    const selectedDocs = [];
+    selectedCheckboxes.forEach(checkbox => {
+        selectedDocs.push({
+            doc_id: checkbox.value,
+            doc_name: checkbox.dataset.docname
+        });
+    });
+    
+    // Get customer ID from the page
+    const customerIdElement = document.querySelector('.customer-id-value');
+    const customerId = customerIdElement ? customerIdElement.textContent.trim() : 'Unknown';
+    
+    // Prepare data to send to backend
+    const reportData = {
+        customer_id: customerId,
+        selected_documents: selectedDocs,
+        problem_type: selectedType.value,
+        description: description
+    };
+    
+    // Add page range info if applicable
+    if (pageRangeRadio) {
+        reportData.page_range = pageRangeRadio.value;
+        if (pageRangeRadio.value === 'specific' && specificPagesInput.value.trim()) {
+            reportData.specific_pages = specificPagesInput.value.trim();
+        }
+    }
     
     // Send to backend (you'll need to create this endpoint)
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
@@ -1318,17 +1455,4 @@ function confirmAllGood() {
     var overlay = document.getElementById('loading-overlay');
     if (overlay) overlay.style.display = 'flex';
     window.location.href = '/';
-}
-
-function nextToDescriptionStep() {
-    const selectedType = document.querySelector('.problem-type-radio:checked');
-    
-    if (!selectedType) {
-        alert('Please select a problem type.');
-        return;
-    }
-    
-    // Hide problem type selection, show description form
-    document.querySelector('.problem-type-section').style.display = 'none';
-    document.querySelector('.problem-form-section').style.display = 'block';
 }
