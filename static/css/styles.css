@@ -2651,6 +2651,21 @@ input:focus::placeholder {
     gap: 4px;
 }
 
+@media (max-width: 800px) {
+    .status-group {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        align-items: self-end;
+        gap: 10px;
+    }
+
+    .picked-up-btn {
+        width: 100%;
+        align-self: stretch;
+    }
+}
+
 .user-avatar {
     display: flex;
     align-items: center;
