@@ -4998,3 +4998,109 @@ input:focus::placeholder {
     color: #888;
     font-size: 1.1em;
 }
+
+/* Print Quality Popup Styles */
+.print-quality-section {
+    padding: 1em 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2em;
+}
+
+.print-quality-error-btn {
+    width: 100%;
+    padding: 16px 24px;
+    border-radius: 12px;
+    border: 2px solid #18191F;
+    background-color: #FF6B4A;
+    color: #18191F;
+    font-weight: bold;
+    font-size: 1.2rem;
+    cursor: pointer;
+    box-shadow: 0px 4px 0px 0px #18191F;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
+    text-align: center;
+}
+
+.print-quality-error-btn:hover {
+    background-color: #FF8267;
+    box-shadow: 0px 6px 0px 0px #18191F;
+}
+
+.print-quality-error-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0px 2px 0px 0px #18191F;
+}
+
+.print-quality-success-btn {
+    width: 100%;
+    padding: 16px 24px;
+    border-radius: 12px;
+    border: 2px solid #18191F;
+    background-color: #caff70;
+    color: #18191F;
+    font-weight: bold;
+    font-size: 1.2rem;
+    cursor: pointer;
+    box-shadow: 0px 4px 0px 0px #18191F;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
+    text-align: center;
+}
+
+.print-quality-success-btn:hover {
+    background-color: #d4ff8a;
+    box-shadow: 0px 6px 0px 0px #18191F;
+}
+
+.print-quality-success-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0px 2px 0px 0px #18191F;
+}
+
+/* Problem Type Selection Styles */
+
+.problem-type-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8em;
+    margin-bottom: 1.5em;
+    border: 2px solid #222;
+    border-radius: 12px;
+    padding: 1em;
+}
+
+.problem-type-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 1em;
+    padding: 1em;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.problem-type-option:hover {
+    background-color: #f5f5f5;
+}
+
+.problem-type-radio {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    cursor: pointer;
+    margin-top: 2px;
+    accent-color: #FBB41D;
+}
+
+.problem-type-text {
+    font-size: 1rem;
+    color: #18191F;
+    line-height: 1.5;
+}
+
+.problem-type-option:has(.problem-type-radio:checked) {
+    background-color: #FFF9E6;
+    border: 2px solid #FBB41D;
+    border-radius: 8px;
+    margin: -2px;
+}
