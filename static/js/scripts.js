@@ -1135,3 +1135,146 @@ window.addEventListener('DOMContentLoaded', function() {
     var overlay = document.getElementById('loading-overlay');
     if (overlay) overlay.style.display = 'none';
 });
+
+// Problem Report Modal Functions
+function showProblemReportOverlay() {
+    const overlay = document.getElementById('problemReportOverlay');
+    if (!overlay) return;
+    
+    overlay.style.display = 'flex';
+    populateDocumentsList();
+}
+
+function hideProblemReportOverlay() {
+    const overlay = document.getElementById('problemReportOverlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+        // Reset form
+        document.getElementById('problem-description').value = '';
+        document.querySelectorAll('.problem-doc-checkbox').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        document.querySelector('.problem-form-section').style.display = 'none';
+    }
+}
+
+function populateDocumentsList() {
+    const documentsList = document.querySelector('.problem-documents-list');
+    if (!documentsList) return;
+    
+    // Clear existing items
+    documentsList.innerHTML = '';
+    
+    // Get all unique documents from the confirmation page
+    const docRows = document.querySelectorAll('.doc-row');
+    const uniqueDocs = new Map();
+    
+    docRows.forEach((row, index) => {
+        const nameElement = row.querySelector('.doc-meta h6');
+        const idElement = row.querySelector('.doc-id');
+        
+        if (nameElement && idElement) {
+            const docName = nameElement.textContent.trim();
+            const docId = idElement.textContent.trim();
+            const docKey = docId; 
+            
+            if (!uniqueDocs.has(docKey)) {
+                uniqueDocs.set(docKey, { name: docName, id: docId });
+            }
+        }
+    });
+    
+    // Render documents with checkboxes
+    if (uniqueDocs.size === 0) {
+        documentsList.innerHTML = '<div class="no-documents-msg">No documents found.</div>';
+        return;
+    }
+    
+    uniqueDocs.forEach((doc, docId) => {
+        const docElement = document.createElement('div');
+        docElement.className = 'problem-doc-row';
+        docElement.innerHTML = `
+            <input type="checkbox" class="problem-doc-checkbox" value="${docId}" data-docname="${doc.name}">
+            <div class="problem-doc-info">
+                <div class="problem-doc-name">${doc.name}</div>
+                <div class="problem-doc-id">${docId}</div>
+            </div>
+        `;
+        
+        documentsList.appendChild(docElement);
+    });
+}
+
+function nextProblemStep() {
+    const selectedCheckboxes = document.querySelectorAll('.problem-doc-checkbox:checked');
+    
+    if (selectedCheckboxes.length === 0) {
+        alert('Please select at least one document.');
+        return;
+    }
+    
+    // Hide document selection, show problem description form
+    document.querySelector('.problem-section-modal').style.display = 'none';
+    document.querySelector('.problem-form-section').style.display = 'block';
+}
+
+function submitProblemReport() {
+    const selectedCheckboxes = document.querySelectorAll('.problem-doc-checkbox:checked');
+    const description = document.getElementById('problem-description').value.trim();
+    
+    if (selectedCheckboxes.length === 0) {
+        alert('Please select at least one document.');
+        return;
+    }
+    
+    if (!description) {
+        alert('Please describe the issue.');
+        return;
+    }
+    
+    // Collect selected document data
+    const selectedDocs = [];
+    selectedCheckboxes.forEach(checkbox => {
+        selectedDocs.push({
+            doc_id: checkbox.value,
+            doc_name: checkbox.dataset.docname
+        });
+    });
+    
+    // Get customer ID from the page
+    const customerIdElement = document.querySelector('.customer-id-value');
+    const customerId = customerIdElement ? customerIdElement.textContent.trim() : 'Unknown';
+    
+    // Prepare data to send to backend
+    const reportData = {
+        customer_id: customerId,
+        selected_documents: selectedDocs,
+        description: description
+    };
+    
+    // Send to backend (you'll need to create this endpoint)
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                      document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+    
+    fetch('/api/submit-problem-report/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken || ''
+        },
+        body: JSON.stringify(reportData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Problem report submitted successfully. Thank you for letting us know!');
+            hideProblemReportOverlay();
+        } else {
+            alert('Error submitting report: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while submitting the report.');
+    });
+}
