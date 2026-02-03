@@ -763,10 +763,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const finishBtn = document.getElementById('finish-transaction-btn');
     if (finishBtn) {
         finishBtn.addEventListener('click', function () {
-            hasProceeded = true;
-            var overlay = document.getElementById('loading-overlay');
-            if (overlay) overlay.style.display = 'flex';
-            window.location.href = '/';
+            showPrintQualityOverlay();
         });
     }
 
@@ -1154,6 +1151,12 @@ function hideProblemReportOverlay() {
         document.querySelectorAll('.problem-doc-checkbox').forEach(checkbox => {
             checkbox.checked = false;
         });
+        document.querySelectorAll('.problem-type-radio').forEach(radio => {
+            radio.checked = false;
+        });
+        // Reset to first step
+        document.querySelector('.problem-section-modal').style.display = 'block';
+        document.querySelector('.problem-type-section').style.display = 'none';
         document.querySelector('.problem-form-section').style.display = 'none';
     }
 }
@@ -1213,17 +1216,23 @@ function nextProblemStep() {
         return;
     }
     
-    // Hide document selection, show problem description form
+    // Hide document selection, show problem type selection
     document.querySelector('.problem-section-modal').style.display = 'none';
-    document.querySelector('.problem-form-section').style.display = 'block';
+    document.querySelector('.problem-type-section').style.display = 'block';
 }
 
 function submitProblemReport() {
     const selectedCheckboxes = document.querySelectorAll('.problem-doc-checkbox:checked');
+    const selectedType = document.querySelector('.problem-type-radio:checked');
     const description = document.getElementById('problem-description').value.trim();
     
     if (selectedCheckboxes.length === 0) {
         alert('Please select at least one document.');
+        return;
+    }
+    
+    if (!selectedType) {
+        alert('Please select a problem type.');
         return;
     }
     
@@ -1249,6 +1258,7 @@ function submitProblemReport() {
     const reportData = {
         customer_id: customerId,
         selected_documents: selectedDocs,
+        problem_type: selectedType.value,
         description: description
     };
     
@@ -1277,4 +1287,48 @@ function submitProblemReport() {
         console.error('Error:', error);
         alert('An error occurred while submitting the report.');
     });
+}
+
+// Print Quality Overlay Functions
+function showPrintQualityOverlay() {
+    const overlay = document.getElementById('printQualityOverlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+    }
+}
+
+function hidePrintQualityOverlay() {
+    const overlay = document.getElementById('printQualityOverlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+
+function reportPrintError() {
+    // Hide the print quality overlay
+    hidePrintQualityOverlay();
+    // Show the problem report overlay
+    showProblemReportOverlay();
+}
+
+function confirmAllGood() {
+    // Mark as proceeded and redirect to homepage
+    hasProceeded = true;
+    hidePrintQualityOverlay();
+    var overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    window.location.href = '/';
+}
+
+function nextToDescriptionStep() {
+    const selectedType = document.querySelector('.problem-type-radio:checked');
+    
+    if (!selectedType) {
+        alert('Please select a problem type.');
+        return;
+    }
+    
+    // Hide problem type selection, show description form
+    document.querySelector('.problem-type-section').style.display = 'none';
+    document.querySelector('.problem-form-section').style.display = 'block';
 }

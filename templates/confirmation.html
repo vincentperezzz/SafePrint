@@ -173,6 +173,22 @@ SafePrint
     <button class="proceed-btn" id="finish-transaction-btn">Picked Up All Printed Documents</button>
 </div>
 
+<!-- How was the Print Popup -->
+<div class="popup-overlay" id="printQualityOverlay" style="display:none;">
+    <div class="popup-form">
+        <div class="popup-header">
+            <span class="popup-title">How was the Print?</span>
+            <span class="popup-close" onclick="hidePrintQualityOverlay()">&times;</span>
+        </div>
+        <hr class="popup-divider">
+        
+        <div class="print-quality-section">
+            <button class="print-quality-error-btn" onclick="reportPrintError()">There is a mistake / error</button>
+            <button class="print-quality-success-btn" onclick="confirmAllGood()">All goods!</button>
+        </div>
+    </div>
+</div>
+
 <!-- Problem Report Modal -->
 <div class="popup-overlay" id="problemReportOverlay" style="display:none;">
     <div class="popup-form">
@@ -195,7 +211,39 @@ SafePrint
             </div>
         </div>
 
-        <!-- Second step: Problem description (initially hidden) -->
+        <!-- Second step: Problem type selection (initially hidden) -->
+        <div class="problem-type-section" style="display:none;">
+            <div class="problem-subtitle">What went wrong with your print job?</div>
+            
+            <div class="problem-type-options">
+                <label class="problem-type-option">
+                    <input type="radio" name="problem-type" value="quality" class="problem-type-radio">
+                    <span class="problem-type-text">Low Quality / Damage <br>(Smudges, lines, torn, folded paper)</span>
+                </label>
+                
+                <label class="problem-type-option">
+                    <input type="radio" name="problem-type" value="missing-pages" class="problem-type-radio">
+                    <span class="problem-type-text">Some Pages Missing / Blank <br>(Expected pages were not printed)</span>
+                </label>
+                
+                <label class="problem-type-option">
+                    <input type="radio" name="problem-type" value="no-print" class="problem-type-radio">
+                    <span class="problem-type-text">Whole Document Did Not Print <br>(Nothing came out at all)</span>
+                </label>
+                
+                <label class="problem-type-option">
+                    <input type="radio" name="problem-type" value="other" class="problem-type-radio">
+                    <span class="problem-type-text">Other</span>
+                </label>
+            </div>
+
+            <div class="popup-bottom-actions">
+                <button class="popup-cancel-btn" onclick="hideProblemReportOverlay()">Cancel</button>
+                <button class="popup-next-btn" onclick="nextToDescriptionStep()">Next</button>
+            </div>
+        </div>
+
+        <!-- Third step: Problem description (initially hidden) -->
         <div class="problem-form-section" style="display:none;">
             <label for="problem-description">Describe the issue:</label>
             <textarea id="problem-description" class="popup-textarea" placeholder="Please describe the problem you encountered..."></textarea>
