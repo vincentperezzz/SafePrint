@@ -4479,8 +4479,8 @@ input:focus::placeholder {
 }
 
 .popup-done-btn {
-    width: 100%;
-    padding: 10px 20px;
+    flex: 1;
+    padding: 12px 24px;
     border-radius: 12px;
     border: 2px solid #18191F;
     background-color: #caff70;
@@ -4491,12 +4491,11 @@ input:focus::placeholder {
     transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
     text-align: center;
     line-height: 1.5;
-    font-size: 1.5rem;
-    margin-top: 0.5em;
+    font-size: 1rem;
 }
 
 .popup-done-btn:hover {
-    background-color: #eaffb2;
+    background-color: #d4ff8a;
     box-shadow: 0px 6px 0px 0px #18191F;
 }
 
@@ -5118,4 +5117,76 @@ input:focus::placeholder {
     border: 2px solid #FBB41D;
     border-radius: 8px;
     margin: -2px;
+}
+
+/* Page Selection Styles */
+
+.page-selection-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+    margin-bottom: 1.5em;
+}
+
+.page-selection-option {
+    display: flex;
+    align-items: center;
+    gap: 1em;
+    padding: 1em;
+    border: 2px solid #222;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.page-selection-option:hover {
+    background-color: #f5f5f5;
+}
+
+.page-range-radio {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    cursor: pointer;
+    accent-color: #FBB41D;
+}
+
+.page-selection-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #18191F;
+}
+
+.page-selection-option:has(.page-range-radio:checked) {
+    background-color: #FFF9E6;
+    border-color: #FBB41D;
+}
+
+.specific-pages-input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #222;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    font-family: 'Space Grotesk', sans-serif;
+    text-align: center;
+    background-color: #E8E3F5;
+    color: #18191F;
+    outline: none;
+    transition: border-color 0.2s, background-color 0.2s;
+}
+
+.specific-pages-input:disabled {
+    background-color: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.specific-pages-input:enabled {
+    background-color: #E8E3F5;
+}
+
+.specific-pages-input:focus {
+    border-color: #FBB41D;
+    background-color: #fff;
 }

@@ -239,18 +239,45 @@ SafePrint
 
             <div class="popup-bottom-actions">
                 <button class="popup-cancel-btn" onclick="hideProblemReportOverlay()">Cancel</button>
-                <button class="popup-next-btn" onclick="nextToDescriptionStep()">Next</button>
+                <button class="popup-next-btn" onclick="nextToPageSelection()">Next</button>
             </div>
         </div>
 
-        <!-- Third step: Problem description (initially hidden) -->
+        <!-- Third step: Page selection and description combined (initially hidden, shown only for quality/missing-pages) -->
+        <div class="problem-page-section" style="display:none;">
+            <div class="problem-subtitle">Did the error affect all pages or only a few?</div>
+            
+            <div class="page-selection-group">
+                <label class="page-selection-option">
+                    <input type="radio" name="page-range" value="all" class="page-range-radio" checked>
+                    <span class="page-selection-text">All Pages</span>
+                </label>
+                
+                <label class="page-selection-option">
+                    <input type="radio" name="page-range" value="specific" class="page-range-radio">
+                    <span class="page-selection-text">Specific Pages</span>
+                </label>
+                
+                <input type="text" id="specific-pages-input" class="specific-pages-input" placeholder="1-5" disabled>
+            </div>
+
+            <div class="problem-subtitle" style="margin-top: 1.5em;">Describe the issue:</div>
+            <textarea id="problem-description" class="popup-textarea" placeholder="e.g., Black lines on the right side of the paper (Max 250 characters)" maxlength="250"></textarea>
+
+            <div class="popup-bottom-actions">
+                <button class="popup-cancel-btn" onclick="previousToProblemType()">Previous</button>
+                <button class="popup-done-btn" onclick="submitProblemReport()">Submit</button>
+            </div>
+        </div>
+
+        <!-- Fourth step: Problem description for types without page selection (initially hidden) -->
         <div class="problem-form-section" style="display:none;">
-            <label for="problem-description">Describe the issue:</label>
-            <textarea id="problem-description" class="popup-textarea" placeholder="Please describe the problem you encountered..."></textarea>
+            <div class="problem-subtitle">Describe the issue:</div>
+            <textarea id="problem-description-alt" class="popup-textarea" placeholder="e.g., Black lines on the right side of the paper (Max 250 characters)" maxlength="250"></textarea>
             
             <div class="problem-form-actions">
-                <button class="popup-cancel-btn" onclick="hideProblemReportOverlay()">Cancel</button>
-                <button class="popup-done-btn" onclick="submitProblemReport()">Submit Report</button>
+                <button class="popup-cancel-btn" onclick="previousToProblemType()">Previous</button>
+                <button class="popup-done-btn" onclick="submitProblemReportAlt()">Submit</button>
             </div>
         </div>
     </div>
