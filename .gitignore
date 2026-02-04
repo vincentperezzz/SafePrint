@@ -14,6 +14,7 @@ env/
 # Ignore IDE-specific files
 .vscode/
 .idea/
+.github/
 
 # Ignore upload directories
 /media/
