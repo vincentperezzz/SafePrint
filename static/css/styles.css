@@ -413,7 +413,7 @@ html {
     background-color: var(--primary-color);
     border-radius: 12px;
     padding: 3px 4px;
-    font-family: 'Montserrat', sans-serif;
+    font-family: 'Space Grotesk', sans-serif;
     font-weight: bold;
     width: fit-content;
     margin-bottom: 0;
@@ -467,7 +467,7 @@ html {
 
 /* Card title styling */
 .card-title {
-    font-family: 'Montserrat', sans-serif;
+    font-family: 'Space Grotesk', sans-serif;
     background-color: var(--primary-color);
     font-weight: 800;
     font-size: 1.5rem;
@@ -1836,6 +1836,33 @@ input:focus::placeholder {
 .confirmation-subtitle {
     font-size: 1rem;
     color: #666;
+}
+
+/* Confirmation page loading state */
+.doc-loading-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    justify-content: center;
+    padding: 24px 12px;
+}
+
+.doc-loading-row .spinner {
+    width: 36px;
+    height: 36px;
+    border-width: 5px;
+}
+
+.doc-loading-row .doc-meta h6 {
+    color: #666;
+    font-weight: 500;
+}
+
+.loading-subtext-hint {
+    font-style: italic;
+    color: #999 !important;
+    font-size: 12px !important;
+    margin-top: 4px;
 }
 
 .customer-id {
@@ -5532,8 +5559,8 @@ input:focus::placeholder {
 .loading-spinner {
     width: 60px;
     height: 60px;
-    border: 4px solid #e0e0e0;
-    border-top: 4px solid #18191F;
+    border: 8px solid #f3f3f3;
+    border-top: 8px solid #FBB41D;
     border-radius: 50%;
     animation: spin 1s linear infinite;
 }

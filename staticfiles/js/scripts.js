@@ -1165,6 +1165,12 @@ function initConfirmationSSE() {
 
     console.log('Setting up SSE for customer documents:', customerId);
 
+    // Show "might take a while" hint after 3 seconds if still loading
+    setTimeout(() => {
+        const hint = document.querySelector('.loading-subtext-hint');
+        if (hint) hint.style.display = 'block';
+    }, 3000);
+
     customerSSE = new EventSource(`/sse/customer-documents/${customerId}/`);
 
     customerSSE.onopen = function () {
@@ -1371,9 +1377,9 @@ function updateConfirmationUI(data) {
             customerSSE.close();
             customerSSE = null;
         }
-        // Redirect to thank you / home after a short delay
+        // Redirect to homepage after a short delay
         setTimeout(() => {
-            window.location.href = '/thankyou/';
+            window.location.href = '/';
         }, 3000);
     } else if (allFinished) {
         if (titleEl) titleEl.textContent = 'Printing Complete!';
@@ -1820,12 +1826,32 @@ function checkPrintLogsAndProcess() {
 function showLoadingScreen(message) {
     showStep('step-loading');
     document.getElementById('loading-main-text').textContent = message;
-    document.getElementById('loading-sub-text').style.display = 'none';
+    const subText = document.getElementById('loading-sub-text');
+    subText.style.display = 'none';
 
-    // Show "please wait" message after 3 seconds
-    window.problemReportState.loadingTimeout = setTimeout(() => {
-        document.getElementById('loading-sub-text').style.display = 'block';
-    }, 3000);
+    // Check if current document has >10 pages and show extra hint
+    const state = window.problemReportState;
+    const currentDoc = state.isIndividualMode
+        ? state.selectedDocs[state.currentDocIndex]
+        : state.selectedDocs[0];
+
+    // Find page count from SSE data
+    let totalPages = 0;
+    if (window.customerDocuments && currentDoc) {
+        const docData = window.customerDocuments.find(d => d.doc_id === currentDoc.doc_id);
+        if (docData) totalPages = docData.total_pages || 0;
+    }
+
+    if (totalPages > 10) {
+        subText.textContent = `Your document has ${totalPages} pages — this might take a while, please wait`;
+        subText.style.display = 'block';
+    } else {
+        // Show generic "please wait" message after 3 seconds
+        window.problemReportState.loadingTimeout = setTimeout(() => {
+            subText.textContent = 'Please wait, it might take a while';
+            subText.style.display = 'block';
+        }, 3000);
+    }
 }
 
 // Call API to check logs
@@ -2173,7 +2199,7 @@ function confirmAllGood() {
             } else {
                 console.warn('Finish transaction warning:', data.error);
                 // Still redirect even if there's an issue
-                window.location.href = '/thankyou/';
+                window.location.href = '/';
             }
         })
         .catch(error => {

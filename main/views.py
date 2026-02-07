@@ -27,6 +27,13 @@ def upload_view(request):
 
 def confirmation(request):
     customer_id = request.session.get('customer_id')
+
+    # Allow test_customer parameter when DEBUG is True
+    from django.conf import settings as django_settings
+    if django_settings.DEBUG and request.GET.get('test_customer'):
+        customer_id = request.GET.get('test_customer')
+        request.session['customer_id'] = customer_id
+
     if not customer_id:
         return redirect('home')
 
