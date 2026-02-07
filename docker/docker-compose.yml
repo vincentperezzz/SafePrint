@@ -15,7 +15,7 @@ services:
       - "80:80"        # Nginx HTTP
       - "443:443"      # Nginx HTTPS (optional, for SSL)
       - "8000:8000"    # Django dev server (fallback)
-      - "3306:3306"    # MySQL (for external access)
+      - "3307:3306"    # MySQL (host 3307 -> container 3306)
     volumes:
       # Persistent data volumes
       - safeprint_mysql_data:/var/lib/mysql
