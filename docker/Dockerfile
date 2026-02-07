@@ -92,8 +92,7 @@ COPY docker/config/docker-entrypoint.sh /entrypoint.sh
 
 # Set up cron jobs
 COPY docker/config/crontab /etc/cron.d/safeprint-cron
-RUN chmod 0644 /etc/cron.d/safeprint-cron && \
-    crontab -u safeprint /etc/cron.d/safeprint-cron
+RUN chmod 0644 /etc/cron.d/safeprint-cron
 
 # Setup MySQL (will be initialized in entrypoint)
 RUN mkdir -p /var/run/mysqld && \
