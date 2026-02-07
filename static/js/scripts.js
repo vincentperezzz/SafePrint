@@ -2003,17 +2003,27 @@ function goToTicketForm() {
 // Prefill ticket form with known data
 function prefillTicketForm() {
     const state = window.problemReportState;
+    const docs = state.selectedDocs || [];
     const currentDoc = state.isIndividualMode
-        ? state.selectedDocs[state.currentDocIndex]
-        : state.selectedDocs[0];
+        ? docs[state.currentDocIndex]
+        : docs[0];
 
     // Customer ID from page
     const customerIdElement = document.querySelector('.customer-id-value');
     const customerId = customerIdElement ? customerIdElement.textContent.trim() : '';
 
     document.getElementById('ticket-customer-id').value = customerId;
-    document.getElementById('ticket-document-id').value = currentDoc.doc_id;
-    document.getElementById('ticket-document-name').value = currentDoc.doc_name;
+
+    // Handle multi-document display
+    if (!state.isIndividualMode && docs.length > 1) {
+        // Multiple documents — show comma-separated IDs and count
+        const allIds = docs.map(d => d.doc_id).join(', ');
+        document.getElementById('ticket-document-id').value = allIds;
+        document.getElementById('ticket-document-name').value = `${docs.length} documents selected`;
+    } else {
+        document.getElementById('ticket-document-id').value = currentDoc.doc_id;
+        document.getElementById('ticket-document-name').value = currentDoc.doc_name;
+    }
 
     // Prefill description if we have one
     if (state.description) {
