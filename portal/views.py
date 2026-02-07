@@ -14,7 +14,7 @@ from django.utils.timezone import localtime
 from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
 from django.views.decorators.csrf import csrf_exempt
-from .models import AdminUser, Printer, Document, Payment, NotificationSound
+from .models import AdminUser, Printer, Document, Payment, NotificationSound, SupportTicket
 from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.decorators import login_required
@@ -1690,6 +1690,11 @@ def customer_documents_event_stream(customer_id):
                 else:
                     cancel_reason = 'No available Printer'
 
+            # Check for support tickets on this document
+            ticket = SupportTicket.objects.filter(document=doc).order_by('-created_at').first()
+            has_ticket = ticket is not None
+            ticket_number = ticket.ticket_number if ticket else None
+
             doc_data = {
                 'doc_id': doc.doc_id,
                 'filename': doc.filename,
@@ -1703,6 +1708,8 @@ def customer_documents_event_stream(customer_id):
                 'total_pages': total_pages,
                 'reroute_history': reroute_history,
                 'time_submitted': doc.time_submitted.isoformat() if doc.time_submitted else None,
+                'has_ticket': has_ticket,
+                'ticket_number': ticket_number,
                 # Extra info for problem report form
                 'num_copies': doc.num_copies,
                 'orientation': doc.orientation,

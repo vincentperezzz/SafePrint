@@ -1197,6 +1197,16 @@ html {
     border: 1px solid rgba(180, 83, 9, 0.12);
 }
 
+.status-ticket {
+    background: #f0f4ff;
+    color: #4338ca;
+    border: 1px solid rgba(67, 56, 202, 0.15);
+    font-size: 11px;
+    gap: 4px;
+    display: inline-flex;
+    align-items: center;
+}
+
 /* Buttons that follow settings/dashboard style */
 .need-assistance-btn,
 .problem-btn,
@@ -5834,4 +5844,37 @@ input:focus::placeholder {
     font-size: 1rem;
     color: #666;
     line-height: 1.5;
+}
+
+/* ============================================================
+   SCROLL REVEAL ANIMATIONS
+   ============================================================ */
+.scroll-reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+}
+
+.scroll-reveal.revealed {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Stagger delay for card groups */
+.scroll-reveal.delay-1 { transition-delay: 0.1s; }
+.scroll-reveal.delay-2 { transition-delay: 0.2s; }
+.scroll-reveal.delay-3 { transition-delay: 0.3s; }
+.scroll-reveal.delay-4 { transition-delay: 0.4s; }
+.scroll-reveal.delay-5 { transition-delay: 0.5s; }
+.scroll-reveal.delay-6 { transition-delay: 0.6s; }
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+    .scroll-reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
 }
