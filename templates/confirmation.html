@@ -184,7 +184,7 @@ SafePrint
                             stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
                 </div>
-                <a class="feedback-btn">Send a Feedback</a>
+                <a class="feedback-btn" onclick="showFeedbackOverlay()">Send a Feedback</a>
             </div>
         </div>
     </div>
@@ -221,6 +221,52 @@ SafePrint
             <div class="same-issue-buttons">
                 <button class="popup-yes-btn" onclick="handleSameIssueYes()">Yes</button>
                 <button class="popup-no-btn" onclick="handleSameIssueNo()">No</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Feedback Popup Modal -->
+<div class="popup-overlay" id="feedbackOverlay" style="display:none;">
+    <div class="popup-form">
+        <div class="popup-header">
+            <span class="popup-title" id="feedbackPopupTitle">Send Feedback</span>
+            <span class="popup-close" onclick="hideFeedbackOverlay()">&times;</span>
+        </div>
+        <hr class="popup-divider">
+
+        <!-- Feedback Form Step -->
+        <div class="feedback-form-section" id="step-feedback-form">
+            <div class="ticket-field full-width">
+                <label>Name (optional)</label>
+                <input type="text" id="feedback-name" placeholder="Your name">
+            </div>
+
+            <div class="ticket-field full-width">
+                <label>Message <span class="required">*</span></label>
+                <textarea id="feedback-message" class="popup-textarea"
+                    placeholder="Your message here... (Max 500 characters)" maxlength="500" required></textarea>
+            </div>
+
+            <div class="popup-bottom-actions">
+                <button class="popup-cancel-btn" onclick="hideFeedbackOverlay()">Cancel</button>
+                <button class="popup-done-btn" onclick="submitFeedbackForm()">Submit</button>
+            </div>
+        </div>
+
+        <!-- Feedback Success Step -->
+        <div class="feedback-success-section" id="step-feedback-success" style="display:none;">
+            <div class="success-container">
+                <div class="success-icon">✅</div>
+                <div class="success-title">Thank You!</div>
+                <div class="success-message">
+                    Your feedback has been submitted successfully.<br>
+                    We appreciate your input and will use it to improve our service.
+                </div>
+            </div>
+
+            <div class="popup-bottom-actions">
+                <button class="popup-done-btn" onclick="hideFeedbackOverlay()">Done</button>
             </div>
         </div>
     </div>

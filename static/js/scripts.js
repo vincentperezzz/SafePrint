@@ -767,14 +767,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    const feedbackBtn = document.querySelector('.feedback-btn');
-    if (feedbackBtn) {
-        feedbackBtn.addEventListener('click', function () {
-            hasProceeded = true;
-            window.location.href = '/#feedback';
-        });
-    }
-
     // Page range radio button listeners
     const pageRangeRadios = document.querySelectorAll('.page-range-radio');
     const specificPagesInput = document.getElementById('specific-pages-input');
@@ -1824,4 +1816,67 @@ function confirmAllGood() {
     var overlay = document.getElementById('loading-overlay');
     if (overlay) overlay.style.display = 'flex';
     window.location.href = '/';
+}
+
+// ============================================================
+// FEEDBACK POPUP FUNCTIONS
+// ============================================================
+
+function showFeedbackOverlay() {
+    const overlay = document.getElementById('feedbackOverlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        // Reset to form step
+        document.getElementById('step-feedback-form').style.display = 'block';
+        document.getElementById('step-feedback-success').style.display = 'none';
+        // Reset form fields
+        document.getElementById('feedback-name').value = '';
+        document.getElementById('feedback-message').value = '';
+    }
+}
+
+function hideFeedbackOverlay() {
+    const overlay = document.getElementById('feedbackOverlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+
+function submitFeedbackForm() {
+    const name = document.getElementById('feedback-name').value.trim();
+    const message = document.getElementById('feedback-message').value.trim();
+
+    if (!message) {
+        alert('Please enter your message.');
+        document.getElementById('feedback-message').focus();
+        return;
+    }
+
+    // Submit via API - category defaults to 'Comment'
+    fetch('/api/feedback-submit/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({
+            name: name,
+            message: message,
+            category: 'Comment'
+        })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message
+                document.getElementById('step-feedback-form').style.display = 'none';
+                document.getElementById('step-feedback-success').style.display = 'block';
+            } else {
+                alert('Error: ' + (data.error || 'Failed to submit feedback'));
+            }
+        })
+        .catch(error => {
+            console.error('Error submitting feedback:', error);
+            alert('An error occurred. Please try again.');
+        });
 }

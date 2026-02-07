@@ -611,6 +611,51 @@ def feedback_comments_api(request):
     return JsonResponse({'feedback_comments': data})
 
 
+@csrf_exempt
+def feedback_submit_api(request):
+    """
+    AJAX API endpoint for submitting feedback without page redirect.
+    Used by the confirmation page popup.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+    
+    try:
+        # Handle both JSON and form data
+        if request.content_type == 'application/json':
+            data = json.loads(request.body)
+        else:
+            data = request.POST
+        
+        name = data.get('name', '').strip() or 'Anonymous'
+        message = data.get('message', '').strip()
+        category = data.get('category', 'Comment')
+        
+        if not message:
+            return JsonResponse({'success': False, 'error': 'Message is required'})
+        
+        # Validate category
+        if category not in ['Comment', 'Report a Problem']:
+            category = 'Comment'
+        
+        # Create feedback entry
+        Feedback.objects.create(
+            name=name,
+            message=message,
+            category=category
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Thank you for your feedback!'
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid request data'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
 def problem_reports_api(request):
     problem_reports = Feedback.objects.filter(category='Report a Problem').order_by('-submitted_at')
     data = [
