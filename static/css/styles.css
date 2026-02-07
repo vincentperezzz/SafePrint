@@ -5740,3 +5740,65 @@ input:focus::placeholder {
 .problem-other-section {
     padding: 0.5em 0;
 }
+
+/* ============================================================
+   FEEDBACK POPUP STYLES
+   ============================================================ */
+
+.feedback-form-section {
+    padding: 0.5em 0;
+}
+
+.feedback-category-section {
+    display: flex;
+    gap: 1.5em;
+    margin-bottom: 1em;
+    padding: 0.5em 0;
+}
+
+.feedback-category-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #18191F;
+}
+
+.feedback-category-label input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #5C6AC4;
+    cursor: pointer;
+}
+
+.feedback-category-label span {
+    font-weight: 500;
+}
+
+.feedback-success-section {
+    padding: 1em 0;
+    text-align: center;
+}
+
+.feedback-success-section .success-container {
+    padding: 2em 0;
+}
+
+.feedback-success-section .success-icon {
+    font-size: 4rem;
+    margin-bottom: 0.5em;
+}
+
+.feedback-success-section .success-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #18191F;
+    margin-bottom: 0.5em;
+}
+
+.feedback-success-section .success-message {
+    font-size: 1rem;
+    color: #666;
+    line-height: 1.5;
+}

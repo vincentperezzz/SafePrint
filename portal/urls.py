@@ -18,6 +18,7 @@ urlpatterns = [
     path('api/delete_user_ajax/', views.delete_user_ajax, name='delete_user_ajax'),
     path('api/add_user_ajax/', views.add_user_ajax, name='add_user_ajax'),
     path('api/feedback-comments/', views.feedback_comments_api, name='feedback_comments_api'),
+    path('api/feedback-submit/', views.feedback_submit_api, name='feedback_submit_api'),
     path('api/problem-reports/', views.problem_reports_api, name='problem_reports_api'),
     path('api/update_printer_field/', views.update_printer_field, name='update_printer_field'),
     path('api/add_printer/', views.add_printer, name='add_printer'),
