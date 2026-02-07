@@ -1290,6 +1290,12 @@ function buildDocumentBadges(doc) {
         badgesHtml += `<div class="badge status-success">Picked Up</div>`;
     }
 
+    // Append ticket label if a support ticket was created for this document
+    if (doc.has_ticket) {
+        const ticketNum = doc.ticket_number ? ` #${escapeHtml(doc.ticket_number)}` : '';
+        badgesHtml += `<div class="badge status-ticket"><i class="fa-solid fa-ticket"></i> Report Filed${ticketNum}</div>`;
+    }
+
     return `<div class="doc-right">${badgesHtml}</div>`;
 }
 
@@ -1975,6 +1981,21 @@ function markAsResolved() {
 
 // Go to ticket form
 function goToTicketForm() {
+    // Capture description from problem type textareas if not already set
+    const state = window.problemReportState;
+    if (!state.description) {
+        if (state.problemType === 'other') {
+            const otherDesc = document.getElementById('problem-description-other');
+            if (otherDesc && otherDesc.value.trim()) {
+                state.description = otherDesc.value.trim();
+            }
+        } else if (state.problemType === 'quality') {
+            const qualityDesc = document.getElementById('problem-description-quality');
+            if (qualityDesc && qualityDesc.value.trim()) {
+                state.description = qualityDesc.value.trim();
+            }
+        }
+    }
     showStep('step-ticket-form');
     prefillTicketForm();
 }
@@ -2042,6 +2063,12 @@ function submitTicketForm() {
     if (!emailRegex.test(email)) {
         alert('Please enter a valid email address.');
         document.getElementById('ticket-email').focus();
+        return;
+    }
+
+    if (!phoneNumber) {
+        alert('Please enter your phone number.');
+        document.getElementById('ticket-phone').focus();
         return;
     }
 
@@ -2270,3 +2297,49 @@ function submitFeedbackForm() {
             alert('An error occurred. Please try again.');
         });
 }
+
+// ============================================================
+// SCROLL REVEAL ANIMATIONS (index.html)
+// ============================================================
+(function initScrollReveal() {
+    // Only run on the index/landing page
+    if (!document.querySelector('.file-upload')) return;
+
+    // Elements to animate on scroll (everything below the hero upload area)
+    const revealSelectors = [
+        '.section-container',
+        '.card-container > .card',
+        '.faq-card-section > .faq-card',
+        '.aboutus-section',
+        '.feedback-container',
+        '.footer-section'
+    ];
+
+    // Tag each element with the scroll-reveal class + stagger delays for groups
+    revealSelectors.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach((el, index) => {
+            el.classList.add('scroll-reveal');
+            // Add stagger delay for card and FAQ groups
+            if (selector.includes('.card') || selector.includes('.faq-card')) {
+                const delayClass = 'delay-' + Math.min(index + 1, 6);
+                el.classList.add(delayClass);
+            }
+        });
+    });
+
+    // Intersection Observer to trigger reveal
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('revealed');
+                observer.unobserve(entry.target); // Only animate once
+            }
+        });
+    }, {
+        threshold: 0.1,
+        rootMargin: '0px 0px -40px 0px'
+    });
+
+    document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
+})();
