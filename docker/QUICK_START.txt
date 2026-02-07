@@ -1,0 +1,76 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        SAFEPRINT DOCKER QUICK START                           ║
+║                    For Developer: Admin Vendo Redesign                        ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                               ║
+║  PREREQUISITES                                                                ║
+║  ─────────────────────────────────────────────────────────────────────────   ║
+║  • Docker Desktop installed (https://www.docker.com/products/docker-desktop) ║
+║  • Git installed                                                              ║
+║  • SSH key configured for GitHub                                              ║
+║                                                                               ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                               ║
+║  ONE-CLICK SETUP (Copy & Paste These Commands)                               ║
+║  ─────────────────────────────────────────────────────────────────────────   ║
+║                                                                               ║
+║    # 1. Clone the repository                                                  ║
+║    git clone git@github.com:vincentperezzz/SafePrint.git                     ║
+║                                                                               ║
+║    # 2. Enter the project directory                                           ║
+║    cd SafePrint                                                               ║
+║                                                                               ║
+║    # 3. Switch to your branch                                                 ║
+║    git checkout Admin-Vendo-Redesign                                         ║
+║                                                                               ║
+║    # 4. Run the setup script (this does everything!)                          ║
+║    chmod +x docker/setup.sh && ./docker/setup.sh                             ║
+║                                                                               ║
+║    # 5. Wait 1-2 minutes for the environment to start                         ║
+║                                                                               ║
+║    # 6. Open your browser to:                                                  ║
+║    #    http://localhost                                                       ║
+║                                                                               ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                               ║
+║  WHAT YOU GET                                                                  ║
+║  ─────────────────────────────────────────────────────────────────────────   ║
+║  ✓ Complete Ubuntu server environment (identical to production)               ║
+║  ✓ MySQL database with all data                                               ║
+║  ✓ Nginx + Gunicorn web server                                                ║
+║  ✓ All users and accounts                                                     ║
+║  ✓ All cron jobs and background tasks                                         ║
+║  ✓ Same file structure as /home/safeprint/dev/SafePrint                       ║
+║                                                                               ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                               ║
+║  DAILY DEVELOPMENT COMMANDS                                                   ║
+║  ─────────────────────────────────────────────────────────────────────────   ║
+║                                                                               ║
+║    # Start the environment                                                     ║
+║    cd SafePrint && docker compose -f docker/docker-compose.yml up -d          ║
+║                                                                               ║
+║    # Stop the environment                                                      ║
+║    docker compose -f docker/docker-compose.yml down                           ║
+║                                                                               ║
+║    # View logs                                                                 ║
+║    docker logs -f safeprint-app                                               ║
+║                                                                               ║
+║    # Access container shell                                                    ║
+║    docker exec -it safeprint-app bash                                         ║
+║                                                                               ║
+║    # Restart after code changes                                                ║
+║    docker exec safeprint-app supervisorctl restart gunicorn                   ║
+║                                                                               ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                               ║
+║  ACCESS URLS                                                                   ║
+║  ─────────────────────────────────────────────────────────────────────────   ║
+║    • Web Application:  http://localhost                                        ║
+║    • Django Admin:     http://localhost/django-admin/                          ║
+║                                                                               ║
+║  NEED HELP?                                                                    ║
+║  ─────────────────────────────────────────────────────────────────────────   ║
+║    Read the full documentation: docker/README.md                               ║
+║                                                                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝

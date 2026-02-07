@@ -1,0 +1,47 @@
+# SafePrint Docker Ignore File
+# Prevents these files from being copied into the Docker image
+
+# Git
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+*.egg-info/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.log
+*.tmp
+*.temp
+
+# Docker (avoid recursion)
+docker/data/*.sql
+
+# Local socket file
+safeprint.sock
+
+# Media uploads (will be mounted as volume)
+media/uploads/*
+
+# Static files (will be regenerated)
+staticfiles/
+
+# Development files
+*.md
+!docker/README.md
