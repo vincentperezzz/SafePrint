@@ -1191,6 +1191,12 @@ html {
     box-shadow: 0 2px 0 rgba(0, 0, 0, 0.02);
 }
 
+.status-warning {
+    background: #fffbeb;
+    color: #b45309;
+    border: 1px solid rgba(180, 83, 9, 0.12);
+}
+
 /* Buttons that follow settings/dashboard style */
 .need-assistance-btn,
 .problem-btn,

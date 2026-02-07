@@ -767,6 +767,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ============================================================
+    // CONFIRMATION PAGE - SSE REAL-TIME DOCUMENT STATUS
+    // ============================================================
+    if (document.querySelector('.confirmation')) {
+        initConfirmationSSE();
+    }
+
     // Page range radio button listeners
     const pageRangeRadios = document.querySelectorAll('.page-range-radio');
     const specificPagesInput = document.getElementById('specific-pages-input');
@@ -1142,6 +1149,292 @@ window.addEventListener('DOMContentLoaded', function () {
 });
 
 // ============================================================
+// CONFIRMATION PAGE - SSE & DYNAMIC RENDERING
+// ============================================================
+
+// Global state for SSE documents (used by problem report)
+window.customerDocuments = [];
+let customerSSE = null;
+
+function initConfirmationSSE() {
+    const customerIdEl = document.getElementById('customer-id-data');
+    if (!customerIdEl) return;
+
+    const customerId = customerIdEl.value;
+    if (!customerId) return;
+
+    console.log('Setting up SSE for customer documents:', customerId);
+
+    customerSSE = new EventSource(`/sse/customer-documents/${customerId}/`);
+
+    customerSSE.onopen = function () {
+        console.log('Customer documents SSE connected');
+    };
+
+    customerSSE.onmessage = function (event) {
+        try {
+            const data = JSON.parse(event.data);
+            window.customerDocuments = data.documents || [];
+            renderDocumentRows(data.documents);
+            updateConfirmationUI(data);
+        } catch (e) {
+            console.error('Error parsing SSE data:', e);
+        }
+    };
+
+    customerSSE.onerror = function (err) {
+        console.error('Customer documents SSE error:', err);
+        // Reconnect after 3 seconds
+        setTimeout(() => {
+            if (customerSSE) {
+                customerSSE.close();
+            }
+            initConfirmationSSE();
+        }, 3000);
+    };
+}
+
+function renderDocumentRows(documents) {
+    const container = document.getElementById('confirmation-doc-list');
+    if (!container) return;
+
+    if (!documents || documents.length === 0) {
+        container.innerHTML = '<div class="doc-row"><div class="doc-left"><div class="doc-meta"><h6>No documents found</h6></div></div></div>';
+        return;
+    }
+
+    container.innerHTML = '';
+
+    documents.forEach(doc => {
+        const row = document.createElement('div');
+        row.className = 'doc-row';
+        row.setAttribute('data-doc-id', doc.doc_id);
+
+        // Left side: icon + name + doc ID
+        const leftHtml = `
+            <div class="doc-left">
+                <img src="/static/assets/pdf-icon.svg" alt="PDF Icon">
+                <div class="doc-meta">
+                    <h6>${escapeHtml(doc.filename)}</h6>
+                    <span class="doc-id">#${escapeHtml(doc.doc_id)}</span>
+                </div>
+            </div>
+        `;
+
+        // Right side: badges based on status and reroute history
+        const rightHtml = buildDocumentBadges(doc);
+
+        row.innerHTML = leftHtml + rightHtml;
+        container.appendChild(row);
+    });
+}
+
+function buildDocumentBadges(doc) {
+    let badgesHtml = '';
+    const history = doc.reroute_history || [];
+
+    // Group reroute history into "print segments" by printer
+    // Each "Assigned" entry followed by an "Error" or "Rerouted" means that segment was on that printer
+    const segments = buildPrintSegments(doc, history);
+
+    if (doc.doc_status === 'Pending') {
+        // Waiting for admin approval
+        badgesHtml = `<div class="badge status-warning">Waiting for Approval...</div>`;
+    } else if (doc.doc_status === 'Queued') {
+        // In queue, no printer assigned yet
+        if (segments.length > 0) {
+            // Was rerouted - show completed segments, then waiting
+            badgesHtml = renderCompletedSegments(segments);
+            badgesHtml += `<div class="badge status-info">Waiting...</div>`;
+        } else {
+            badgesHtml = `<div class="badge status-info">Waiting...</div>`;
+        }
+    } else if (doc.doc_status === 'Printing') {
+        // Currently printing
+        if (segments.length > 1) {
+            // Has reroute history - show completed segments + current printing
+            badgesHtml = renderCompletedSegments(segments.slice(0, -1));
+        }
+        const printerText = doc.printer_name ? ` (${escapeHtml(doc.printer_name)})` : '';
+        badgesHtml += `<div class="badge status-info">Printing...${printerText}</div>`;
+    } else if (doc.doc_status === 'Finished') {
+        // Completed - show history segments + completion badge with pickup button
+        if (segments.length > 1) {
+            badgesHtml = renderCompletedSegments(segments.slice(0, -1));
+        }
+        const printerText = doc.printed_at ? ` (${escapeHtml(doc.printed_at)})` : '';
+        badgesHtml += `
+            <div class="status-group">
+                <div class="badge status-success">Completed${printerText}</div>
+                <button class="picked-up-btn" onclick="pickedUpDocument('${escapeHtml(doc.doc_id)}')">Picked Up</button>
+            </div>
+        `;
+    } else if (doc.doc_status === 'Cancelled') {
+        // Cancelled - show reason
+        const reason = doc.cancel_reason ? ` (${escapeHtml(doc.cancel_reason)})` : ' (No available Printer)';
+        if (segments.length > 0) {
+            badgesHtml = renderCompletedSegments(segments);
+        }
+        badgesHtml += `<div class="badge status-danger">Cancelled${reason}</div>`;
+    } else if (doc.doc_status === 'Picked Up') {
+        // Already picked up
+        if (segments.length > 0) {
+            badgesHtml = renderCompletedSegments(segments);
+        }
+        badgesHtml += `<div class="badge status-success">Picked Up</div>`;
+    }
+
+    return `<div class="doc-right">${badgesHtml}</div>`;
+}
+
+function buildPrintSegments(doc, history) {
+    /**
+     * Build print segments from reroute history.
+     * Each segment represents a printer that was assigned and what happened there.
+     * Segments show: "Page X-Y (Printer Name)" for completed portions on rerouted printers.
+     */
+    const segments = [];
+    let currentPrinter = null;
+    let segmentStart = null;
+
+    for (let i = 0; i < history.length; i++) {
+        const entry = history[i];
+
+        if (entry.status === 'Assigned') {
+            currentPrinter = entry.printer_name;
+            segmentStart = i;
+        } else if (entry.status.startsWith('Error') || entry.status.startsWith('Timeout') || entry.status.startsWith('Failed')) {
+            // This printer had an error - create a completed segment for pages printed there
+            if (currentPrinter) {
+                segments.push({
+                    printer_name: currentPrinter,
+                    status: 'error',
+                    error_detail: entry.status,
+                });
+            }
+            currentPrinter = null;
+        } else if (entry.status === 'Rerouted') {
+            // Rerouted to a new printer
+            if (currentPrinter) {
+                segments.push({
+                    printer_name: currentPrinter,
+                    status: 'rerouted',
+                });
+            }
+            currentPrinter = entry.printer_name;
+        }
+    }
+
+    // Add the current/last segment if printing is ongoing or finished
+    if (currentPrinter && (doc.doc_status === 'Printing' || doc.doc_status === 'Finished')) {
+        segments.push({
+            printer_name: currentPrinter,
+            status: doc.doc_status === 'Finished' ? 'completed' : 'printing',
+        });
+    }
+
+    return segments;
+}
+
+function renderCompletedSegments(segments) {
+    let html = '';
+    segments.forEach(segment => {
+        const printerText = segment.printer_name ? ` (${escapeHtml(segment.printer_name)})` : '';
+        if (segment.status === 'error' || segment.status === 'rerouted') {
+            // Pages that were printed on a rerouted printer (shown as primary/blue badge)
+            html += `<div class="badge status-primary">Printed on${printerText}</div>`;
+        }
+    });
+    return html;
+}
+
+function updateConfirmationUI(data) {
+    // Update the title/subtitle based on overall status
+    const titleEl = document.querySelector('.confirmation-title');
+    const subtitleEl = document.querySelector('.confirmation-subtitle');
+    const finishBtn = document.getElementById('finish-transaction-btn');
+
+    if (!data.documents || data.documents.length === 0) return;
+
+    const allPickedUp = data.documents.every(d => d.doc_status === 'Picked Up');
+    const allFinished = data.documents.every(d => d.doc_status === 'Finished' || d.doc_status === 'Picked Up');
+    const anyPrinting = data.documents.some(d => d.doc_status === 'Printing');
+    const anyPending = data.documents.some(d => d.doc_status === 'Pending');
+    const hasFinished = data.documents.some(d => d.doc_status === 'Finished');
+
+    if (allPickedUp) {
+        if (titleEl) titleEl.textContent = 'All done! Thank you!';
+        if (subtitleEl) subtitleEl.textContent = 'All your documents have been picked up. Have a great day!';
+        if (finishBtn) finishBtn.style.display = 'none';
+        // Close SSE connection
+        if (customerSSE) {
+            customerSSE.close();
+            customerSSE = null;
+        }
+        // Redirect to thank you / home after a short delay
+        setTimeout(() => {
+            window.location.href = '/thankyou/';
+        }, 3000);
+    } else if (allFinished) {
+        if (titleEl) titleEl.textContent = 'Printing Complete!';
+        if (subtitleEl) subtitleEl.textContent = 'Your documents are ready for pickup. Pick them up from the printer trays below.';
+        if (finishBtn) finishBtn.style.display = 'block';
+    } else if (anyPrinting) {
+        if (titleEl) titleEl.textContent = 'Payment Confirmed! Printing in progress...';
+        if (subtitleEl) subtitleEl.textContent = 'Your documents are now being printed. Please wait.';
+        if (finishBtn) finishBtn.style.display = 'none';
+    } else if (anyPending) {
+        if (titleEl) titleEl.textContent = 'Payment Confirmed! Waiting for approval...';
+        if (subtitleEl) subtitleEl.textContent = 'Your documents are awaiting admin approval to start printing.';
+        if (finishBtn) finishBtn.style.display = 'none';
+    }
+
+    // Show finish button only when there are finished docs to pick up
+    if (finishBtn && hasFinished && !allPickedUp) {
+        finishBtn.style.display = 'block';
+    }
+}
+
+function pickedUpDocument(docId) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+
+    fetch('/api/picked-up-document/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({ doc_id: docId })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // SSE will update the UI automatically
+                console.log(`Document ${docId} marked as picked up`);
+            } else {
+                alert('Error: ' + (data.error || 'Failed to mark as picked up'));
+                btn.disabled = false;
+                btn.textContent = 'Picked Up';
+            }
+        })
+        .catch(error => {
+            console.error('Error marking as picked up:', error);
+            alert('An error occurred. Please try again.');
+            btn.disabled = false;
+            btn.textContent = 'Picked Up';
+        });
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(text));
+    return div.innerHTML;
+}
+
+// ============================================================
 // PROBLEM REPORT WORKFLOW - Complete Implementation
 // ============================================================
 
@@ -1211,9 +1504,22 @@ function showProblemReportOverlay() {
     };
 
     overlay.style.display = 'flex';
-    showStep('step-document-selection');
     populateDocumentsList();
-    updateTitle('Print Error Report Form');
+
+    // If only one document, auto-select it and skip to problem type
+    const checkboxes = document.querySelectorAll('.problem-doc-checkbox');
+    if (checkboxes.length === 1) {
+        checkboxes[0].checked = true;
+        window.problemReportState.selectedDocs = [{
+            doc_id: checkboxes[0].value,
+            doc_name: checkboxes[0].dataset.docname
+        }];
+        updateTitle('Print Error Report Form');
+        proceedToProblemTypeStep();
+    } else {
+        showStep('step-document-selection');
+        updateTitle('Print Error Report Form');
+    }
 }
 
 // Hide Problem Report Overlay
@@ -1276,36 +1582,52 @@ function populateDocumentsList() {
 
     documentsList.innerHTML = '';
 
-    // Get all unique documents from the confirmation page
-    const docRows = document.querySelectorAll('.doc-row');
-    const uniqueDocs = new Map();
+    // Use SSE-sourced documents if available, otherwise fall back to DOM scraping
+    let docs = [];
 
-    docRows.forEach(row => {
-        const nameElement = row.querySelector('.doc-meta h6');
-        const idElement = row.querySelector('.doc-id');
+    if (window.customerDocuments && window.customerDocuments.length > 0) {
+        // Use SSE data - filter to show docs that are Queued, Printing, or Finished
+        docs = window.customerDocuments.filter(doc =>
+            ['Pending', 'Queued', 'Printing', 'Finished'].includes(doc.doc_status)
+        );
+    } else {
+        // Fallback: scrape from DOM
+        const docRows = document.querySelectorAll('.doc-row');
+        const uniqueDocs = new Map();
 
-        if (nameElement && idElement) {
-            const docName = nameElement.textContent.trim();
-            const docId = idElement.textContent.trim();
+        docRows.forEach(row => {
+            const nameElement = row.querySelector('.doc-meta h6');
+            const idElement = row.querySelector('.doc-id');
 
-            if (!uniqueDocs.has(docId)) {
-                uniqueDocs.set(docId, { name: docName, id: docId });
+            if (nameElement && idElement) {
+                const docName = nameElement.textContent.trim();
+                const docId = idElement.textContent.trim().replace('#', '');
+
+                if (!uniqueDocs.has(docId)) {
+                    uniqueDocs.set(docId, { name: docName, id: docId });
+                }
             }
-        }
-    });
+        });
 
-    if (uniqueDocs.size === 0) {
+        uniqueDocs.forEach((doc, docId) => {
+            docs.push({ doc_id: docId, filename: doc.name });
+        });
+    }
+
+    if (docs.length === 0) {
         documentsList.innerHTML = '<div class="no-documents-msg">No documents found.</div>';
         return;
     }
 
-    uniqueDocs.forEach((doc, docId) => {
+    docs.forEach(doc => {
+        const docId = doc.doc_id;
+        const docName = doc.filename || doc.name || 'Unknown';
         const docElement = document.createElement('div');
         docElement.className = 'problem-doc-row';
         docElement.innerHTML = `
-            <input type="checkbox" class="problem-doc-checkbox" value="${docId}" data-docname="${doc.name}">
+            <input type="checkbox" class="problem-doc-checkbox" value="${docId}" data-docname="${docName}">
             <div class="problem-doc-info">
-                <div class="problem-doc-name">${doc.name}</div>
+                <div class="problem-doc-name">${docName}</div>
                 <div class="problem-doc-id">${docId}</div>
             </div>
         `;
@@ -1398,7 +1720,13 @@ function backToDocumentSelection() {
         // In individual mode, going back closes the flow
         hideProblemReportOverlay();
     } else {
-        showStep('step-document-selection');
+        // If only one document, going back closes the overlay (no selection step to show)
+        const checkboxes = document.querySelectorAll('.problem-doc-checkbox');
+        if (checkboxes.length <= 1) {
+            hideProblemReportOverlay();
+        } else {
+            showStep('step-document-selection');
+        }
     }
 }
 
@@ -1813,9 +2141,45 @@ function reportPrintError() {
 function confirmAllGood() {
     hasProceeded = true;
     hidePrintQualityOverlay();
+
+    const customerIdEl = document.getElementById('customer-id-data');
+    const customerId = customerIdEl ? customerIdEl.value : '';
+
+    if (!customerId) {
+        // Fallback: just redirect
+        var overlay = document.getElementById('loading-overlay');
+        if (overlay) overlay.style.display = 'flex';
+        window.location.href = '/';
+        return;
+    }
+
+    // Call finish-transaction API to mark all finished docs as picked up and delete files
     var overlay = document.getElementById('loading-overlay');
     if (overlay) overlay.style.display = 'flex';
-    window.location.href = '/';
+
+    fetch('/api/finish-transaction/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({ customer_id: customerId })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log(`Finished transaction: ${data.picked_up_count} docs picked up`);
+                // SSE will update the UI and redirect to thank you page
+            } else {
+                console.warn('Finish transaction warning:', data.error);
+                // Still redirect even if there's an issue
+                window.location.href = '/thankyou/';
+            }
+        })
+        .catch(error => {
+            console.error('Error finishing transaction:', error);
+            window.location.href = '/';
+        });
 }
 
 // ============================================================

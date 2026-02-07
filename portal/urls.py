@@ -34,4 +34,7 @@ urlpatterns = [
     path('api/get-notification-prefs/', views.get_notification_prefs, name='get_notification_prefs'),
     path('sse/printer-status/', views.printer_status_stream, name='printer_status_stream'),
     path('sse/dashboard-status/', views.dashboard_status_stream, name='dashboard_status_stream'),
+    path('sse/customer-documents/<str:customer_id>/', views.customer_documents_stream, name='customer_documents_stream'),
+    path('api/picked-up-document/', views.picked_up_document, name='picked_up_document'),
+    path('api/finish-transaction/', views.finish_transaction, name='finish_transaction'),
 ]
