@@ -1590,3 +1590,251 @@ def start_queue_monitor():
 
 # Start the queue monitor
 threading.Timer(1.0, start_queue_monitor).start()
+
+
+# ============================================================
+# CUSTOMER DOCUMENT STATUS SSE ENDPOINT
+# ============================================================
+
+
+def customer_documents_stream(request, customer_id):
+    """SSE endpoint that streams real-time document status for a customer."""
+    response = StreamingHttpResponse(
+        customer_documents_event_stream(customer_id),
+        content_type='text/event-stream'
+    )
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'
+    return response
+
+
+def customer_documents_event_stream(customer_id):
+    """Generator that yields SSE events for customer document status changes."""
+    last_data = None
+    while True:
+        documents = Document.objects.filter(
+            customer_id=customer_id
+        ).select_related('printer_assigned', 'printed_at').order_by('time_submitted')
+
+        docs_data = []
+        all_finished_or_picked_up = True
+
+        for doc in documents:
+            # Build reroute history for this document
+            history_entries = RerouteHistory.objects.filter(
+                document=doc
+            ).select_related('printer').order_by('timestamp')
+
+            reroute_history = []
+            for entry in history_entries:
+                reroute_history.append({
+                    'printer_name': entry.printer.printer_name if entry.printer else 'Unknown',
+                    'printer_id': entry.printer.id if entry.printer else None,
+                    'status': entry.status,
+                    'timestamp': entry.timestamp.isoformat() if entry.timestamp else None,
+                })
+
+            # Determine badge info
+            printer_name = None
+            if doc.printer_assigned:
+                printer_name = doc.printer_assigned.printer_name
+
+            printed_at_name = None
+            if doc.printed_at:
+                printed_at_name = doc.printed_at.printer_name
+
+            # Calculate pages printed vs total
+            pages_printed = doc.pages_printed if doc.pages_printed else []
+            total_pages = doc.get_total_pages()
+
+            # Determine status type for badge styling
+            status_type = 'info'  # default
+            if doc.doc_status == 'Pending':
+                status_type = 'warning'
+            elif doc.doc_status == 'Queued':
+                status_type = 'info'
+            elif doc.doc_status == 'Printing':
+                status_type = 'info'
+            elif doc.doc_status == 'Finished':
+                status_type = 'success'
+            elif doc.doc_status == 'Cancelled':
+                status_type = 'danger'
+            elif doc.doc_status == 'Picked Up':
+                status_type = 'success'
+
+            if doc.doc_status not in ('Finished', 'Picked Up'):
+                all_finished_or_picked_up = False
+
+            # Build status badge text
+            if doc.doc_status == 'Pending':
+                status_badge = 'Waiting for Approval...'
+            elif doc.doc_status == 'Queued':
+                status_badge = 'Waiting...'
+            elif doc.doc_status == 'Printing':
+                status_badge = f'Printing... ({printer_name})' if printer_name else 'Printing...'
+            elif doc.doc_status == 'Finished':
+                status_badge = f'Completed ({printed_at_name})' if printed_at_name else 'Completed'
+            elif doc.doc_status == 'Cancelled':
+                status_badge = 'Cancelled'
+            elif doc.doc_status == 'Picked Up':
+                status_badge = 'Picked Up'
+            else:
+                status_badge = doc.doc_status
+
+            # Get cancel reason from reroute history if cancelled
+            cancel_reason = ''
+            if doc.doc_status == 'Cancelled':
+                last_error = history_entries.filter(status__startswith='Error').last()
+                if last_error:
+                    cancel_reason = last_error.status
+                else:
+                    cancel_reason = 'No available Printer'
+
+            doc_data = {
+                'doc_id': doc.doc_id,
+                'filename': doc.filename,
+                'doc_status': doc.doc_status,
+                'status_type': status_type,
+                'status_badge': status_badge,
+                'cancel_reason': cancel_reason,
+                'printer_name': printer_name,
+                'printed_at': printed_at_name,
+                'pages_printed': pages_printed,
+                'total_pages': total_pages,
+                'reroute_history': reroute_history,
+                'time_submitted': doc.time_submitted.isoformat() if doc.time_submitted else None,
+                # Extra info for problem report form
+                'num_copies': doc.num_copies,
+                'orientation': doc.orientation,
+                'color_mode': doc.color_mode,
+                'paper_size': doc.paper_size,
+                'paper_quality': doc.paper_quality,
+                'pages_num': doc.pages_num,
+            }
+            docs_data.append(doc_data)
+
+        data = {
+            'documents': docs_data,
+            'all_done': all_finished_or_picked_up and len(docs_data) > 0,
+        }
+
+        json_data = json.dumps(data)
+        if json_data != last_data:
+            yield f"data: {json_data}\n\n"
+            last_data = json_data
+
+        time.sleep(1)
+
+
+# ============================================================
+# PICKED UP DOCUMENT API
+# ============================================================
+
+
+@csrf_exempt
+def picked_up_document(request):
+    """
+    Mark a single document as 'Picked Up' and delete the associated file.
+    This triggers automatic file deletion similar to Finish Transaction.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        doc_id = data.get('doc_id')
+
+        if not doc_id:
+            return JsonResponse({'success': False, 'error': 'doc_id is required'})
+
+        doc = Document.objects.get(doc_id=doc_id)
+
+        if doc.doc_status != 'Finished':
+            return JsonResponse({
+                'success': False,
+                'error': f'Document is not finished (current status: {doc.doc_status})'
+            })
+
+        # Mark as Picked Up
+        doc.doc_status = 'Picked Up'
+        doc.status_updated_at = timezone.now()
+        doc.save()
+
+        # Delete the file from storage (same logic as Finish Transaction)
+        if doc.stored_name:
+            uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
+            for root, dirs, files in os.walk(uploads_dir):
+                if doc.stored_name in files:
+                    file_path = os.path.join(root, doc.stored_name)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                        print(f"[PICKED UP] Deleted file {file_path} for document {doc_id}")
+                        break
+
+        # Trigger folder cleanup
+        subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+
+        return JsonResponse({'success': True, 'doc_id': doc_id})
+
+    except Document.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Document not found'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def finish_transaction(request):
+    """
+    Mark all finished documents for a customer as 'Picked Up' and delete their files.
+    This is the 'Picked Up All Printed Documents' action.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        customer_id = data.get('customer_id')
+
+        if not customer_id:
+            return JsonResponse({'success': False, 'error': 'customer_id is required'})
+
+        # Get all finished documents for this customer
+        finished_docs = Document.objects.filter(
+            customer_id=customer_id,
+            doc_status='Finished'
+        )
+
+        if not finished_docs.exists():
+            return JsonResponse({'success': False, 'error': 'No finished documents found'})
+
+        picked_up_count = 0
+        uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
+
+        for doc in finished_docs:
+            # Mark as Picked Up
+            doc.doc_status = 'Picked Up'
+            doc.status_updated_at = timezone.now()
+            doc.save()
+
+            # Delete the file from storage
+            if doc.stored_name:
+                for root, dirs, files in os.walk(uploads_dir):
+                    if doc.stored_name in files:
+                        file_path = os.path.join(root, doc.stored_name)
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+                            print(f"[FINISH TXN] Deleted file {file_path} for document {doc.doc_id}")
+                            break
+
+            picked_up_count += 1
+
+        # Trigger folder cleanup
+        subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+
+        return JsonResponse({
+            'success': True,
+            'picked_up_count': picked_up_count
+        })
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})

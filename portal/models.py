@@ -103,6 +103,8 @@ class Document(models.Model):
         ('Queued', 'Queued'),
         ('Printing', 'Printing'),
         ('Finished', 'Finished'),
+        ('Cancelled', 'Cancelled'),
+        ('Picked Up', 'Picked Up'),
     ]
 
     doc_id = models.CharField(max_length=255, primary_key=True)

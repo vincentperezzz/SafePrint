@@ -15,8 +15,12 @@ SafePrint
 
     <div class="customer-id">
         <span class="customer-id-label">Customer ID</span>
-        <span class="customer-id-value">#CID-4405</span>
+        <span class="customer-id-value">#{{ customer_id }}</span>
     </div>
+
+    <!-- Hidden data for JS -->
+    <input type="hidden" id="customer-id-data" value="{{ customer_id }}">
+    {% csrf_token %}
 
     <div class="details-section">
         <div class="documents">
@@ -31,99 +35,13 @@ SafePrint
                     <div class="conf-printer-status">Printer Assigned</div>
                 </div>
 
-                <div class="confirmation-doc-list">
-                    <div class="doc-row">
+                <div class="confirmation-doc-list" id="confirmation-doc-list">
+                    <!-- Documents will be rendered dynamically by JavaScript/SSE -->
+                    <div class="doc-row" id="doc-loading-placeholder">
                         <div class="doc-left">
-                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
                             <div class="doc-meta">
-                                <h6>Abstract (3).pdf</h6>
-                                <span class="doc-id">#DOC-1005</span>
+                                <h6>Loading documents...</h6>
                             </div>
-                        </div>
-                        <div class="doc-right">
-                            <div class="badge status-info">Printing... (Printer 3)</div>
-                        </div>
-                    </div>
-
-                    <div class="doc-row">
-                        <div class="doc-left">
-                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                            <div class="doc-meta">
-                                <h6>Abstract (4).pdf</h6>
-                                <span class="doc-id">#DOC-1006</span>
-                            </div>
-                        </div>
-                        <div class="doc-right">
-                            <div class="badge status-info">Waiting...</div>
-                        </div>
-                    </div>
-
-                    <div class="doc-row">
-                        <div class="doc-left">
-                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                            <div class="doc-meta">
-                                <h6>Abstract (5).pdf</h6>
-                                <span class="doc-id">#DOC-1007</span>
-                            </div>
-                        </div>
-                        <div class="doc-right">
-                            <div class="status-group">
-                                <div class="badge status-success">Page 1-6 (Printer 2)</div>
-                                <button class="picked-up-btn">Picked Up</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="doc-row">
-                        <div class="doc-left">
-                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                            <div class="doc-meta">
-                                <h6>Abstract (3).pdf</h6>
-                                <span class="doc-id">#DOC-1005</span>
-                            </div>
-                        </div>
-                        <div class="doc-right">
-                            <div class="badge status-primary">Page 1-3 (Printer 1)</div>
-                            <div class="badge status-info">Printing... (Printer 2)</div>
-                        </div>
-                    </div>
-
-                    <div class="doc-row">
-                        <div class="doc-left">
-                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                            <div class="doc-meta">
-                                <h6>Abstract (4).pdf</h6>
-                                <span class="doc-id">#DOC-1006</span>
-                            </div>
-                        </div>
-                        <div class="doc-right">
-                            <div class="badge status-danger">Canceled (No available Printer)</div>
-                        </div>
-                    </div>
-
-                    <div class="doc-row">
-                        <div class="doc-left">
-                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                            <div class="doc-meta">
-                                <h6>Abstract (5).pdf</h6>
-                                <span class="doc-id">#DOC-1007</span>
-                            </div>
-                        </div>
-                        <div class="doc-right">
-                            <div class="badge status-success">Picked Up</div>
-                        </div>
-                    </div>
-
-                    <div class="doc-row">
-                        <div class="doc-left">
-                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                            <div class="doc-meta">
-                                <h6>Abstract (3).pdf</h6>
-                                <span class="doc-id">#DOC-1005</span>
-                            </div>
-                        </div>
-                        <div class="doc-right">
-                            <div class="badge status-primary">Page 4-6 (Printer 2)</div>
                         </div>
                     </div>
                 </div>
@@ -132,7 +50,7 @@ SafePrint
 
         <div class="right">
             <div class="amount">
-                <h3>₱45.00</h3>
+                <h3>₱{{ total_price }}</h3>
                 <span>Total amount Paid</span>
             </div>
 
