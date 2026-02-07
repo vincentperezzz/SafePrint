@@ -1,0 +1,17 @@
+# SafePrint Cron Jobs for Docker
+# Matches production crontab configuration
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin:/home/safeprint/dev/SafePrint/venv/bin
+
+# Delete empty upload folders every 10 minutes
+*/10 * * * * safeprint find /home/safeprint/dev/SafePrint/media/uploads -type d -empty -delete >> /home/safeprint/dev/SafePrint/logs/cron_empty_folders.log 2>&1
+
+# Delete stale documents every 10 minutes
+*/10 * * * * safeprint cd /home/safeprint/dev/SafePrint && /home/safeprint/dev/SafePrint/venv/bin/python manage.py delete_stale_docs >> /home/safeprint/dev/SafePrint/logs/cron_delete_stale_docs.log 2>&1
+
+# Restart printer polling daemon on reboot and hourly (failsafe)
+@reboot safeprint /home/safeprint/dev/SafePrint/scripts/poll_printers_daemon.sh
+@hourly safeprint /home/safeprint/dev/SafePrint/scripts/poll_printers_daemon.sh
+
+# Empty line at end is required for cron

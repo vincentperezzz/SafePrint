@@ -1,0 +1,2 @@
+# This file will be replaced when running export_database.sh
+# Run the export script on the source server to generate the full database dump

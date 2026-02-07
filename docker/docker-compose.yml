@@ -1,0 +1,65 @@
+# SafePrint Docker Compose Configuration
+# Complete development environment replicating production server
+
+services:
+  # ========================================
+  # SAFEPRINT APPLICATION (All-in-One)
+  # ========================================
+  safeprint:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: safeprint-app
+    hostname: safeprint
+    ports:
+      - "80:80"        # Nginx HTTP
+      - "443:443"      # Nginx HTTPS (optional, for SSL)
+      - "8000:8000"    # Django dev server (fallback)
+      - "3306:3306"    # MySQL (for external access)
+    volumes:
+      # Persistent data volumes
+      - safeprint_mysql_data:/var/lib/mysql
+      - safeprint_media:/home/safeprint/dev/SafePrint/media
+      - safeprint_logs:/home/safeprint/dev/SafePrint/logs
+      - safeprint_gunicorn_logs:/var/log/gunicorn
+      # Mount source code for development (optional - comment for isolated testing)
+      # - ..:/home/safeprint/dev/SafePrint:cached
+    environment:
+      - DJANGO_SECRET_KEY=your-secret-key-change-for-production
+      - DB_NAME=SAFEPRINT_DB
+      - DB_USER=SAFEPRINT_ADMIN
+      - DB_PASSWORD=@MYSQL_datugavinoperez1
+      - DB_HOST=localhost
+      - DB_PORT=3306
+      - DEBUG=True
+    networks:
+      - safeprint-network
+    restart: unless-stopped
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# ========================================
+# VOLUMES
+# ========================================
+volumes:
+  safeprint_mysql_data:
+    name: safeprint_mysql_data
+  safeprint_media:
+    name: safeprint_media
+  safeprint_logs:
+    name: safeprint_logs
+  safeprint_gunicorn_logs:
+    name: safeprint_gunicorn_logs
+
+# ========================================
+# NETWORKS
+# ========================================
+networks:
+  safeprint-network:
+    name: safeprint-network
+    driver: bridge
