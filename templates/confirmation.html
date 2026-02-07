@@ -37,11 +37,13 @@ SafePrint
 
                 <div class="confirmation-doc-list" id="confirmation-doc-list">
                     <!-- Documents will be rendered dynamically by JavaScript/SSE -->
-                    <div class="doc-row" id="doc-loading-placeholder">
-                        <div class="doc-left">
-                            <div class="doc-meta">
-                                <h6>Loading documents...</h6>
-                            </div>
+                    <div class="doc-row doc-loading-row" id="doc-loading-placeholder">
+                        <div class="doc-loading-spinner">
+                            <div class="spinner"></div>
+                        </div>
+                        <div class="doc-meta">
+                            <h6>Loading documents...</h6>
+                            <span class="doc-id loading-subtext-hint" style="display:none;">This might take a moment for larger documents</span>
                         </div>
                     </div>
                 </div>
