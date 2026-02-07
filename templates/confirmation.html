@@ -9,7 +9,8 @@ SafePrint
 <div class="confirmation">
     <div class="confirmation-wrapper">
         <div class="confirmation-title">Payment Confirmed! Printing in progress...</div>
-        <div class="confirmation-subtitle">Your documents are now in the print queue and will be distributed shortly.</div>
+        <div class="confirmation-subtitle">Your documents are now in the print queue and will be distributed shortly.
+        </div>
     </div>
 
     <div class="customer-id">
@@ -18,156 +19,174 @@ SafePrint
     </div>
 
     <div class="details-section">
-    <div class="documents">
-        <div class="details-title">
-            <img src="{% static 'assets/avatar.svg' %}" alt="Avatar" class="avatar">
-            <h3>Your Documents</h3>
-        </div>
-
-        <div class="confirmation-table">
-            <div class="document-table-header">
-                <div class="conf-doc-name">Document Name</div>
-                <div class="conf-printer-status">Printer Assigned</div>
+        <div class="documents">
+            <div class="details-title">
+                <img src="{% static 'assets/avatar.svg' %}" alt="Avatar" class="avatar">
+                <h3>Your Documents</h3>
             </div>
 
-            <div class="confirmation-doc-list">
-                <div class="doc-row">
-                    <div class="doc-left">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                        <div class="doc-meta">
-                            <h6>Abstract (3).pdf</h6>
-                            <span class="doc-id">#DOC-1005</span>
-                        </div>
-                    </div>
-                    <div class="doc-right">
-                        <div class="badge status-info">Printing... (Printer 3)</div>
-                    </div>
+            <div class="confirmation-table">
+                <div class="document-table-header">
+                    <div class="conf-doc-name">Document Name</div>
+                    <div class="conf-printer-status">Printer Assigned</div>
                 </div>
 
-                <div class="doc-row">
-                    <div class="doc-left">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                        <div class="doc-meta">
-                            <h6>Abstract (4).pdf</h6>
-                            <span class="doc-id">#DOC-1006</span>
+                <div class="confirmation-doc-list">
+                    <div class="doc-row">
+                        <div class="doc-left">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                            <div class="doc-meta">
+                                <h6>Abstract (3).pdf</h6>
+                                <span class="doc-id">#DOC-1005</span>
+                            </div>
+                        </div>
+                        <div class="doc-right">
+                            <div class="badge status-info">Printing... (Printer 3)</div>
                         </div>
                     </div>
-                    <div class="doc-right">
-                        <div class="badge status-info">Waiting...</div>
-                    </div>
-                </div>
 
-                <div class="doc-row">
-                    <div class="doc-left">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                        <div class="doc-meta">
-                            <h6>Abstract (5).pdf</h6>
-                            <span class="doc-id">#DOC-1007</span>
+                    <div class="doc-row">
+                        <div class="doc-left">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                            <div class="doc-meta">
+                                <h6>Abstract (4).pdf</h6>
+                                <span class="doc-id">#DOC-1006</span>
+                            </div>
+                        </div>
+                        <div class="doc-right">
+                            <div class="badge status-info">Waiting...</div>
                         </div>
                     </div>
-                    <div class="doc-right">
-                        <div class="status-group">
-                            <div class="badge status-success">Page 1-6 (Printer 2)</div>
-                            <button class="picked-up-btn">Picked Up</button>
-                        </div>
-                    </div>
-                </div>
 
-                <div class="doc-row">
-                    <div class="doc-left">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                        <div class="doc-meta">
-                            <h6>Abstract (3).pdf</h6>
-                            <span class="doc-id">#DOC-1005</span>
+                    <div class="doc-row">
+                        <div class="doc-left">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                            <div class="doc-meta">
+                                <h6>Abstract (5).pdf</h6>
+                                <span class="doc-id">#DOC-1007</span>
+                            </div>
+                        </div>
+                        <div class="doc-right">
+                            <div class="status-group">
+                                <div class="badge status-success">Page 1-6 (Printer 2)</div>
+                                <button class="picked-up-btn">Picked Up</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="doc-right">
-                        <div class="badge status-primary">Page 1-3 (Printer 1)</div>
-                        <div class="badge status-info">Printing... (Printer 2)</div>
-                    </div>
-                </div>
 
-                <div class="doc-row">
-                    <div class="doc-left">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                        <div class="doc-meta">
-                            <h6>Abstract (4).pdf</h6>
-                            <span class="doc-id">#DOC-1006</span>
+                    <div class="doc-row">
+                        <div class="doc-left">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                            <div class="doc-meta">
+                                <h6>Abstract (3).pdf</h6>
+                                <span class="doc-id">#DOC-1005</span>
+                            </div>
+                        </div>
+                        <div class="doc-right">
+                            <div class="badge status-primary">Page 1-3 (Printer 1)</div>
+                            <div class="badge status-info">Printing... (Printer 2)</div>
                         </div>
                     </div>
-                    <div class="doc-right">
-                        <div class="badge status-danger">Canceled (No available Printer)</div>
-                    </div>
-                </div>
 
-                <div class="doc-row">
-                    <div class="doc-left">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                        <div class="doc-meta">
-                            <h6>Abstract (5).pdf</h6>
-                            <span class="doc-id">#DOC-1007</span>
+                    <div class="doc-row">
+                        <div class="doc-left">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                            <div class="doc-meta">
+                                <h6>Abstract (4).pdf</h6>
+                                <span class="doc-id">#DOC-1006</span>
+                            </div>
+                        </div>
+                        <div class="doc-right">
+                            <div class="badge status-danger">Canceled (No available Printer)</div>
                         </div>
                     </div>
-                    <div class="doc-right">
-                        <div class="badge status-success">Picked Up</div>
-                    </div>
-                </div>
 
-                <div class="doc-row">
-                    <div class="doc-left">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                        <div class="doc-meta">
-                            <h6>Abstract (3).pdf</h6>
-                            <span class="doc-id">#DOC-1005</span>
+                    <div class="doc-row">
+                        <div class="doc-left">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                            <div class="doc-meta">
+                                <h6>Abstract (5).pdf</h6>
+                                <span class="doc-id">#DOC-1007</span>
+                            </div>
+                        </div>
+                        <div class="doc-right">
+                            <div class="badge status-success">Picked Up</div>
                         </div>
                     </div>
-                    <div class="doc-right">
-                        <div class="badge status-primary">Page 4-6 (Printer 2)</div>
+
+                    <div class="doc-row">
+                        <div class="doc-left">
+                            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+                            <div class="doc-meta">
+                                <h6>Abstract (3).pdf</h6>
+                                <span class="doc-id">#DOC-1005</span>
+                            </div>
+                        </div>
+                        <div class="doc-right">
+                            <div class="badge status-primary">Page 4-6 (Printer 2)</div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="right">
-        <div class="amount">
-            <h3>₱45.00</h3>
-            <span>Total amount Paid</span>
-        </div>
-
-        <div class="problem-section">
-            <h3>Any Problem?</h3>
-            <p>Let us know about it!</p>
-            <button class="problem-btn" onclick="showProblemReportOverlay()">Report a Problem</button>
-        </div>
-
-        <div class="feedback">
-            <h3>How was your Experience?</h3>
-            <p>Your review meant a lot to us!</p>
-            <div class="stars">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path d="M11.1033 3.81663C11.4701 3.07346 12.5299 3.07346 12.8967 3.81663L14.8576 7.78909C15.0031 8.08394 15.2843 8.2884 15.6096 8.33595L19.9962 8.97712C20.8161 9.09696 21.1429 10.1048 20.5493 10.683L17.3768 13.773C17.1409 14.0027 17.0333 14.3339 17.0889 14.6584L17.8374 19.0226C17.9775 19.8396 17.12 20.4626 16.3864 20.0767L12.4655 18.0148C12.1741 17.8615 11.8259 17.8615 11.5345 18.0148L7.61363 20.0767C6.88 20.4626 6.02245 19.8396 6.16257 19.0226L6.91109 14.6584C6.96675 14.3339 6.85908 14.0027 6.62321 13.773L3.45068 10.683C2.85708 10.1048 3.18387 9.09696 4.00378 8.97712L8.39037 8.33595C8.71572 8.2884 8.99691 8.08394 9.14245 7.78909L11.1033 3.81663Z" fill="#FFBD12"/>
-                    <path d="M10.2793 3.23926C11.0712 1.88921 13.0821 1.93422 13.793 3.37402L15.7539 7.34668L20.1406 7.9873L20.292 8.01562C21.7705 8.34222 22.3584 10.1562 21.3525 11.2881L21.2471 11.3994L18.0742 14.4893L18.8232 18.8535L18.8438 19.0059C18.9914 20.5132 17.4474 21.6346 16.0596 21.0283L15.9209 20.9619L12 18.8994L8.0791 20.9619C6.61185 21.7335 4.89652 20.4874 5.17676 18.8535L5.92578 14.4893L2.75293 11.3994C1.56574 10.2431 2.21955 8.22699 3.85938 7.9873L8.24609 7.34668L10.207 3.37402L10.2793 3.23926Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path d="M11.1033 3.81663C11.4701 3.07346 12.5299 3.07346 12.8967 3.81663L14.8576 7.78909C15.0031 8.08394 15.2843 8.2884 15.6096 8.33595L19.9962 8.97712C20.8161 9.09696 21.1429 10.1048 20.5493 10.683L17.3768 13.773C17.1409 14.0027 17.0333 14.3339 17.0889 14.6584L17.8374 19.0226C17.9775 19.8396 17.12 20.4626 16.3864 20.0767L12.4655 18.0148C12.1741 17.8615 11.8259 17.8615 11.5345 18.0148L7.61363 20.0767C6.88 20.4626 6.02245 19.8396 6.16257 19.0226L6.91109 14.6584C6.96675 14.3339 6.85908 14.0027 6.62321 13.773L3.45068 10.683C2.85708 10.1048 3.18387 9.09696 4.00378 8.97712L8.39037 8.33595C8.71572 8.2884 8.99691 8.08394 9.14245 7.78909L11.1033 3.81663Z" fill="#FFBD12"/>
-                    <path d="M10.2793 3.23926C11.0712 1.88921 13.0821 1.93422 13.793 3.37402L15.7539 7.34668L20.1406 7.9873L20.292 8.01562C21.7705 8.34222 22.3584 10.1562 21.3525 11.2881L21.2471 11.3994L18.0742 14.4893L18.8232 18.8535L18.8438 19.0059C18.9914 20.5132 17.4474 21.6346 16.0596 21.0283L15.9209 20.9619L12 18.8994L8.0791 20.9619C6.61185 21.7335 4.89652 20.4874 5.17676 18.8535L5.92578 14.4893L2.75293 11.3994C1.56574 10.2431 2.21955 8.22699 3.85938 7.9873L8.24609 7.34668L10.207 3.37402L10.2793 3.23926Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path d="M11.1033 3.81663C11.4701 3.07346 12.5299 3.07346 12.8967 3.81663L14.8576 7.78909C15.0031 8.08394 15.2843 8.2884 15.6096 8.33595L19.9962 8.97712C20.8161 9.09696 21.1429 10.1048 20.5493 10.683L17.3768 13.773C17.1409 14.0027 17.0333 14.3339 17.0889 14.6584L17.8374 19.0226C17.9775 19.8396 17.12 20.4626 16.3864 20.0767L12.4655 18.0148C12.1741 17.8615 11.8259 17.8615 11.5345 18.0148L7.61363 20.0767C6.88 20.4626 6.02245 19.8396 6.16257 19.0226L6.91109 14.6584C6.96675 14.3339 6.85908 14.0027 6.62321 13.773L3.45068 10.683C2.85708 10.1048 3.18387 9.09696 4.00378 8.97712L8.39037 8.33595C8.71572 8.2884 8.99691 8.08394 9.14245 7.78909L11.1033 3.81663Z" fill="#FFBD12"/>
-                    <path d="M10.2793 3.23926C11.0712 1.88921 13.0821 1.93422 13.793 3.37402L15.7539 7.34668L20.1406 7.9873L20.292 8.01562C21.7705 8.34222 22.3584 10.1562 21.3525 11.2881L21.2471 11.3994L18.0742 14.4893L18.8232 18.8535L18.8438 19.0059C18.9914 20.5132 17.4474 21.6346 16.0596 21.0283L15.9209 20.9619L12 18.8994L8.0791 20.9619C6.61185 21.7335 4.89652 20.4874 5.17676 18.8535L5.92578 14.4893L2.75293 11.3994C1.56574 10.2431 2.21955 8.22699 3.85938 7.9873L8.24609 7.34668L10.207 3.37402L10.2793 3.23926Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path d="M11.1033 3.81663C11.4701 3.07346 12.5299 3.07346 12.8967 3.81663L14.8576 7.78909C15.0031 8.08394 15.2843 8.2884 15.6096 8.33595L19.9962 8.97712C20.8161 9.09696 21.1429 10.1048 20.5493 10.683L17.3768 13.773C17.1409 14.0027 17.0333 14.3339 17.0889 14.6584L17.8374 19.0226C17.9775 19.8396 17.12 20.4626 16.3864 20.0767L12.4655 18.0148C12.1741 17.8615 11.8259 17.8615 11.5345 18.0148L7.61363 20.0767C6.88 20.4626 6.02245 19.8396 6.16257 19.0226L6.91109 14.6584C6.96675 14.3339 6.85908 14.0027 6.62321 13.773L3.45068 10.683C2.85708 10.1048 3.18387 9.09696 4.00378 8.97712L8.39037 8.33595C8.71572 8.2884 8.99691 8.08394 9.14245 7.78909L11.1033 3.81663Z" fill="#FFBD12"/>
-                    <path d="M10.2793 3.23926C11.0712 1.88921 13.0821 1.93422 13.793 3.37402L15.7539 7.34668L20.1406 7.9873L20.292 8.01562C21.7705 8.34222 22.3584 10.1562 21.3525 11.2881L21.2471 11.3994L18.0742 14.4893L18.8232 18.8535L18.8438 19.0059C18.9914 20.5132 17.4474 21.6346 16.0596 21.0283L15.9209 20.9619L12 18.8994L8.0791 20.9619C6.61185 21.7335 4.89652 20.4874 5.17676 18.8535L5.92578 14.4893L2.75293 11.3994C1.56574 10.2431 2.21955 8.22699 3.85938 7.9873L8.24609 7.34668L10.207 3.37402L10.2793 3.23926Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path d="M10.2793 3.23926C11.0712 1.88921 13.0821 1.93422 13.793 3.37402L15.7539 7.34668L20.1406 7.9873C21.7805 8.22699 22.4343 10.2431 21.2471 11.3994L18.0742 14.4893L18.8232 18.8535C19.0947 20.4362 17.4938 21.6548 16.0596 21.0283L15.9209 20.9619L12 18.8994L8.0791 20.9619C6.61185 21.7335 4.89652 20.4874 5.17676 18.8535L5.92578 14.4893L2.75293 11.3994C1.56574 10.2431 2.21955 8.22699 3.85938 7.9873L8.24609 7.34668L10.207 3.37402L10.2793 3.23926Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
+        <div class="right">
+            <div class="amount">
+                <h3>₱45.00</h3>
+                <span>Total amount Paid</span>
             </div>
-            <a class="feedback-btn">Send a Feedback</a>
+
+            <div class="problem-section">
+                <h3>Any Problem?</h3>
+                <p>Let us know about it!</p>
+                <button class="problem-btn" onclick="showProblemReportOverlay()">Report a Problem</button>
+            </div>
+
+            <div class="feedback">
+                <h3>How was your Experience?</h3>
+                <p>Your review meant a lot to us!</p>
+                <div class="stars">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                            d="M11.1033 3.81663C11.4701 3.07346 12.5299 3.07346 12.8967 3.81663L14.8576 7.78909C15.0031 8.08394 15.2843 8.2884 15.6096 8.33595L19.9962 8.97712C20.8161 9.09696 21.1429 10.1048 20.5493 10.683L17.3768 13.773C17.1409 14.0027 17.0333 14.3339 17.0889 14.6584L17.8374 19.0226C17.9775 19.8396 17.12 20.4626 16.3864 20.0767L12.4655 18.0148C12.1741 17.8615 11.8259 17.8615 11.5345 18.0148L7.61363 20.0767C6.88 20.4626 6.02245 19.8396 6.16257 19.0226L6.91109 14.6584C6.96675 14.3339 6.85908 14.0027 6.62321 13.773L3.45068 10.683C2.85708 10.1048 3.18387 9.09696 4.00378 8.97712L8.39037 8.33595C8.71572 8.2884 8.99691 8.08394 9.14245 7.78909L11.1033 3.81663Z"
+                            fill="#FFBD12" />
+                        <path
+                            d="M10.2793 3.23926C11.0712 1.88921 13.0821 1.93422 13.793 3.37402L15.7539 7.34668L20.1406 7.9873L20.292 8.01562C21.7705 8.34222 22.3584 10.1562 21.3525 11.2881L21.2471 11.3994L18.0742 14.4893L18.8232 18.8535L18.8438 19.0059C18.9914 20.5132 17.4474 21.6346 16.0596 21.0283L15.9209 20.9619L12 18.8994L8.0791 20.9619C6.61185 21.7335 4.89652 20.4874 5.17676 18.8535L5.92578 14.4893L2.75293 11.3994C1.56574 10.2431 2.21955 8.22699 3.85938 7.9873L8.24609 7.34668L10.207 3.37402L10.2793 3.23926Z"
+                            stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                            d="M11.1033 3.81663C11.4701 3.07346 12.5299 3.07346 12.8967 3.81663L14.8576 7.78909C15.0031 8.08394 15.2843 8.2884 15.6096 8.33595L19.9962 8.97712C20.8161 9.09696 21.1429 10.1048 20.5493 10.683L17.3768 13.773C17.1409 14.0027 17.0333 14.3339 17.0889 14.6584L17.8374 19.0226C17.9775 19.8396 17.12 20.4626 16.3864 20.0767L12.4655 18.0148C12.1741 17.8615 11.8259 17.8615 11.5345 18.0148L7.61363 20.0767C6.88 20.4626 6.02245 19.8396 6.16257 19.0226L6.91109 14.6584C6.96675 14.3339 6.85908 14.0027 6.62321 13.773L3.45068 10.683C2.85708 10.1048 3.18387 9.09696 4.00378 8.97712L8.39037 8.33595C8.71572 8.2884 8.99691 8.08394 9.14245 7.78909L11.1033 3.81663Z"
+                            fill="#FFBD12" />
+                        <path
+                            d="M10.2793 3.23926C11.0712 1.88921 13.0821 1.93422 13.793 3.37402L15.7539 7.34668L20.1406 7.9873L20.292 8.01562C21.7705 8.34222 22.3584 10.1562 21.3525 11.2881L21.2471 11.3994L18.0742 14.4893L18.8232 18.8535L18.8438 19.0059C18.9914 20.5132 17.4474 21.6346 16.0596 21.0283L15.9209 20.9619L12 18.8994L8.0791 20.9619C6.61185 21.7335 4.89652 20.4874 5.17676 18.8535L5.92578 14.4893L2.75293 11.3994C1.56574 10.2431 2.21955 8.22699 3.85938 7.9873L8.24609 7.34668L10.207 3.37402L10.2793 3.23926Z"
+                            stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                            d="M11.1033 3.81663C11.4701 3.07346 12.5299 3.07346 12.8967 3.81663L14.8576 7.78909C15.0031 8.08394 15.2843 8.2884 15.6096 8.33595L19.9962 8.97712C20.8161 9.09696 21.1429 10.1048 20.5493 10.683L17.3768 13.773C17.1409 14.0027 17.0333 14.3339 17.0889 14.6584L17.8374 19.0226C17.9775 19.8396 17.12 20.4626 16.3864 20.0767L12.4655 18.0148C12.1741 17.8615 11.8259 17.8615 11.5345 18.0148L7.61363 20.0767C6.88 20.4626 6.02245 19.8396 6.16257 19.0226L6.91109 14.6584C6.96675 14.3339 6.85908 14.0027 6.62321 13.773L3.45068 10.683C2.85708 10.1048 3.18387 9.09696 4.00378 8.97712L8.39037 8.33595C8.71572 8.2884 8.99691 8.08394 9.14245 7.78909L11.1033 3.81663Z"
+                            fill="#FFBD12" />
+                        <path
+                            d="M10.2793 3.23926C11.0712 1.88921 13.0821 1.93422 13.793 3.37402L15.7539 7.34668L20.1406 7.9873L20.292 8.01562C21.7705 8.34222 22.3584 10.1562 21.3525 11.2881L21.2471 11.3994L18.0742 14.4893L18.8232 18.8535L18.8438 19.0059C18.9914 20.5132 17.4474 21.6346 16.0596 21.0283L15.9209 20.9619L12 18.8994L8.0791 20.9619C6.61185 21.7335 4.89652 20.4874 5.17676 18.8535L5.92578 14.4893L2.75293 11.3994C1.56574 10.2431 2.21955 8.22699 3.85938 7.9873L8.24609 7.34668L10.207 3.37402L10.2793 3.23926Z"
+                            stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                            d="M11.1033 3.81663C11.4701 3.07346 12.5299 3.07346 12.8967 3.81663L14.8576 7.78909C15.0031 8.08394 15.2843 8.2884 15.6096 8.33595L19.9962 8.97712C20.8161 9.09696 21.1429 10.1048 20.5493 10.683L17.3768 13.773C17.1409 14.0027 17.0333 14.3339 17.0889 14.6584L17.8374 19.0226C17.9775 19.8396 17.12 20.4626 16.3864 20.0767L12.4655 18.0148C12.1741 17.8615 11.8259 17.8615 11.5345 18.0148L7.61363 20.0767C6.88 20.4626 6.02245 19.8396 6.16257 19.0226L6.91109 14.6584C6.96675 14.3339 6.85908 14.0027 6.62321 13.773L3.45068 10.683C2.85708 10.1048 3.18387 9.09696 4.00378 8.97712L8.39037 8.33595C8.71572 8.2884 8.99691 8.08394 9.14245 7.78909L11.1033 3.81663Z"
+                            fill="#FFBD12" />
+                        <path
+                            d="M10.2793 3.23926C11.0712 1.88921 13.0821 1.93422 13.793 3.37402L15.7539 7.34668L20.1406 7.9873L20.292 8.01562C21.7705 8.34222 22.3584 10.1562 21.3525 11.2881L21.2471 11.3994L18.0742 14.4893L18.8232 18.8535L18.8438 19.0059C18.9914 20.5132 17.4474 21.6346 16.0596 21.0283L15.9209 20.9619L12 18.8994L8.0791 20.9619C6.61185 21.7335 4.89652 20.4874 5.17676 18.8535L5.92578 14.4893L2.75293 11.3994C1.56574 10.2431 2.21955 8.22699 3.85938 7.9873L8.24609 7.34668L10.207 3.37402L10.2793 3.23926Z"
+                            stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                            d="M10.2793 3.23926C11.0712 1.88921 13.0821 1.93422 13.793 3.37402L15.7539 7.34668L20.1406 7.9873C21.7805 8.22699 22.4343 10.2431 21.2471 11.3994L18.0742 14.4893L18.8232 18.8535C19.0947 20.4362 17.4938 21.6548 16.0596 21.0283L15.9209 20.9619L12 18.8994L8.0791 20.9619C6.61185 21.7335 4.89652 20.4874 5.17676 18.8535L5.92578 14.4893L2.75293 11.3994C1.56574 10.2431 2.21955 8.22699 3.85938 7.9873L8.24609 7.34668L10.207 3.37402L10.2793 3.23926Z"
+                            stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </div>
+                <a class="feedback-btn">Send a Feedback</a>
+            </div>
         </div>
-    </div>
     </div>
 
     <button class="proceed-btn" id="finish-transaction-btn">Picked Up All Printed Documents</button>
@@ -181,7 +200,7 @@ SafePrint
             <span class="popup-close" onclick="hidePrintQualityOverlay()">&times;</span>
         </div>
         <hr class="popup-divider">
-        
+
         <div class="print-quality-section">
             <button class="print-quality-error-btn" onclick="reportPrintError()">There is a mistake / error</button>
             <button class="print-quality-success-btn" onclick="confirmAllGood()">All goods!</button>
@@ -189,18 +208,38 @@ SafePrint
     </div>
 </div>
 
+<!-- Same Issue Confirmation Popup (shown when multiple documents selected) -->
+<div class="popup-overlay" id="sameIssueOverlay" style="display:none;">
+    <div class="popup-form popup-form-small">
+        <div class="popup-header">
+            <span class="popup-title">Do these documents share the same issue?</span>
+            <span class="popup-close" onclick="hideSameIssueOverlay()">&times;</span>
+        </div>
+        <hr class="popup-divider">
+
+        <div class="same-issue-section">
+            <div class="same-issue-buttons">
+                <button class="popup-yes-btn" onclick="handleSameIssueYes()">Yes</button>
+                <button class="popup-no-btn" onclick="handleSameIssueNo()">No</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Problem Report Modal -->
+
 <div class="popup-overlay" id="problemReportOverlay" style="display:none;">
     <div class="popup-form">
         <div class="popup-header">
-            <span class="popup-title">Print Error Report Form</span>
+            <span class="popup-title" id="problemReportTitle">Print Error Report Form</span>
             <span class="popup-close" onclick="hideProblemReportOverlay()">&times;</span>
         </div>
         <hr class="popup-divider">
-        
-        <div class="problem-section-modal">
+
+        <!-- Step 1: Document Selection -->
+        <div class="problem-section-modal" id="step-document-selection">
             <div class="problem-subtitle">Choose which document?</div>
-            
+
             <div class="problem-documents-list">
                 <!-- Documents will be populated by JavaScript -->
             </div>
@@ -211,26 +250,27 @@ SafePrint
             </div>
         </div>
 
-        <!-- Second step: Problem type selection (initially hidden) -->
-        <div class="problem-type-section" style="display:none;">
+        <!-- Step 2: Problem Type Selection -->
+        <div class="problem-type-section" id="step-problem-type" style="display:none;">
             <div class="problem-subtitle">What went wrong with your print job?</div>
-            
+
             <div class="problem-type-options">
                 <label class="problem-type-option">
                     <input type="radio" name="problem-type" value="quality" class="problem-type-radio">
                     <span class="problem-type-text">Low Quality / Damage <br>(Smudges, lines, torn, folded paper)</span>
                 </label>
-                
+
                 <label class="problem-type-option">
                     <input type="radio" name="problem-type" value="missing-pages" class="problem-type-radio">
-                    <span class="problem-type-text">Some Pages Missing / Blank <br>(Expected pages were not printed)</span>
+                    <span class="problem-type-text">Some Pages Missing / Blank <br>(Expected pages were not
+                        printed)</span>
                 </label>
-                
+
                 <label class="problem-type-option">
                     <input type="radio" name="problem-type" value="no-print" class="problem-type-radio">
                     <span class="problem-type-text">Whole Document Did Not Print <br>(Nothing came out at all)</span>
                 </label>
-                
+
                 <label class="problem-type-option">
                     <input type="radio" name="problem-type" value="other" class="problem-type-radio">
                     <span class="problem-type-text">Other</span>
@@ -238,46 +278,167 @@ SafePrint
             </div>
 
             <div class="popup-bottom-actions">
-                <button class="popup-cancel-btn" onclick="hideProblemReportOverlay()">Cancel</button>
-                <button class="popup-next-btn" onclick="nextToPageSelection()">Next</button>
+                <button class="popup-cancel-btn" onclick="backToDocumentSelection()">Previous</button>
+                <button class="popup-next-btn" onclick="processProblemType()">Next</button>
             </div>
         </div>
 
-        <!-- Third step: Page selection and description combined (initially hidden, shown only for quality/missing-pages) -->
-        <div class="problem-page-section" style="display:none;">
+        <!-- Step 3a: Low Quality - Page Selection -->
+        <div class="problem-page-section" id="step-low-quality" style="display:none;">
             <div class="problem-subtitle">Did the error affect all pages or only a few?</div>
-            
+
             <div class="page-selection-group">
                 <label class="page-selection-option">
                     <input type="radio" name="page-range" value="all" class="page-range-radio" checked>
                     <span class="page-selection-text">All Pages</span>
                 </label>
-                
+
                 <label class="page-selection-option">
                     <input type="radio" name="page-range" value="specific" class="page-range-radio">
                     <span class="page-selection-text">Specific Pages</span>
                 </label>
-                
-                <input type="text" id="specific-pages-input" class="specific-pages-input" placeholder="1-5" disabled>
+
+                <input type="text" id="specific-pages-input" class="specific-pages-input" placeholder="e.g., 1-5"
+                    disabled>
             </div>
 
             <div class="problem-subtitle" style="margin-top: 1.5em;">Describe the issue:</div>
-            <textarea id="problem-description" class="popup-textarea" placeholder="e.g., Black lines on the right side of the paper (Max 250 characters)" maxlength="250"></textarea>
+            <textarea id="problem-description-quality" class="popup-textarea"
+                placeholder="e.g., Black lines on the right side of the paper (Max 250 characters)"
+                maxlength="250"></textarea>
 
             <div class="popup-bottom-actions">
-                <button class="popup-cancel-btn" onclick="previousToProblemType()">Previous</button>
-                <button class="popup-done-btn" onclick="submitProblemReport()">Submit</button>
+                <button class="popup-cancel-btn" onclick="backToProblemType()">Previous</button>
+                <button class="popup-next-btn" onclick="triggerLowQualityReprint()">Submit</button>
             </div>
         </div>
 
-        <!-- Fourth step: Problem description for types without page selection (initially hidden) -->
-        <div class="problem-form-section" style="display:none;">
+        <!-- Step 3b: Missing Pages - Paper Jam Check -->
+        <div class="problem-missing-section" id="step-missing-pages" style="display:none;">
+            <div class="problem-subtitle">Did you see paper stuck in the machine or were pages just missing?</div>
+
+            <div class="problem-type-options">
+                <label class="problem-type-option">
+                    <input type="radio" name="paper-jam" value="yes" class="paper-jam-radio">
+                    <span class="problem-type-text">Yes, I saw a paper jam</span>
+                </label>
+
+                <label class="problem-type-option">
+                    <input type="radio" name="paper-jam" value="no" class="paper-jam-radio">
+                    <span class="problem-type-text">No, it just skipped / missing</span>
+                </label>
+            </div>
+
+            <div class="popup-bottom-actions">
+                <button class="popup-cancel-btn" onclick="backToProblemType()">Previous</button>
+                <button class="popup-next-btn" onclick="processMissingPagesChoice()">Next</button>
+            </div>
+        </div>
+
+        <!-- Step 3c: Other - Description Only -->
+        <div class="problem-other-section" id="step-other" style="display:none;">
             <div class="problem-subtitle">Describe the issue:</div>
-            <textarea id="problem-description-alt" class="popup-textarea" placeholder="e.g., Black lines on the right side of the paper (Max 250 characters)" maxlength="250"></textarea>
-            
-            <div class="problem-form-actions">
-                <button class="popup-cancel-btn" onclick="previousToProblemType()">Previous</button>
-                <button class="popup-done-btn" onclick="submitProblemReportAlt()">Submit</button>
+            <textarea id="problem-description-other" class="popup-textarea"
+                placeholder="Please describe what went wrong with your print (Max 250 characters)"
+                maxlength="250"></textarea>
+
+            <div class="popup-bottom-actions">
+                <button class="popup-cancel-btn" onclick="backToProblemType()">Previous</button>
+                <button class="popup-next-btn" onclick="goToTicketForm()">Continue</button>
+            </div>
+        </div>
+
+        <!-- Loading Screen -->
+        <div class="problem-loading-section" id="step-loading" style="display:none;">
+            <div class="loading-spinner-container">
+                <div class="loading-spinner"></div>
+                <div class="loading-text" id="loading-main-text">Checking print logs...</div>
+                <div class="loading-subtext" id="loading-sub-text" style="display:none;">Please wait, it might take a
+                    while</div>
+            </div>
+        </div>
+
+        <!-- Reprint Status Screen -->
+        <div class="problem-reprint-section" id="step-reprint-status" style="display:none;">
+            <div class="reprint-status-container">
+                <div class="reprint-status-icon">🖨️</div>
+                <div class="reprint-status-text" id="reprint-status-message">Reprinting document...</div>
+                <div class="reprint-status-details" id="reprint-status-details"></div>
+            </div>
+
+            <div class="popup-bottom-actions">
+                <button class="popup-error-btn" onclick="goToTicketForm()">Still an error</button>
+                <button class="popup-success-btn" onclick="markAsResolved()">All Goods</button>
+            </div>
+        </div>
+
+        <!-- Submit Ticket Form -->
+        <div class="problem-ticket-section" id="step-ticket-form" style="display:none;">
+            <div class="problem-subtitle">Submit a Ticket</div>
+
+            <div class="ticket-form-grid">
+                <div class="ticket-field">
+                    <label>Customer ID</label>
+                    <input type="text" id="ticket-customer-id" readonly>
+                </div>
+                <div class="ticket-field">
+                    <label>Document ID</label>
+                    <input type="text" id="ticket-document-id" readonly>
+                </div>
+            </div>
+
+            <div class="ticket-field full-width">
+                <label>Document Name</label>
+                <input type="text" id="ticket-document-name" readonly>
+            </div>
+
+            <div class="ticket-field full-width">
+                <label>Customer Name <span class="required">*</span></label>
+                <input type="text" id="ticket-customer-name" placeholder="Enter your name" required>
+            </div>
+
+            <div class="ticket-field full-width">
+                <label>Email <span class="required">*</span></label>
+                <input type="email" id="ticket-email" placeholder="Enter your email address" required>
+            </div>
+
+            <div class="ticket-field full-width">
+                <label>Phone Number</label>
+                <input type="tel" id="ticket-phone" placeholder="Enter your phone number (optional)">
+            </div>
+
+            <div class="ticket-field full-width">
+                <label>Describe the Issue <span class="required">*</span></label>
+                <textarea id="ticket-description" class="popup-textarea"
+                    placeholder="Please provide details about the problem (Max 500 characters)"
+                    maxlength="500"></textarea>
+            </div>
+
+            <div class="popup-bottom-actions">
+                <button class="popup-cancel-btn" onclick="backFromTicketForm()">Previous</button>
+                <button class="popup-done-btn" onclick="submitTicketForm()">Submit</button>
+            </div>
+        </div>
+
+        <!-- Ticket Submitted Confirmation -->
+        <div class="problem-success-section" id="step-ticket-success" style="display:none;">
+            <div class="success-container">
+                <div class="success-icon">📋</div>
+                <div class="success-title">We are working on it!</div>
+                <div class="success-message">
+                    Thank you for reporting this issue.<br>
+                    Your ticket number is: <strong id="ticket-number">#TKT-0000</strong><br><br>
+                    Expect an update from the SafePrint team in<br>
+                    both email and kiosk in about <strong>5-10 business days</strong>.
+                </div>
+                <div class="success-illustration">
+                    <img src="{% static 'assets/success-illustration.svg' %}" alt="Success"
+                        onerror="this.style.display='none'">
+                </div>
+            </div>
+
+            <div class="popup-bottom-actions">
+                <button class="popup-done-btn full-width" onclick="finishTicketProcess()">Done</button>
             </div>
         </div>
     </div>

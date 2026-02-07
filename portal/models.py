@@ -265,3 +265,107 @@ class Feedback(models.Model):
     
     class Meta:
         db_table = 'feedback'
+
+
+class SupportTicket(models.Model):
+    """
+    Support ticket for print error reports and customer issues.
+    """
+    PROBLEM_TYPE_CHOICES = [
+        ('quality', 'Low Quality / Damage'),
+        ('missing-pages', 'Some Pages Missing / Blank'),
+        ('no-print', 'Whole Document Did Not Print'),
+        ('other', 'Other'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('in-progress', 'In Progress'),
+        ('resolved', 'Resolved'),
+        ('closed', 'Closed'),
+    ]
+    
+    ticket_number = models.CharField(max_length=20, unique=True, db_index=True)
+    customer_id = models.CharField(max_length=255)
+    document = models.ForeignKey(
+        Document,
+        to_field='doc_id',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='support_tickets'
+    )
+    document_name = models.CharField(max_length=255)
+    
+    # Customer contact info
+    customer_name = models.CharField(max_length=255)
+    email = models.EmailField()
+    phone_number = models.CharField(max_length=20, blank=True, default="")
+    
+    # Issue details
+    problem_type = models.CharField(max_length=50, choices=PROBLEM_TYPE_CHOICES)
+    description = models.TextField()
+    page_range = models.CharField(max_length=20, blank=True, default="all")
+    specific_pages = models.CharField(max_length=100, blank=True, default="")
+    
+    # Reprint tracking
+    was_reprinted = models.BooleanField(default=False)
+    
+    # Status tracking
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='open')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.CharField(max_length=255, blank=True, default="")
+    
+    # Notes for admin
+    admin_notes = models.TextField(blank=True, default="")
+    
+    def save(self, *args, **kwargs):
+        if not self.ticket_number:
+            # Generate ticket number
+            import random
+            import string
+            from django.utils import timezone
+            date_prefix = timezone.now().strftime('%y%m%d')
+            random_suffix = ''.join(random.choices(string.digits, k=4))
+            self.ticket_number = f"#TKT-{date_prefix}-{random_suffix}"
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.ticket_number} - {self.customer_name}"
+    
+    class Meta:
+        db_table = 'support_tickets'
+        ordering = ['-created_at']
+
+
+class DocumentReprintLog(models.Model):
+    """
+    Track reprint attempts for documents (limit to one per document).
+    """
+    document = models.ForeignKey(
+        Document,
+        to_field='doc_id',
+        on_delete=models.CASCADE,
+        related_name='reprint_logs'
+    )
+    reason = models.CharField(max_length=50)  # low-quality, missing-pages-jam, no-print
+    page_range = models.CharField(max_length=20, blank=True, default="all")
+    specific_pages = models.CharField(max_length=100, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    reprinted_at = models.DateTimeField(auto_now_add=True)
+    printer_used = models.ForeignKey(
+        Printer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    success = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"Reprint of {self.document.doc_id} - {self.reason}"
+    
+    class Meta:
+        db_table = 'document_reprint_logs'
+        ordering = ['-reprinted_at']

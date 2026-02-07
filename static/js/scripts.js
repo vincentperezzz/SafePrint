@@ -2,7 +2,7 @@ let uploadedFiles = [];
 let hasProceeded = false;
 let isScanning = false; // Track if any file is being scanned for viruses
 const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
-document.addEventListener("touchstart", function(){}, true);
+document.addEventListener("touchstart", function () { }, true);
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Function to update proceed button visibility and state
     function updateProceedButton() {
-        if (!proceedBtn) return; 
+        if (!proceedBtn) return;
         if (uploadedFiles.length > 0 && !isScanning) {
             proceedBtn.style.display = 'block';
             proceedBtn.disabled = false;
@@ -30,36 +30,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Make drag area clickable to open file browser
     if (dragArea && fileInput) {
-        dragArea.addEventListener('click', function(e) {
+        dragArea.addEventListener('click', function (e) {
             // Prevent click event if the browse button inside the drag area was clicked
             if (e.target.closest('.browse-btn')) return;
-            
+
             // Trigger file input click
             fileInput.click();
         });
-        
+
         // Add pointer cursor to show it's clickable
         dragArea.style.cursor = 'pointer';
     }
 
     if (fileInput && browseBtn) {
 
-        browseBtn.addEventListener('click', function() {
+        browseBtn.addEventListener('click', function () {
             fileInput.click();
         });
 
-        fileInput.addEventListener('change', function() {
+        fileInput.addEventListener('change', function () {
             const files = Array.from(fileInput.files);
             handleFiles(files);
             fileInput.value = '';
         });
-    } 
+    }
 
     const dragOverlay = document.getElementById('drag-overlay');
     let dragCounter = 0;
-    
+
     if (dragOverlay) {
-        document.addEventListener('dragenter', function(e) {
+        document.addEventListener('dragenter', function (e) {
             if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
                 dragCounter++;
                 dragOverlay.style.display = 'block';
@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        document.addEventListener('dragover', function(e) {
+        document.addEventListener('dragover', function (e) {
             if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
                 e.preventDefault();
                 dragOverlay.style.display = 'block';
@@ -75,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        document.addEventListener('dragleave', function(e) {
+        document.addEventListener('dragleave', function (e) {
             if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
                 dragCounter--;
                 if (dragCounter <= 0) {
@@ -86,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        document.addEventListener('drop', function(e) {
+        document.addEventListener('drop', function (e) {
             if (e.dataTransfer && e.dataTransfer.files.length > 0) {
                 e.preventDefault();
                 dragOverlay.style.display = 'none';
@@ -96,13 +96,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        window.addEventListener('mouseleave', function() {
+        window.addEventListener('mouseleave', function () {
             dragOverlay.style.display = 'none';
             if (dragArea) dragArea.classList.remove('dragover');
             dragCounter = 0;
         });
     }
-    
+
     function handleFiles(files) {
         // Accept unlimited number of PDF files, add to existing
         for (let file of files) {
@@ -148,7 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Add pause/resume event listener
         const pauseIcon = fileElement.querySelector('.pause-icon');
         if (pauseIcon) {
-            pauseIcon.addEventListener('click', function() {
+            pauseIcon.addEventListener('click', function () {
                 if (!uploadPaused[fileId]) {
                     // Pause: abort the xhr, mark as paused
                     if (uploadXhrs[fileId]) {
@@ -178,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Get CSRF token
         const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-                         document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
         if (csrfToken) {
             formData.append('csrfmiddlewaretoken', csrfToken);
         }
@@ -190,14 +190,14 @@ document.addEventListener('DOMContentLoaded', () => {
         xhr.timeout = 30 * 60 * 1000;
 
         // Track upload progress
-        xhr.upload.addEventListener('progress', function(e) {
+        xhr.upload.addEventListener('progress', function (e) {
             if (e.lengthComputable) {
                 const percentComplete = (e.loaded / e.total) * 100;
                 updateUploadProgress(fileId, percentComplete);
             }
         });
 
-        xhr.addEventListener('load', function() {
+        xhr.addEventListener('load', function () {
             // Stop the scanning animation regardless of response
             const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
             const progressBar = fileElement?.querySelector('.progress');
@@ -243,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 failedUploads[fileId] = file;
             }
         });
-        xhr.addEventListener('error', function() {
+        xhr.addEventListener('error', function () {
             updateFileStatus(fileId, 'error', file.name);
             failedUploads[fileId] = file;
             isScanning = false;
@@ -252,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
             delete uploadPaused[fileId];
         });
 
-        xhr.addEventListener('timeout', function() {
+        xhr.addEventListener('timeout', function () {
             updateFileStatus(fileId, 'error', file.name);
             failedUploads[fileId] = file;
             alert(`Upload of "${file.name}" timed out. Please try again.`);
@@ -293,50 +293,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return fileDiv;
     }
-    
-    function updateUploadProgress(fileId, percentComplete) {
-    const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
-    if (fileElement) {
-        const progressBar = fileElement.querySelector('.progress');
-        const progressBarContainer = fileElement.querySelector('.progress-bar');
-        const sizeSpan = fileElement.querySelector('.file-size');
-        const remainingTime = Math.max(0, Math.round((100 - percentComplete) * 0.3)); // Rough estimate
 
-        if (percentComplete < 100) {
-            // Normal upload progress
-            if (progressBar) {
-                progressBar.style.width = percentComplete + '%';
-                progressBar.classList.remove('scanning-pulse');
-                // Remove custom loading bar if present
-                const customBar = progressBarContainer?.querySelector('.loading-bar');
-                if (customBar) customBar.remove();
+    function updateUploadProgress(fileId, percentComplete) {
+        const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileElement) {
+            const progressBar = fileElement.querySelector('.progress');
+            const progressBarContainer = fileElement.querySelector('.progress-bar');
+            const sizeSpan = fileElement.querySelector('.file-size');
+            const remainingTime = Math.max(0, Math.round((100 - percentComplete) * 0.3)); // Rough estimate
+
+            if (percentComplete < 100) {
+                // Normal upload progress
+                if (progressBar) {
+                    progressBar.style.width = percentComplete + '%';
+                    progressBar.classList.remove('scanning-pulse');
+                    // Remove custom loading bar if present
+                    const customBar = progressBarContainer?.querySelector('.loading-bar');
+                    if (customBar) customBar.remove();
+                }
+                sizeSpan.textContent = `${Math.round(percentComplete)}% • ${remainingTime} seconds remaining`;
+            } else {
+                // At 100%, show scanning message and custom loading bar
+                sizeSpan.textContent = `Scanning for viruses...`;
+                if (progressBar) {
+                    progressBar.style.width = '100%';
+                    progressBar.classList.remove('scanning-pulse');
+                    progressBar.style.display = 'none';
+                }
+                // Only add the custom loading bar if not already present
+                if (progressBarContainer && !progressBarContainer.querySelector('.loading-bar')) {
+                    const loadingBar = document.createElement('div');
+                    loadingBar.className = 'loading-bar';
+                    progressBarContainer.appendChild(loadingBar);
+                }
+                isScanning = true;
+                updateProceedButton();
             }
-            sizeSpan.textContent = `${Math.round(percentComplete)}% • ${remainingTime} seconds remaining`;
-        } else {
-            // At 100%, show scanning message and custom loading bar
-            sizeSpan.textContent = `Scanning for viruses...`;
-            if (progressBar) {
-                progressBar.style.width = '100%';
-                progressBar.classList.remove('scanning-pulse');
-                progressBar.style.display = 'none';
-            }
-            // Only add the custom loading bar if not already present
-            if (progressBarContainer && !progressBarContainer.querySelector('.loading-bar')) {
-                const loadingBar = document.createElement('div');
-                loadingBar.className = 'loading-bar';
-                progressBarContainer.appendChild(loadingBar);
-            }
-            isScanning = true;
-            updateProceedButton();
         }
-    }
     }
 
     function updateFileStatus(fileId, status, fileName, fileSize = '') {
         const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
         if (fileElement) {
             fileElement.className = `file upload-${status}`;
-            
+
             if (status === 'completed') {
                 fileElement.innerHTML = `
                     <div class="file-rows">
@@ -370,28 +370,28 @@ document.addEventListener('DOMContentLoaded', () => {
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }    
-    
+    }
+
     // Global functions for file management
-    window.removeFile = function(fileId) {
+    window.removeFile = function (fileId) {
         const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
         if (fileElement) {
             // Find the file in uploadedFiles array to get the server path
             const fileToRemove = uploadedFiles.find(file => file.id === fileId);
-            
+
             if (fileToRemove && fileToRemove.serverPath) {
                 // Get CSRF token
-                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
-                                 document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-                
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                    document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
                 const headers = {
                     'Content-Type': 'application/json',
                 };
-                
+
                 if (csrfToken) {
                     headers['X-CSRFToken'] = csrfToken;
                 }
-                
+
                 // Call backend to delete the file from server
                 fetch('/api/delete-file/', {
                     method: 'POST',
@@ -400,19 +400,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         file_path: fileToRemove.serverPath
                     })
                 })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        console.log('File deleted from server successfully');
-                    } else {
-                        console.error('Failed to delete file from server:', data.error);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error deleting file from server:', error);
-                });
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            console.log('File deleted from server successfully');
+                        } else {
+                            console.error('Failed to delete file from server:', data.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error deleting file from server:', error);
+                    });
             }
-            
+
             // Remove from UI and local array
             fileElement.remove();
             uploadedFiles = uploadedFiles.filter(file => file.id !== fileId);
@@ -420,7 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    window.retryUpload = function(fileId) {
+    window.retryUpload = function (fileId) {
         // Retry upload using the original file object if available
         const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
         if (fileElement) {
@@ -433,7 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    window.cancelUpload = function(fileId) {
+    window.cancelUpload = function (fileId) {
         // Cancel ongoing upload
         const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
         if (fileElement) {
@@ -443,7 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle proceed button click
     if (proceedBtn) {
-        proceedBtn.addEventListener('click', function() {
+        proceedBtn.addEventListener('click', function () {
             hasProceeded = true;
             // Show loading overlay immediately after clicking proceed
             const overlay = document.getElementById('loading-overlay');
@@ -464,34 +464,34 @@ document.addEventListener('DOMContentLoaded', () => {
                     },
                     body: JSON.stringify({ files: filePaths, original_names: originalNames })
                 })
-                .then(res => res.json())
-                .then(data => {
-                    if (!data.success && data.reason) {
-                        // Show a detailed alert for the user
-                        let msg = "ERROR:\n";
-                        data.reason.forEach(err => {
-                            msg += `• ${err.file} » ${err.reason}\n`;
-                        });
-                        msg += "\nIf need further help please approach to our store personnel.";
-                        alert(msg); // Or use your custom alert system
+                    .then(res => res.json())
+                    .then(data => {
+                        if (!data.success && data.reason) {
+                            // Show a detailed alert for the user
+                            let msg = "ERROR:\n";
+                            data.reason.forEach(err => {
+                                msg += `• ${err.file} » ${err.reason}\n`;
+                            });
+                            msg += "\nIf need further help please approach to our store personnel.";
+                            alert(msg); // Or use your custom alert system
+                            if (overlay) overlay.style.display = 'none';
+                            return; // Stop further processing
+                        }
+                        if (data.success) {
+                            // Store document metadata in sessionStorage for preview
+                            sessionStorage.setItem('documents', JSON.stringify(data.documents));
+                            sessionStorage.setItem('customer_id', data.customer_id);
+                            // Redirect to upload.html for preview
+                            window.location.href = proceedBtn.getAttribute('data-url');
+                        } else {
+                            // Hide overlay if error
+                            if (overlay) overlay.style.display = 'none';
+                            alert('Failed to process documents: ' + data.error);
+                        }
+                    })
+                    .catch(() => {
                         if (overlay) overlay.style.display = 'none';
-                        return; // Stop further processing
-                    }
-                    if (data.success) {
-                        // Store document metadata in sessionStorage for preview
-                        sessionStorage.setItem('documents', JSON.stringify(data.documents));
-                        sessionStorage.setItem('customer_id', data.customer_id);
-                        // Redirect to upload.html for preview
-                        window.location.href = proceedBtn.getAttribute('data-url');
-                    } else {
-                        // Hide overlay if error
-                        if (overlay) overlay.style.display = 'none';
-                        alert('Failed to process documents: ' + data.error);
-                    }
-                })
-                .catch(() => {
-                    if (overlay) overlay.style.display = 'none';
-                });
+                    });
             } else {
                 // Hide overlay if no files
                 if (overlay) overlay.style.display = 'none';
@@ -502,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Handle confirmation button click (save all current settings to backend)
     const confirmBtn = document.getElementById('to-confirmation');
     if (confirmBtn) {
-        confirmBtn.addEventListener('click', function() {
+        confirmBtn.addEventListener('click', function () {
             hasProceeded = true;
             // Show loading overlay immediately after clicking confirm
             var overlay = document.getElementById('loading-overlay');
@@ -564,18 +564,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify({ updates })
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = confirmBtn.getAttribute('data-url');
-                } else {
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.href = confirmBtn.getAttribute('data-url');
+                    } else {
+                        if (overlay) overlay.style.display = 'none';
+                        alert('Failed to update settings: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(() => {
                     if (overlay) overlay.style.display = 'none';
-                    alert('Failed to update settings: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(() => {
-                if (overlay) overlay.style.display = 'none';
-            });
+                });
         });
     }
 
@@ -583,7 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Make the navbar sticky on top when scrolling
     const navbar = document.querySelector(".navbar");
-    
+
     const handleScroll = () => {
         if (window.scrollY > 0) {
             navbar.classList.add("scrolled");
@@ -598,7 +598,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial check in case the page is loaded with scroll
     handleScroll();
 
-    
+
     // Hamburger Menu Toggle (for mobile view)
     const hamburger = document.querySelector('.hamburger');
     const menu = document.querySelector('.menu');
@@ -628,14 +628,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (card.classList.contains('active')) {
                 // If the card is already active, deactivate it
                 card.classList.remove('active');
-                content.style.maxHeight = null; 
+                content.style.maxHeight = null;
                 toggleIcon.style.transform = 'rotate(0deg)';
                 card.blur();
             } else {
                 // Activate the clicked card
                 card.classList.add('active');
                 content.style.maxHeight = content.scrollHeight + 'px';
-                toggleIcon.style.transform = 'rotate(45deg)'; 
+                toggleIcon.style.transform = 'rotate(45deg)';
             }
         });
     });
@@ -670,10 +670,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const allPagesRadio = document.querySelector('input[value="all"]');
     const pageInput = document.querySelector('.page-input');
 
-    if(specificPagesRadio){
+    if (specificPagesRadio) {
         specificPagesRadio.addEventListener('change', () => {
             if (specificPagesRadio.checked) {
-                pageInput.disabled = false; 
+                pageInput.disabled = false;
                 pageInput.focus();
             }
         });
@@ -682,8 +682,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (allPagesRadio) {
         allPagesRadio.addEventListener('change', () => {
             if (allPagesRadio.checked) {
-                pageInput.disabled = true; 
-                pageInput.value = ''; 
+                pageInput.disabled = true;
+                pageInput.value = '';
             }
         });
     }
@@ -693,19 +693,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (grayscaleToggle) {
         grayscaleToggle.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
-                grayscaleToggle.checked = !grayscaleToggle.checked; 
-                grayscaleToggle.dispatchEvent(new Event('change')); 
+                grayscaleToggle.checked = !grayscaleToggle.checked;
+                grayscaleToggle.dispatchEvent(new Event('change'));
             }
         });
     }
-    
+
     const feedbackForm = document.getElementById('feedback-form');
     if (feedbackForm) {
-        feedbackForm.addEventListener('submit', function(e) {
+        feedbackForm.addEventListener('submit', function (e) {
             e.preventDefault();
             const form = e.target;
             const formData = new FormData(form);
-    
+
             fetch("/api/feedback/", {
                 method: "POST",
                 headers: {
@@ -714,15 +714,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: formData
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.reload();
-                }
-            });
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    }
+                });
         });
     }
-    
+
     if (typeof LoginError !== 'undefined' && LoginError) {
         createAlert(
             "Error",           // title
@@ -778,10 +778,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Page range radio button listeners
     const pageRangeRadios = document.querySelectorAll('.page-range-radio');
     const specificPagesInput = document.getElementById('specific-pages-input');
-    
+
     if (pageRangeRadios.length > 0 && specificPagesInput) {
         pageRangeRadios.forEach(radio => {
-            radio.addEventListener('change', function() {
+            radio.addEventListener('change', function () {
                 if (this.value === 'specific') {
                     specificPagesInput.disabled = false;
                     specificPagesInput.focus();
@@ -797,11 +797,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Smooth scroll for anchor links
 document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function(e) {
+    anchor.addEventListener('click', function (e) {
         e.preventDefault();
         const targetId = this.getAttribute('href').substring(1);
         const targetElement = document.getElementById(targetId);
-        
+
         if (targetElement) {
             targetElement.scrollIntoView({
                 behavior: 'smooth'
@@ -877,7 +877,7 @@ function createAlert(title, summary, details, severity, dismissible, autoDismiss
         }).appendTo(msg);
     }
 
-    $(document).on('click', '.alert .close', function() {
+    $(document).on('click', '.alert .close', function () {
         $(this).closest('.alert').remove();
     });
 
@@ -934,7 +934,7 @@ function renderUploadedDocumentsPreview() {
                 <img src="/static/assets/pdf-icon.svg" alt="PDF Icon" class="file-icon">
                 <div class="file-title">
                     <span class="file-name">${doc.filename}</span>
-                    <span class="file-size">${(doc.file_size/1024).toFixed(1)} KB</span>
+                    <span class="file-size">${(doc.file_size / 1024).toFixed(1)} KB</span>
                 </div> 
                 <img src="/static/assets/delete-icon.svg" alt="Delete Icon" class="delete-icon">
             </div>
@@ -1065,31 +1065,31 @@ function renderUploadedDocumentsPreview() {
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-                                       document.querySelector('meta[name=csrf-token]')?.getAttribute('content'),
+                            document.querySelector('meta[name=csrf-token]')?.getAttribute('content'),
                     },
                     body: JSON.stringify({
                         doc_id: doc.doc_id,
                         session_key: window.sessionKey
                     })
                 })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        fileDiv.remove();
-                        const updatedDocs = docs.filter(d => d.doc_id !== doc.doc_id);
-                        sessionStorage.setItem('documents', JSON.stringify(updatedDocs));
-                        if (updatedDocs.length === 0) {
-                            window.location.href = '/';
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            fileDiv.remove();
+                            const updatedDocs = docs.filter(d => d.doc_id !== doc.doc_id);
+                            sessionStorage.setItem('documents', JSON.stringify(updatedDocs));
+                            if (updatedDocs.length === 0) {
+                                window.location.href = '/';
+                            } else {
+                                renderUploadedDocumentsPreview();
+                            }
                         } else {
-                            renderUploadedDocumentsPreview();
+                            alert('Failed to delete document: ' + (data.error || 'Unknown error'));
                         }
-                    } else {
-                        alert('Failed to delete document: ' + (data.error || 'Unknown error'));
-                    }
-                })
-                .catch(() => {
-                    alert('Failed to communicate with server.');
-                });
+                    })
+                    .catch(() => {
+                        alert('Failed to communicate with server.');
+                    });
             });
         }
         // Grayscale switch
@@ -1122,7 +1122,7 @@ function renderUploadedDocumentsPreview() {
         const specificPagesRadio = fileDiv.querySelector('input[value="specific-pages"]');
         const allPagesRadio = fileDiv.querySelector('input[value="all"]');
         const pageInput = fileDiv.querySelector('.page-input');
-        
+
         if (specificPagesRadio && pageInput) {
             specificPagesRadio.addEventListener('change', () => {
                 if (specificPagesRadio.checked) {
@@ -1144,80 +1144,169 @@ function renderUploadedDocumentsPreview() {
 }
 
 // Hide loading overlay on DOMContentLoaded
-window.addEventListener('DOMContentLoaded', function() {
+window.addEventListener('DOMContentLoaded', function () {
     var overlay = document.getElementById('loading-overlay');
     if (overlay) overlay.style.display = 'none';
 });
 
-// Problem Report Modal Functions
+// ============================================================
+// PROBLEM REPORT WORKFLOW - Complete Implementation
+// ============================================================
+
+// State management for problem report workflow
+window.problemReportState = {
+    selectedDocs: [],
+    currentDocIndex: 0,
+    isIndividualMode: false,
+    problemType: null,
+    description: '',
+    pageRange: 'all',
+    specificPages: '',
+    hasReprinted: false,
+    previousStep: null,
+    loadingTimeout: null
+};
+
+// Get CSRF token
+function getCsrfToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1] || '';
+}
+
+// Hide all step sections
+function hideAllSteps() {
+    const steps = [
+        'step-document-selection',
+        'step-problem-type',
+        'step-low-quality',
+        'step-missing-pages',
+        'step-other',
+        'step-loading',
+        'step-reprint-status',
+        'step-ticket-form',
+        'step-ticket-success'
+    ];
+    steps.forEach(stepId => {
+        const el = document.getElementById(stepId);
+        if (el) el.style.display = 'none';
+    });
+}
+
+// Show a specific step
+function showStep(stepId) {
+    hideAllSteps();
+    const el = document.getElementById(stepId);
+    if (el) el.style.display = 'block';
+}
+
+// Show Problem Report Overlay
 function showProblemReportOverlay() {
     const overlay = document.getElementById('problemReportOverlay');
     if (!overlay) return;
-    
+
+    // Reset state
+    window.problemReportState = {
+        selectedDocs: [],
+        currentDocIndex: 0,
+        isIndividualMode: false,
+        problemType: null,
+        description: '',
+        pageRange: 'all',
+        specificPages: '',
+        hasReprinted: false,
+        previousStep: null,
+        loadingTimeout: null
+    };
+
     overlay.style.display = 'flex';
+    showStep('step-document-selection');
     populateDocumentsList();
+    updateTitle('Print Error Report Form');
 }
 
+// Hide Problem Report Overlay
 function hideProblemReportOverlay() {
     const overlay = document.getElementById('problemReportOverlay');
     if (overlay) {
         overlay.style.display = 'none';
-        // Reset form
-        document.getElementById('problem-description').value = '';
-        const altDescription = document.getElementById('problem-description-alt');
-        if (altDescription) altDescription.value = '';
-        document.getElementById('specific-pages-input').value = '';
-        document.querySelectorAll('.problem-doc-checkbox').forEach(checkbox => {
-            checkbox.checked = false;
-        });
-        document.querySelectorAll('.problem-type-radio').forEach(radio => {
-            radio.checked = false;
-        });
-        document.querySelectorAll('.page-range-radio').forEach(radio => {
-            if (radio.value === 'all') radio.checked = true;
-            else radio.checked = false;
-        });
-        document.getElementById('specific-pages-input').disabled = true;
-        // Reset to first step
-        document.querySelector('.problem-section-modal').style.display = 'block';
-        document.querySelector('.problem-type-section').style.display = 'none';
-        document.querySelector('.problem-page-section').style.display = 'none';
-        document.querySelector('.problem-form-section').style.display = 'none';
+
+        // Clear loading timeout if any
+        if (window.problemReportState.loadingTimeout) {
+            clearTimeout(window.problemReportState.loadingTimeout);
+        }
+
+        // Reset all form fields
+        resetFormFields();
     }
 }
 
+// Reset all form fields
+function resetFormFields() {
+    // Checkboxes
+    document.querySelectorAll('.problem-doc-checkbox').forEach(cb => cb.checked = false);
+    document.querySelectorAll('.problem-type-radio').forEach(r => r.checked = false);
+    document.querySelectorAll('.page-range-radio').forEach(r => {
+        r.checked = r.value === 'all';
+    });
+    document.querySelectorAll('.paper-jam-radio').forEach(r => r.checked = false);
+
+    // Text inputs
+    const fieldsToReset = [
+        'specific-pages-input',
+        'problem-description-quality',
+        'problem-description-other',
+        'ticket-customer-name',
+        'ticket-email',
+        'ticket-phone',
+        'ticket-description'
+    ];
+    fieldsToReset.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
+    const specificPagesInput = document.getElementById('specific-pages-input');
+    if (specificPagesInput) specificPagesInput.disabled = true;
+}
+
+// Update popup title
+function updateTitle(title) {
+    const titleElement = document.getElementById('problemReportTitle');
+    if (titleElement) {
+        titleElement.textContent = title;
+    }
+}
+
+// Populate documents list
 function populateDocumentsList() {
     const documentsList = document.querySelector('.problem-documents-list');
     if (!documentsList) return;
-    
-    // Clear existing items
+
     documentsList.innerHTML = '';
-    
+
     // Get all unique documents from the confirmation page
     const docRows = document.querySelectorAll('.doc-row');
     const uniqueDocs = new Map();
-    
-    docRows.forEach((row, index) => {
+
+    docRows.forEach(row => {
         const nameElement = row.querySelector('.doc-meta h6');
         const idElement = row.querySelector('.doc-id');
-        
+
         if (nameElement && idElement) {
             const docName = nameElement.textContent.trim();
             const docId = idElement.textContent.trim();
-            const docKey = docId; 
-            
-            if (!uniqueDocs.has(docKey)) {
-                uniqueDocs.set(docKey, { name: docName, id: docId });
+
+            if (!uniqueDocs.has(docId)) {
+                uniqueDocs.set(docId, { name: docName, id: docId });
             }
         }
     });
-    
-    // Render documents with checkboxes
+
     if (uniqueDocs.size === 0) {
         documentsList.innerHTML = '<div class="no-documents-msg">No documents found.</div>';
         return;
     }
-    
+
     uniqueDocs.forEach((doc, docId) => {
         const docElement = document.createElement('div');
         docElement.className = 'problem-doc-row';
@@ -1228,203 +1317,486 @@ function populateDocumentsList() {
                 <div class="problem-doc-id">${docId}</div>
             </div>
         `;
-        
         documentsList.appendChild(docElement);
     });
 }
 
+// Step 1: Next from document selection
 function nextProblemStep() {
     const selectedCheckboxes = document.querySelectorAll('.problem-doc-checkbox:checked');
-    
+
     if (selectedCheckboxes.length === 0) {
         alert('Please select at least one document.');
         return;
     }
-    
-    // Hide document selection, show problem type selection
-    document.querySelector('.problem-section-modal').style.display = 'none';
-    document.querySelector('.problem-type-section').style.display = 'block';
-}
 
-function nextToPageSelection() {
-    const selectedType = document.querySelector('.problem-type-radio:checked');
-    
-    if (!selectedType) {
-        alert('Please select a problem type.');
-        return;
-    }
-    
-    // Check if page selection is needed (quality or missing-pages)
-    if (selectedType.value === 'quality' || selectedType.value === 'missing-pages') {
-        // Show combined page selection and description step
-        document.querySelector('.problem-type-section').style.display = 'none';
-        document.querySelector('.problem-page-section').style.display = 'block';
-    } else {
-        // Show description only for other types
-        document.querySelector('.problem-type-section').style.display = 'none';
-        document.querySelector('.problem-form-section').style.display = 'block';
-    }
-}
-
-function previousToProblemType() {
-    document.querySelector('.problem-page-section').style.display = 'none';
-    document.querySelector('.problem-form-section').style.display = 'none';
-    document.querySelector('.problem-type-section').style.display = 'block';
-}
-
-function submitProblemReportAlt() {
-    const selectedCheckboxes = document.querySelectorAll('.problem-doc-checkbox:checked');
-    const selectedType = document.querySelector('.problem-type-radio:checked');
-    const description = document.getElementById('problem-description-alt').value.trim();
-    
-    if (selectedCheckboxes.length === 0) {
-        alert('Please select at least one document.');
-        return;
-    }
-    
-    if (!selectedType) {
-        alert('Please select a problem type.');
-        return;
-    }
-    
-    if (!description) {
-        alert('Please describe the issue.');
-        return;
-    }
-    
-    // Collect selected document data
-    const selectedDocs = [];
+    // Store selected documents
+    window.problemReportState.selectedDocs = [];
     selectedCheckboxes.forEach(checkbox => {
-        selectedDocs.push({
+        window.problemReportState.selectedDocs.push({
             doc_id: checkbox.value,
             doc_name: checkbox.dataset.docname
         });
     });
-    
-    // Get customer ID from the page
-    const customerIdElement = document.querySelector('.customer-id-value');
-    const customerId = customerIdElement ? customerIdElement.textContent.trim() : 'Unknown';
-    
-    // Prepare data to send to backend
-    const reportData = {
-        customer_id: customerId,
-        selected_documents: selectedDocs,
-        problem_type: selectedType.value,
-        description: description
-    };
-    
-    // Send to backend
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
-                      document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
-    
-    fetch('/api/submit-problem-report/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrfToken || ''
-        },
-        body: JSON.stringify(reportData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('Problem report submitted successfully!');
-            hideProblemReportOverlay();
-        } else {
-            alert('Error submitting report: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred while submitting the report.');
-    });
-}
 
-function submitProblemReport() {
-    const selectedCheckboxes = document.querySelectorAll('.problem-doc-checkbox:checked');
-    const selectedType = document.querySelector('.problem-type-radio:checked');
-    const description = document.getElementById('problem-description').value.trim();
-    const pageRangeRadio = document.querySelector('.page-range-radio:checked');
-    const specificPagesInput = document.getElementById('specific-pages-input');
-    
-    if (selectedCheckboxes.length === 0) {
-        alert('Please select at least one document.');
+    // If multiple documents selected, ask if they share the same issue
+    if (selectedCheckboxes.length > 1) {
+        hideProblemReportOverlay();
+        document.getElementById('sameIssueOverlay').style.display = 'flex';
         return;
     }
-    
+
+    // Single document - proceed to problem type
+    proceedToProblemTypeStep();
+}
+
+// Same Issue Popup handlers
+function hideSameIssueOverlay() {
+    document.getElementById('sameIssueOverlay').style.display = 'none';
+    document.getElementById('problemReportOverlay').style.display = 'flex';
+}
+
+function handleSameIssueYes() {
+    // All documents share the same issue - single report flow
+    document.getElementById('sameIssueOverlay').style.display = 'none';
+    document.getElementById('problemReportOverlay').style.display = 'flex';
+    window.problemReportState.isIndividualMode = false;
+    proceedToProblemTypeStep();
+}
+
+function handleSameIssueNo() {
+    // Different issues - loop through each document
+    document.getElementById('sameIssueOverlay').style.display = 'none';
+    document.getElementById('problemReportOverlay').style.display = 'flex';
+    window.problemReportState.isIndividualMode = true;
+    window.problemReportState.currentDocIndex = 0;
+    showCurrentDocumentReport();
+}
+
+// Show report form for current document in queue
+function showCurrentDocumentReport() {
+    const state = window.problemReportState;
+
+    if (state.currentDocIndex >= state.selectedDocs.length) {
+        // All documents processed
+        alert('All problem reports have been submitted. Thank you for letting us know!');
+        hideProblemReportOverlay();
+        return;
+    }
+
+    const currentDoc = state.selectedDocs[state.currentDocIndex];
+    updateTitle(`Print Error Report Form for ${currentDoc.doc_name}`);
+
+    // Reset form for this document
+    resetFormFields();
+    state.hasReprinted = false;
+
+    proceedToProblemTypeStep();
+}
+
+// Proceed to problem type step
+function proceedToProblemTypeStep() {
+    showStep('step-problem-type');
+    window.problemReportState.previousStep = 'step-document-selection';
+}
+
+// Back to document selection
+function backToDocumentSelection() {
+    if (window.problemReportState.isIndividualMode) {
+        // In individual mode, going back closes the flow
+        hideProblemReportOverlay();
+    } else {
+        showStep('step-document-selection');
+    }
+}
+
+// Back to problem type
+function backToProblemType() {
+    showStep('step-problem-type');
+}
+
+// Process problem type selection
+function processProblemType() {
+    const selectedType = document.querySelector('.problem-type-radio:checked');
+
     if (!selectedType) {
         alert('Please select a problem type.');
         return;
     }
-    
-    // Validate specific pages if that option is selected
+
+    window.problemReportState.problemType = selectedType.value;
+
+    switch (selectedType.value) {
+        case 'quality':
+            showStep('step-low-quality');
+            break;
+        case 'missing-pages':
+            showStep('step-missing-pages');
+            break;
+        case 'no-print':
+            // Immediately check logs for "no print" case
+            checkPrintLogsAndProcess();
+            break;
+        case 'other':
+            showStep('step-other');
+            break;
+    }
+}
+
+// Low Quality: Trigger reprint
+function triggerLowQualityReprint() {
+    const pageRangeRadio = document.querySelector('.page-range-radio:checked');
+    const specificPagesInput = document.getElementById('specific-pages-input');
+    const description = document.getElementById('problem-description-quality').value.trim();
+
     if (pageRangeRadio && pageRangeRadio.value === 'specific' && !specificPagesInput.value.trim()) {
         alert('Please specify which pages were affected.');
         specificPagesInput.focus();
         return;
     }
-    
+
     if (!description) {
         alert('Please describe the issue.');
-        document.getElementById('problem-description').focus();
+        document.getElementById('problem-description-quality').focus();
         return;
     }
-    
-    // Collect selected document data
-    const selectedDocs = [];
-    selectedCheckboxes.forEach(checkbox => {
-        selectedDocs.push({
-            doc_id: checkbox.value,
-            doc_name: checkbox.dataset.docname
-        });
-    });
-    
-    // Get customer ID from the page
-    const customerIdElement = document.querySelector('.customer-id-value');
-    const customerId = customerIdElement ? customerIdElement.textContent.trim() : 'Unknown';
-    
-    // Prepare data to send to backend
-    const reportData = {
-        customer_id: customerId,
-        selected_documents: selectedDocs,
-        problem_type: selectedType.value,
-        description: description
-    };
-    
-    // Add page range info if applicable
-    if (pageRangeRadio) {
-        reportData.page_range = pageRangeRadio.value;
-        if (pageRangeRadio.value === 'specific' && specificPagesInput.value.trim()) {
-            reportData.specific_pages = specificPagesInput.value.trim();
-        }
+
+    // Store values
+    window.problemReportState.pageRange = pageRangeRadio ? pageRangeRadio.value : 'all';
+    window.problemReportState.specificPages = specificPagesInput.value.trim();
+    window.problemReportState.description = description;
+
+    // Trigger reprint
+    triggerReprint('low-quality');
+}
+
+// Missing Pages: Process user choice
+function processMissingPagesChoice() {
+    const paperJamRadio = document.querySelector('.paper-jam-radio:checked');
+
+    if (!paperJamRadio) {
+        alert('Please select an option.');
+        return;
     }
-    
-    // Send to backend (you'll need to create this endpoint)
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
-                      document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
-    
-    fetch('/api/submit-problem-report/', {
+
+    if (paperJamRadio.value === 'yes') {
+        // Paper jam - check logs and reprint
+        showLoadingScreen('Checking print logs...');
+        callCheckLogsAPI('missing-pages-jam');
+    } else {
+        // No jam - go directly to ticket
+        window.problemReportState.description = 'Pages missing - no paper jam observed';
+        goToTicketForm();
+    }
+}
+
+// Check print logs and process
+function checkPrintLogsAndProcess() {
+    showLoadingScreen('Checking print logs...');
+    callCheckLogsAPI('no-print');
+}
+
+// Show loading screen
+function showLoadingScreen(message) {
+    showStep('step-loading');
+    document.getElementById('loading-main-text').textContent = message;
+    document.getElementById('loading-sub-text').style.display = 'none';
+
+    // Show "please wait" message after 3 seconds
+    window.problemReportState.loadingTimeout = setTimeout(() => {
+        document.getElementById('loading-sub-text').style.display = 'block';
+    }, 3000);
+}
+
+// Call API to check logs
+function callCheckLogsAPI(reason) {
+    const state = window.problemReportState;
+    const currentDoc = state.isIndividualMode
+        ? state.selectedDocs[state.currentDocIndex]
+        : state.selectedDocs[0];
+
+    fetch('/api/check-print-logs/', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': csrfToken || ''
+            'X-CSRFToken': getCsrfToken()
         },
-        body: JSON.stringify(reportData)
+        body: JSON.stringify({
+            doc_id: currentDoc.doc_id,
+            reason: reason
+        })
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('Problem report submitted successfully. Thank you for letting us know!');
-            hideProblemReportOverlay();
-        } else {
-            alert('Error submitting report: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred while submitting the report.');
-    });
+        .then(response => response.json())
+        .then(data => {
+            clearTimeout(window.problemReportState.loadingTimeout);
+
+            if (data.can_reprint) {
+                // Document can be reprinted
+                triggerReprint(reason);
+            } else {
+                // Cannot reprint - go to ticket form
+                if (data.reason) {
+                    window.problemReportState.description = data.reason;
+                }
+                goToTicketForm();
+            }
+        })
+        .catch(error => {
+            console.error('Error checking logs:', error);
+            clearTimeout(window.problemReportState.loadingTimeout);
+            alert('Error checking print logs. Please try again.');
+            backToProblemType();
+        });
 }
+
+// Trigger reprint API call
+function triggerReprint(reason) {
+    const state = window.problemReportState;
+
+    // Check if already reprinted
+    if (state.hasReprinted) {
+        goToTicketForm();
+        return;
+    }
+
+    showLoadingScreen('Reprinting document...');
+
+    const currentDoc = state.isIndividualMode
+        ? state.selectedDocs[state.currentDocIndex]
+        : state.selectedDocs[0];
+
+    const reprintData = {
+        doc_id: currentDoc.doc_id,
+        reason: reason,
+        page_range: state.pageRange,
+        specific_pages: state.specificPages,
+        description: state.description
+    };
+
+    // For multiple docs in same-issue mode, include all doc IDs
+    if (!state.isIndividualMode && state.selectedDocs.length > 1) {
+        reprintData.doc_ids = state.selectedDocs.map(d => d.doc_id);
+    }
+
+    fetch('/api/trigger-reprint/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify(reprintData)
+    })
+        .then(response => response.json())
+        .then(data => {
+            clearTimeout(window.problemReportState.loadingTimeout);
+            state.hasReprinted = true;
+
+            if (data.success) {
+                showReprintStatus(data.message, data.details || '');
+            } else {
+                alert('Reprint failed: ' + (data.error || 'Unknown error'));
+                goToTicketForm();
+            }
+        })
+        .catch(error => {
+            console.error('Error triggering reprint:', error);
+            clearTimeout(window.problemReportState.loadingTimeout);
+            alert('Error triggering reprint. Please submit a ticket.');
+            goToTicketForm();
+        });
+}
+
+// Show reprint status screen
+function showReprintStatus(message, details) {
+    showStep('step-reprint-status');
+    document.getElementById('reprint-status-message').textContent = message;
+    document.getElementById('reprint-status-details').textContent = details;
+}
+
+// Mark as resolved (All Goods clicked)
+function markAsResolved() {
+    const state = window.problemReportState;
+
+    if (state.isIndividualMode) {
+        // Move to next document
+        state.currentDocIndex++;
+        showCurrentDocumentReport();
+    } else {
+        // Single report - close
+        hideProblemReportOverlay();
+    }
+}
+
+// Go to ticket form
+function goToTicketForm() {
+    showStep('step-ticket-form');
+    prefillTicketForm();
+}
+
+// Prefill ticket form with known data
+function prefillTicketForm() {
+    const state = window.problemReportState;
+    const currentDoc = state.isIndividualMode
+        ? state.selectedDocs[state.currentDocIndex]
+        : state.selectedDocs[0];
+
+    // Customer ID from page
+    const customerIdElement = document.querySelector('.customer-id-value');
+    const customerId = customerIdElement ? customerIdElement.textContent.trim() : '';
+
+    document.getElementById('ticket-customer-id').value = customerId;
+    document.getElementById('ticket-document-id').value = currentDoc.doc_id;
+    document.getElementById('ticket-document-name').value = currentDoc.doc_name;
+
+    // Prefill description if we have one
+    if (state.description) {
+        document.getElementById('ticket-description').value = state.description;
+    }
+}
+
+// Back from ticket form
+function backFromTicketForm() {
+    // Go back to the appropriate step based on problem type
+    switch (window.problemReportState.problemType) {
+        case 'quality':
+            showStep('step-low-quality');
+            break;
+        case 'missing-pages':
+            showStep('step-missing-pages');
+            break;
+        case 'no-print':
+        case 'other':
+        default:
+            showStep('step-problem-type');
+            break;
+    }
+}
+
+// Submit ticket form
+function submitTicketForm() {
+    const customerName = document.getElementById('ticket-customer-name').value.trim();
+    const email = document.getElementById('ticket-email').value.trim();
+    const phoneNumber = document.getElementById('ticket-phone').value.trim();
+    const description = document.getElementById('ticket-description').value.trim();
+
+    if (!customerName) {
+        alert('Please enter your name.');
+        document.getElementById('ticket-customer-name').focus();
+        return;
+    }
+
+    if (!email) {
+        alert('Please enter your email address.');
+        document.getElementById('ticket-email').focus();
+        return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        alert('Please enter a valid email address.');
+        document.getElementById('ticket-email').focus();
+        return;
+    }
+
+    if (!description) {
+        alert('Please describe the issue.');
+        document.getElementById('ticket-description').focus();
+        return;
+    }
+
+    const state = window.problemReportState;
+    const currentDoc = state.isIndividualMode
+        ? state.selectedDocs[state.currentDocIndex]
+        : state.selectedDocs[0];
+
+    // Prepare ticket data
+    const ticketData = {
+        customer_id: document.getElementById('ticket-customer-id').value,
+        document_id: currentDoc.doc_id,
+        document_name: currentDoc.doc_name,
+        customer_name: customerName,
+        email: email,
+        phone_number: phoneNumber,
+        problem_type: state.problemType,
+        description: description,
+        page_range: state.pageRange,
+        specific_pages: state.specificPages,
+        reprinted: state.hasReprinted
+    };
+
+    // For multiple docs in same-issue mode
+    if (!state.isIndividualMode && state.selectedDocs.length > 1) {
+        ticketData.documents = state.selectedDocs;
+    }
+
+    showLoadingScreen('Submitting ticket...');
+
+    fetch('/api/submit-ticket/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify(ticketData)
+    })
+        .then(response => response.json())
+        .then(data => {
+            clearTimeout(window.problemReportState.loadingTimeout);
+
+            if (data.success) {
+                showTicketSuccess(data.ticket_number || '#TKT-0000');
+            } else {
+                alert('Error submitting ticket: ' + (data.error || 'Unknown error'));
+                showStep('step-ticket-form');
+            }
+        })
+        .catch(error => {
+            console.error('Error submitting ticket:', error);
+            clearTimeout(window.problemReportState.loadingTimeout);
+            alert('Error submitting ticket. Please try again.');
+            showStep('step-ticket-form');
+        });
+}
+
+// Show ticket success screen
+function showTicketSuccess(ticketNumber) {
+    showStep('step-ticket-success');
+    document.getElementById('ticket-number').textContent = ticketNumber;
+}
+
+// Finish ticket process
+function finishTicketProcess() {
+    const state = window.problemReportState;
+
+    if (state.isIndividualMode) {
+        // Move to next document
+        state.currentDocIndex++;
+        state.hasReprinted = false;
+        showCurrentDocumentReport();
+    } else {
+        // Single report - close
+        hideProblemReportOverlay();
+    }
+}
+
+// Page range radio button handlers
+document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('change', function (e) {
+        if (e.target.classList.contains('page-range-radio')) {
+            const specificPagesInput = document.getElementById('specific-pages-input');
+            if (specificPagesInput) {
+                if (e.target.value === 'specific') {
+                    specificPagesInput.disabled = false;
+                    specificPagesInput.focus();
+                } else {
+                    specificPagesInput.disabled = true;
+                    specificPagesInput.value = '';
+                }
+            }
+        }
+    });
+});
 
 // Print Quality Overlay Functions
 function showPrintQualityOverlay() {
@@ -1442,14 +1814,11 @@ function hidePrintQualityOverlay() {
 }
 
 function reportPrintError() {
-    // Hide the print quality overlay
     hidePrintQualityOverlay();
-    // Show the problem report overlay
     showProblemReportOverlay();
 }
 
 function confirmAllGood() {
-    // Mark as proceeded and redirect to homepage
     hasProceeded = true;
     hidePrintQualityOverlay();
     var overlay = document.getElementById('loading-overlay');
