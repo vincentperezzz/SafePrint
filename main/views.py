@@ -27,25 +27,40 @@ def upload_view(request):
 
 def confirmation(request):
     customer_id = request.session.get('customer_id')
-    # Get all payments for this customer/session via related Document
-    payments = Payment.objects.filter(doc__customer_id=customer_id)
-    documents = []
-    total_price = 0
 
-    for payment in payments:
-        doc = payment.doc  # Use the related Document
-        documents.append({
-            'name': doc.filename, 
-            'price': payment.price,  # Use 'price' field
-            'doc_id': doc.doc_id,  
+    # Allow test_customer parameter when DEBUG is True
+    from django.conf import settings as django_settings
+    if django_settings.DEBUG and request.GET.get('test_customer'):
+        customer_id = request.GET.get('test_customer')
+        request.session['customer_id'] = customer_id
+
+    if not customer_id:
+        return redirect('home')
+
+    # Get all documents for this customer
+    documents = Document.objects.filter(
+        customer_id=customer_id
+    ).select_related('printer_assigned', 'printed_at').order_by('time_submitted')
+
+    # Get total price from payments
+    payments = Payment.objects.filter(doc__customer_id=customer_id)
+    total_price = sum(p.price for p in payments)
+
+    # Build initial document data for template (will be updated by SSE)
+    docs_list = []
+    for doc in documents:
+        docs_list.append({
+            'doc_id': doc.doc_id,
+            'filename': doc.filename,
+            'doc_status': doc.doc_status,
+            'printer_name': doc.printer_assigned.printer_name if doc.printer_assigned else None,
         })
-        total_price += payment.price
 
     context = {
         'customer_id': customer_id,
-        'documents': documents,
+        'documents': docs_list,
         'total_price': total_price,
-        'stars': range(4), 
+        'stars': range(4),
     }
     return render(request, 'confirmation.html', context)
 
