@@ -20,65 +20,6 @@ Printing Queue
 <div class="dashboard-rows">
     
     <div class="dashboard-left">
-        <div class="pending-document-approvals">
-            <div class="queue-header">
-                <h2>Pending Document Approvals</h2>
-            </div>
-            
-            <div class="pending-document-list" id="pending-list">
-                <div class="list-header">
-                    <div class="queue-search-bar">
-                        <input type="text" id="pending-search" placeholder="Search by Name, Document ID, or Customer ID">
-                        <span class="search-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </span>
-                    </div>
-            
-                    <div class="queue-list-header">
-                        <div class="queue-col doc-name"><b>Document Name</b></div>
-                        <div class="queue-col doc-customer">Customer ID</div>
-                        <div class="queue-col doc-date">Date Submitted</div>
-                        <div class="queue-col doc-id">Document ID</div>
-                        <div class="queue-col doc-actions"></div>
-                    </div>
-                </div>
-
-                {% for doc in pending_documents %}
-                <div class="queue-row" id ="pending-doc-{{ doc.doc_id }}">
-                    <div class="queue-col doc-name">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
-                        <div class="doc-info">
-                            <div class="doc-title" title="{{ doc.filename }}">{{ doc.filename }}</div>
-                            <div class="doc-price">
-                                {% with payment=payments|get_item:doc.doc_id %}
-                                    {% if payment %}
-                                        ₱{{ payment.price }}
-                                    {% else %}
-                                        ₱0.00
-                                    {% endif %}
-                                {% endwith %}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="queue-col doc-customer">#{{ doc.customer_id }}</div>
-                    <div class="queue-col doc-date">{{ doc.time_submitted|date:"Y-m-d h:i:s A" }}</div>
-                    <div class="queue-col doc-id">#{{ doc.doc_id }}</div>
-                    <div class="queue-col doc-actions">
-                        <button class="queue-deny-btn">Deny</button>
-                        <button class="queue-approve-btn">Approve</button>
-                    </div>
-                </div>
-                {% empty %}
-                    <div class="queue-row" id="no-pending-documents-row">
-                        <div class="queue-col" colspan="5">No pending documents.</div>
-                    </div>
-                {% endfor %}
-            </div>
-        </div>
-
         <div class="on-queue-documents">
             <div class="queue-header">
                 <h2>On Queue Documents</h2>
@@ -99,10 +40,8 @@ Printing Queue
                     <div class="on-queue-header">
                         <div class="queue-col doc-name"><b>Document Name</b></div>
                         <div class="queue-col doc-printer">Printer Assigned</div>
-                        <div class="queue-col doc-approved">Approved by</div>
-                        <div class="queue-col doc-id">Document ID</div>
+                        <div class="queue-col doc-status">Status</div>
                         <div class="queue-col doc-customer">Customer ID</div>
-                        <div class="queue-col doc-actions"></div>
                     </div>
                 </div>
 
@@ -147,24 +86,37 @@ Printing Queue
                                 ({{ doc.doc_status }})
                             </div>
                         </div>
-                        <div class="queue-col doc-approved">
-                            {% with payment=payments|get_item:doc.doc_id %}
-                                {% if payment and payment.approved_by %}
-                                    {{ payment.approved_by }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            {% endwith %}
-                        </div>
-                        <div class="queue-col doc-id">#{{ doc.doc_id }}</div>
+                        <div class="queue-col doc-status">{{ doc.doc_status }}</div>
                         <div class="queue-col doc-customer">{{ doc.customer_id }}</div>
-                        <div class="queue-col doc-actions">
-                            <button class="queue-cancel-btn">Cancel</button>
-                        </div>
                     </div>
                     {% empty %}
                         <div class="on-queue-row" id="no-onqueue-documents-row">
-                            <div class="queue-col" colspan="6">No documents in queue.</div>
+                            <div class="queue-col doc-name">
+                                <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
+                                <div class="doc-info">
+                                    <div class="doc-title">Document 1.pdf</div>
+                                    <div class="doc-price">₱30.00</div>
+                                </div>
+                            </div>
+                            <div class="queue-col doc-printer">Printer 2</div>
+                            <div class="queue-col doc-status">Printing</div>
+                            <div class="queue-col doc-customer">#DOC-1001</div>
+                        </div>
+                        <div class="on-queue-row">
+                            <div class="queue-col doc-name">
+                                <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
+                                <div class="doc-info">
+                                    <div class="doc-title">STS Assignment.pdf</div>
+                                    <div class="doc-price">₱15.00</div>
+                                </div>
+                            </div>
+                            <div class="queue-col doc-printer">
+                                Printer 3<br>Printer 1
+                            </div>
+                            <div class="queue-col doc-status">
+                                Error<br>Printing
+                            </div>
+                            <div class="queue-col doc-customer">#DOC-1002</div>
                         </div>
                     {% endfor %}
             </div>
