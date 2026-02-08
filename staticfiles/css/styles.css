@@ -373,6 +373,8 @@ html {
     border-radius: 12px;
     border: 1px solid #000;
     background: #FBB41D;
+    color: #000;
+    -webkit-text-fill-color: #000;
     box-shadow: 0px 4px 0px 0px #18191F;
     font-family: 'Montserrat', sans-serif;
     font-weight: 800;
@@ -491,6 +493,27 @@ html {
     width: 600px;
     height: auto;
     margin-left: 20px;
+    flex-shrink: 0;
+}
+
+/* iPad landscape - keep 2-column card grid */
+@media (max-width: 1240px) and (min-width: 769px) {
+    .card {
+        max-width: calc(50% - 20px);
+        padding: 30px;
+    }
+
+    .card-icon {
+        width: 140px;
+    }
+
+    .card-title {
+        font-size: 1.2rem;
+    }
+
+    .card-description {
+        font-size: 0.85rem;
+    }
 }
 
 /* Responsive styling for smaller resolutions */
@@ -723,6 +746,12 @@ html {
     height: auto;
     z-index: 1;
     pointer-events: none;
+}
+
+@media (max-width: 1240px) {
+    .feedback-illustration {
+        display: none;
+    }
 }
 
 
@@ -1140,15 +1169,15 @@ html {
 
 .doc-meta h6 {
     margin: 0;
-    font-size: 15px;
+    font-size: 13px;
     color: #222;
 }
 
 .doc-id {
     display: block;
     color: #9aa;
-    font-size: 13px;
-    margin-top: 4px;
+    font-size: 11px;
+    margin-top: 3px;
 }
 
 .doc-right {
@@ -1839,8 +1868,9 @@ input:focus::placeholder {
 }
 
 .confirmation-title {
+    font-family: "Space Grotesk", sans-serif;
     font-size: 1.3rem;
-    font-weight: bold;
+    font-weight: 700;
 }
 
 .confirmation-subtitle {
@@ -2375,6 +2405,32 @@ input:focus::placeholder {
     .feedback {
         align-items: center;
     }
+
+    .confirmation-title {
+        font-size: 14px;
+    }
+
+    .confirmation-subtitle {
+        font-size: 12px;
+    }
+
+    .doc-meta h6 {
+        font-size: 12px;
+    }
+
+    .doc-id {
+        font-size: 10px;
+    }
+
+    .badge {
+        font-size: 11px;
+        padding: 4px 8px;
+    }
+
+    .conf-doc-name,
+    .conf-printer-status {
+        font-size: 13px;
+    }
 }
 
 @media (max-width: 1000px) {
@@ -2449,12 +2505,12 @@ input:focus::placeholder {
 
     .file-upload-title,
     .confirmation-title {
-        font-size: 1rem;
+        font-size: 1.5rem;
     }
 
     .file-upload-subtitle,
     .confirmation-subtitle {
-        font-size: 0.8rem;
+        font-size: 1.3rem;
     }
 
     .browse-area,
