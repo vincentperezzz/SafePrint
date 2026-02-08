@@ -18,6 +18,7 @@ urlpatterns = [
     path('api/delete_user_ajax/', views.delete_user_ajax, name='delete_user_ajax'),
     path('api/add_user_ajax/', views.add_user_ajax, name='add_user_ajax'),
     path('api/feedback-comments/', views.feedback_comments_api, name='feedback_comments_api'),
+    path('api/feedback-submit/', views.feedback_submit_api, name='feedback_submit_api'),
     path('api/problem-reports/', views.problem_reports_api, name='problem_reports_api'),
     path('api/update_printer_field/', views.update_printer_field, name='update_printer_field'),
     path('api/add_printer/', views.add_printer, name='add_printer'),
@@ -33,4 +34,7 @@ urlpatterns = [
     path('api/get-notification-prefs/', views.get_notification_prefs, name='get_notification_prefs'),
     path('sse/printer-status/', views.printer_status_stream, name='printer_status_stream'),
     path('sse/dashboard-status/', views.dashboard_status_stream, name='dashboard_status_stream'),
+    path('sse/customer-documents/<str:customer_id>/', views.customer_documents_stream, name='customer_documents_stream'),
+    path('api/picked-up-document/', views.picked_up_document, name='picked_up_document'),
+    path('api/finish-transaction/', views.finish_transaction, name='finish_transaction'),
 ]
