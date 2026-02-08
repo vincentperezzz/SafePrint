@@ -97,7 +97,7 @@ sudo lpadmin -p <old_name> -R printer-info -D "New Printer Name"
 ## Configure Nginx Site
 
 ```bash
-sudo cp /home/safeprint/dev/SafePrint/nginx.conf /etc/nginx/sites-available/nanoprint.com && sudo ln -sf /etc/nginx/sites-available/nanoprint.com /etc/nginx/sites-enabled/nanoprint.com && sudo nginx -t && sudo systemctl reload nginx
+sudo cp /home/safeprint/dev/SafePrint/nginx.conf /etc/nginx/sites-available/safeprint.com && sudo ln -sf /etc/nginx/sites-available/safeprint.com /etc/nginx/sites-enabled/safeprint.com && sudo nginx -t && sudo systemctl reload nginx
 ```
 
 
@@ -106,13 +106,13 @@ To verify that your server supports ChaCha20 encryption and your SSL certificate
 
 #### Check ChaCha20 Cipher Support
 ```bash
-openssl s_client -connect nanoprint.duckdns.org:443 -cipher 'ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305' -tls1_2
+openssl s_client -connect safeprint.duckdns.org:443 -cipher 'ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305' -tls1_2
 ```
 - If the connection is successful and you see a line like `Cipher    : ECDHE-RSA-CHACHA20-POLY1305`, then ChaCha20 is enabled and working.
 
 #### Check SSL Certificate Digital Signature
 ```bash
-openssl s_client -connect nanoprint.duckdns.org:443 -tls1_2
+openssl s_client -connect safeprint.duckdns.org:443 -tls1_2
 ```
 - Look for the `Signature Algorithm` in the certificate details to verify the digital signature is present and valid.
 
@@ -145,27 +145,27 @@ sudo ufw allow 443
 ### Request SSL Certificate
 
 ```bash
-sudo certbot --nginx -d nanoprint.duckdns.org
+sudo certbot --nginx -d safeprint.duckdns.org
 ```
 Follow the prompts to complete the certificate setup.
 
 ### Update Nginx Configuration
 
-Edit `/etc/nginx/sites-available/nanoprint.com` to use SSL:
+Edit `/etc/nginx/sites-available/safeprint.com` to use SSL:
 
 ```nginx
 server {
     listen 80;
-    server_name nanoprint.duckdns.org;
+    server_name safeprint.duckdns.org;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name nanoprint.duckdns.org;
+    server_name safeprint.duckdns.org;
 
-    ssl_certificate /etc/letsencrypt/live/nanoprint.duckdns.org/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/nanoprint.duckdns.org/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/safeprint.duckdns.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/safeprint.duckdns.org/privkey.pem;
 
     location / {
         proxy_pass http://unix:/home/safeprint/dev/SafePrint/safeprint.sock;
