@@ -16,6 +16,10 @@ Printer Status
 <hr class="dashboard-divider">
 <div id="pageMessages"></div>
 
+<div class="queue-header">
+    <h2 class="dashboard-section-header">All Printers</h2>
+</div>
+
 <div class="printer-status-card">
     <div class="queue-search-bar">
         <input type="text" id="printer-search" placeholder="Search by Printer Name or IP Address">
@@ -128,9 +132,8 @@ Printer Status
     <button class="add-printer-btn" onclick="openAddPrinterPopup()">Configure to Add Printer</button>
 </div>
 
-<div class="printer-status-section">
     <div class="queue-header">
-        <h2>Paper Refill</h2>
+        <h2 class="dashboard-section-header">Paper Refill</h2>
     </div>
     <div class="printer-status-card">
         <div class="queue-search-bar">
@@ -150,6 +153,13 @@ Printer Status
                 <div>Tray Level</div>
                 <div>Last Refill Time</div>
                 <div>Refill Action</div>
+                <div class="printer-edit-btn-container">
+                <button class="reload-btn" title="Reload" onclick="window.location.reload()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.06-.27 2.05-.74 2.91l1.46 1.46A7.963 7.963 0 0020 12c0-4.42-3.58-8-8-8zm-6.26 3.09A7.963 7.963 0 004 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3c-3.31 0-6-2.69-6-6 0-1.06.27-2.05.74-2.91l-1.46-1.46z" fill="#18191F"/>
+                    </svg>
+                </button>
+            </div>
             </div>
             <div class="printer-table-row">
                 <div class="printer-info">
@@ -195,7 +205,6 @@ Printer Status
             </div>
         </div>
     </div>
-</div>
 
 <!-- Add Printer Popup (hidden by default, styled like popup overlay) -->
 <div class="popup-overlay" id="addPrinterPopup" style="display:none;">
