@@ -894,29 +894,31 @@ function createAlert(title, summary, details, severity, dismissible, autoDismiss
 }
 
 
-// Warn user about losing uploads on reload/close
-window.addEventListener('beforeunload', function (e) {
-    if (
-        typeof uploadedFiles !== 'undefined' &&
-        uploadedFiles.length > 0 &&
-        !hasProceeded
-    ) {
-        // Send a request to delete all uploaded files for this session
-        navigator.sendBeacon('/api/delete-all-uploads/');
-        e.preventDefault();
-        e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
-    }
+// Warn user about losing uploads on reload/close (only on pages with upload functionality)
+if (document.querySelector('.uploaded') || document.querySelector('.drag-area')) {
+    window.addEventListener('beforeunload', function (e) {
+        if (
+            typeof uploadedFiles !== 'undefined' &&
+            uploadedFiles.length > 0 &&
+            !hasProceeded
+        ) {
+            // Send a request to delete all uploaded files for this session
+            navigator.sendBeacon('/api/delete-all-uploads/');
+            e.preventDefault();
+            e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
+        }
 
-    if (docs.length > 0 && !hasProceeded) {
-        e.preventDefault();
-        e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
-        // Prepare data for deletion
-        const payload = JSON.stringify({
-            doc_id: docs.map(doc => doc.doc_id),
-            session_key: window.sessionKey
-        });
-    }
-});
+        if (docs.length > 0 && !hasProceeded) {
+            e.preventDefault();
+            e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
+            // Prepare data for deletion
+            const payload = JSON.stringify({
+                doc_id: docs.map(doc => doc.doc_id),
+                session_key: window.sessionKey
+            });
+        }
+    });
+}
 
 function renderUploadedDocumentsPreview() {
     const uploadedFilesDiv = document.querySelector('.uploaded-files');
