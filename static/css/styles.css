@@ -3772,7 +3772,7 @@ input:focus::placeholder {
 }
 
 .on-queue-documents-list .list-header{
-    background: #e9fee4;
+    background: #ffffff;
 }
 
 .queue-search-bar input,
@@ -3845,7 +3845,7 @@ input:focus::placeholder {
 
 .doc-title {
     font-weight: 600;
-    font-size: 12px;
+    font-size: 14px;
     min-width: 0;
     flex: 1 1 0%;
     white-space: nowrap;
@@ -4055,7 +4055,7 @@ input:focus::placeholder {
     border-radius: 16px;
     padding: 0 16px 16px 16px;
     height: 475px;
-    background: #E9FEE4; 
+    background: #ffffff; 
     box-shadow: 0px 6px 0px 0px #18191F;
 }
 
@@ -4077,7 +4077,7 @@ input:focus::placeholder {
     display: flex;
     align-items: center;
     width: 100%;
-    min-height: 69px;
+    height: auto;
     padding: 16px;
     border-radius: 12px;
     box-sizing: border-box;
@@ -4089,18 +4089,14 @@ input:focus::placeholder {
 
 /* --- On Queue Documents: Ensure header and row columns align perfectly --- */
 .on-queue-header .doc-name        { flex: 2.5; min-width: 0; }
-.on-queue-header .doc-printer     { flex: 1.2; min-width: 0; }
-.on-queue-header .doc-approved    { flex: 1.1; min-width: 120px; max-width: 180px; text-align: center; }
-.on-queue-header .doc-id          { flex: 1.1; min-width: 120px; max-width: 160px; text-align: center; }
-.on-queue-header .doc-customer    { flex: 0.5; min-width: 120px; max-width: 160px; text-align: center; }
-.on-queue-header .doc-actions     { flex: 0.5; min-width: 60px; max-width: 90px; justify-content: flex-end; }
+.on-queue-header .doc-printer     { flex: 1.6; min-width: 0; }
+.on-queue-header .doc-status      { flex: 0.8; min-width: 120px; text-align: left; }
+.on-queue-header .doc-customer    { flex: 0.8; min-width: 120px; text-align: left; }
 
 .on-queue-row .doc-name        { flex: 2.5; min-width: 0; }
-.on-queue-row .doc-printer     { flex: 1.2; min-width: 0; }
-.on-queue-row .doc-approved    { flex: 1.1; min-width: 120px; max-width: 180px; text-align: center; }
-.on-queue-row .doc-id          { flex: 1.1; min-width: 120px; max-width: 160px; text-align: center; }
-.on-queue-row .doc-customer    { flex: 0.5; min-width: 120px; max-width: 160px; text-align: center; }
-.on-queue-row .doc-actions     { flex: 0.5; min-width: 60px; max-width: 90px; justify-content: flex-end; }
+.on-queue-row .doc-printer     { flex: 1.6; min-width: 0; }
+.on-queue-row .doc-status      { flex: 0.8; min-width: 120px; text-align: left; }
+.on-queue-row .doc-customer    { flex: 0.8; min-width: 120px; text-align: left; }
 
 /* Remove conflicting/duplicate flex rules below this section for .on-queue-header and .on-queue-row columns */
 
@@ -4108,6 +4104,12 @@ input:focus::placeholder {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
+}
+
+.on-queue-row .doc-printer,
+.on-queue-row .doc-status {
+    font-size: 14px;
+    font-weight: 500;
 }
 
 .printer-table .dropdown-select {
@@ -4187,7 +4189,8 @@ input:focus::placeholder {
 }
 
 .doc-printer {
-    font-size: 14px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 16px;
     font-weight: 500;
 }
 
@@ -4198,6 +4201,12 @@ input:focus::placeholder {
 }
 
 .doc-approved {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.doc-status {
+    font-family: 'Montserrat', sans-serif;
     font-size: 16px;
     font-weight: 500;
 }
