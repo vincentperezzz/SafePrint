@@ -38,8 +38,7 @@ def confirmation(request, customer_id):
     # Verify the session owns this customer_id
     if not session_customer_id or session_customer_id != customer_id:
         # No valid session for this CID — show 404
-        from django.http import Http404
-        raise Http404("Page not found")
+        return render(request, '404.html', status=404)
 
     if not customer_id:
         return redirect('home')
