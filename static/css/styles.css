@@ -3937,9 +3937,10 @@ input:focus::placeholder {
 /* PRINTER STATUS */
 
 .printer-status-section {
-    margin: 40px auto;
-    max-width: 900px;
-    font-family: 'Montserrat', sans-serif;
+    margin: 32px 0 0;
+    max-width: none;
+    width: 100%;
+    font-family: 'Space Grotesk', sans-serif;
 }
 
 .printer-status-card {
@@ -3998,6 +3999,11 @@ input:focus::placeholder {
     padding: 10px 20px;
 }
 
+.paper-refill-table .printer-table-header,
+.paper-refill-table .printer-table-row {
+    grid-template-columns: 1.8fr 1.2fr 1.2fr 1.2fr 1.2fr 1.4fr;
+}
+
 .printer-table-header {
     font-weight: bold;
     border-bottom: 2px solid #A19F9F;
@@ -4013,6 +4019,63 @@ input:focus::placeholder {
 
 .printer-table-row:nth-child(odd) {
     background: #FFFFFF;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #eef2f7;
+    color: #374151;
+}
+
+.status-pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+}
+
+.status-pill.ok {
+    background: #e9f7ea;
+    color: #166534;
+}
+
+.status-pill.low {
+    background: #fff4cc;
+    color: #a16207;
+}
+
+.status-pill.danger {
+    background: #ffe7dc;
+    color: #c2410c;
+}
+
+.refill-btn {
+    border-radius: 12px;
+    border: 2px solid #18191F;
+    background: #B9FF66;
+    color: #18191F;
+    font-weight: 700;
+    padding: 6px 12px;
+    box-shadow: 0px 3px 0px 0px #18191F;
+    cursor: pointer;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
+}
+
+.refill-btn:hover {
+    background-color: #9ACD32;
+    box-shadow: 0px 5px 0px 0px #18191F;
+}
+
+.refill-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0px 2px 0px 0px #18191F;
 }
 
 .printer-name{
@@ -4140,6 +4203,9 @@ input:focus::placeholder {
 .status-dot.ready, .status-dot.sleep { background: #15be15; }
 .status-dot.printing { background: #ffa500; }
 .status-dot.error { background: #d72828; }
+.status-dot.ok { background: #15be15; }
+.status-dot.low { background: #ffa500; }
+.status-dot.danger { background: #d72828; }
 
 .ink-bars {
     display: flex;
