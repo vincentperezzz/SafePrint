@@ -1109,8 +1109,7 @@ html {
 
 .doc-id { 
     display:block; 
-    color:#9aa; 
-    font-size:13px; 
+    font-size:16px; 
     margin-top:4px; 
 }
 
@@ -2756,7 +2755,7 @@ input:focus::placeholder {
 }
 
 .document-approvals h2, .completed-jobs h2 {
-    font-size: 1.5rem;
+    font-size: 21px;
     font-weight: bold;
     font-family: 'Montserrat', sans-serif;
 }
@@ -3936,8 +3935,14 @@ input:focus::placeholder {
 
 /* PRINTER STATUS */
 
+.dashboard-section-header {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 21px;
+    font-weight: 700;
+}
+
 .printer-status-section {
-    margin: 32px 0 0;
+    margin: 20px 0 0;
     max-width: none;
     width: 100%;
     font-family: 'Space Grotesk', sans-serif;
@@ -3952,6 +3957,7 @@ input:focus::placeholder {
     flex-direction: column;
     gap: 15px;
     min-width: 1335px;
+    margin-bottom: 20px;
 }
 
 .printer-status-header {
@@ -3999,7 +4005,10 @@ input:focus::placeholder {
     padding: 10px 20px;
 }
 
-.paper-refill-table .printer-table-header,
+.paper-refill-table .printer-table-header {
+    grid-template-columns: 1.8fr 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr auto;
+}
+
 .paper-refill-table .printer-table-row {
     grid-template-columns: 1.8fr 1.2fr 1.2fr 1.2fr 1.2fr 1.4fr;
 }
@@ -4095,7 +4104,6 @@ input:focus::placeholder {
 }
 
 .reload-btn {
-    width: 100%;
     height: 30px;
     background: #ffffff;
     border: 1px solid #ccc;
@@ -4103,6 +4111,7 @@ input:focus::placeholder {
     cursor: pointer;
     transition: background 0.2s, box-shadow 0.2s;
 }
+
 .reload-btn:hover {
     background: #f3f3f3;
     box-shadow: 0px 2px 8px rgba(0,0,0,0.08);
@@ -4116,8 +4125,7 @@ input:focus::placeholder {
     margin-top: 15px;
     border: 2px solid black;
     border-radius: 16px;
-    padding: 0 16px 16px 16px;
-    height: 475px;
+    padding: 10px 20px 20px 20px;
     background: #ffffff; 
     box-shadow: 0px 6px 0px 0px #18191F;
 }
@@ -4336,7 +4344,7 @@ input:focus::placeholder {
 .completed-section {
     border: 2px solid #18191F;
     border-radius: 16px;
-    padding: 24px;
+    padding: 20px;
     gap: 16px;
     width: 100%;
 }
@@ -4356,7 +4364,7 @@ input:focus::placeholder {
     border-radius: 16px;
     box-sizing: border-box;
     background: #CFF0E6;
-    padding: 24px 21px;
+    padding: 20px 21px;
     box-shadow: 0px 6px 0px 0px #18191F;
     margin-bottom: 16px;
 }
