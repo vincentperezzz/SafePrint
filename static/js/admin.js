@@ -98,6 +98,187 @@ window.onload = function () {
 let selectedIds = [];
 
 document.addEventListener('DOMContentLoaded', () => {
+    const ticketModal = document.getElementById('ticket-modal');
+    const openTicketButtons = document.querySelectorAll('[data-open-ticket-modal]');
+    const closeTicketTargets = document.querySelectorAll('[data-close-ticket-modal]');
+
+    const openTicketModal = () => {
+        if (!ticketModal) return;
+        ticketModal.classList.add('is-open');
+        ticketModal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+    };
+
+    const closeTicketModal = () => {
+        if (!ticketModal) return;
+        ticketModal.classList.remove('is-open');
+        ticketModal.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+    };
+
+    if (ticketModal) {
+        openTicketButtons.forEach((button) => {
+            button.addEventListener('click', openTicketModal);
+        });
+
+        closeTicketTargets.forEach((target) => {
+            target.addEventListener('click', closeTicketModal);
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && ticketModal.classList.contains('is-open')) {
+                closeTicketModal();
+            }
+        });
+    }
+
+    const activeResults = document.getElementById('document-results');
+    const resolvedResults = document.querySelector('.resolved-list-container .document-results');
+
+    const buildResolvedRow = (data) => {
+        const row = document.createElement('div');
+        row.className = 'document-item resolved-row';
+        row.innerHTML = `
+            <div class="ticket-cell">
+                <img src="/static/assets/ticket-icon.png" alt="Ticket" class="ticket-icon">
+                <div class="ticket-meta">
+                    <h6>${data.ticketNumber}</h6>
+                    <span>${data.price}</span>
+                </div>
+            </div>
+            <div class="resolved-customer">${data.customerName}</div>
+            <div class="resolved-email">${data.email}</div>
+            <div class="resolved-verifier">${data.verifiedBy}</div>
+            <div class="resolved-status">${data.status}</div>
+        `;
+        return row;
+    };
+
+    const updateTicketCounts = () => {
+        const activeCountEl = document.getElementById('active-tickets-count');
+        const resolvedCountEl = document.getElementById('resolved-tickets-count');
+
+        if (activeResults && activeCountEl) {
+            const activeRows = Array.from(activeResults.querySelectorAll('.document-item'))
+                .filter((row) => !row.classList.contains('empty-row'));
+            activeCountEl.textContent = activeRows.length.toString();
+        }
+
+        if (resolvedResults && resolvedCountEl) {
+            const resolvedRows = Array.from(resolvedResults.querySelectorAll('.document-item.resolved-row'))
+                .filter((row) => !row.classList.contains('empty-row'));
+            resolvedCountEl.textContent = resolvedRows.length.toString();
+        }
+    };
+
+    const updateResolvedEmptyState = () => {
+        if (!resolvedResults) return;
+        const existingEmptyRow = resolvedResults.querySelector('.document-item.empty-row');
+        const rows = Array.from(resolvedResults.querySelectorAll('.document-item.resolved-row'));
+
+        if (rows.length === 0) {
+            if (!existingEmptyRow) {
+                const emptyRow = document.createElement('div');
+                emptyRow.className = 'document-item resolved-row empty-row';
+                emptyRow.innerHTML = `
+                    <div class="ticket-cell">
+                        <div class="ticket-meta">
+                            <h6>No resolved tickets.</h6>
+                        </div>
+                    </div>
+                    <div class="resolved-customer"></div>
+                    <div class="resolved-email"></div>
+                    <div class="resolved-verifier"></div>
+                    <div class="resolved-status"></div>
+                `;
+                resolvedResults.appendChild(emptyRow);
+            }
+        } else if (existingEmptyRow) {
+            existingEmptyRow.remove();
+        }
+    };
+
+    const updateActiveEmptyState = () => {
+        if (!activeResults) return;
+        const existingEmpty = activeResults.querySelector('.no-documents');
+        const existingEmptyRow = activeResults.querySelector('.document-item.empty-row');
+        const rows = Array.from(activeResults.querySelectorAll('.document-item'));
+
+        if (rows.length === 0) {
+            if (!existingEmptyRow) {
+                if (existingEmpty) existingEmpty.remove();
+                const emptyRow = document.createElement('div');
+                emptyRow.className = 'document-item empty-row';
+                emptyRow.innerHTML = `
+                    <div class="ticket-cell">
+                        <div class="ticket-meta">
+                            <h6>No active tickets.</h6>
+                        </div>
+                    </div>
+                    <div class="ticket-customer"></div>
+                    <div class="ticket-date"></div>
+                    <div class="ticket-doc"></div>
+                    <div class="actions"></div>
+                `;
+                activeResults.appendChild(emptyRow);
+            }
+        } else {
+            if (existingEmpty) existingEmpty.remove();
+            if (existingEmptyRow) existingEmptyRow.remove();
+        }
+    };
+
+    const moveToResolved = (row, status) => {
+        if (!resolvedResults || !row) return;
+
+        const ticketNumber = row.querySelector('.ticket-meta h6')?.textContent?.trim() || '-';
+        const price = row.querySelector('.ticket-meta span')?.textContent?.trim() || '-';
+        const customerId = row.querySelector('.ticket-customer')?.textContent?.trim() || 'Customer';
+
+        const data = {
+            ticketNumber,
+            price,
+            customerName: row.dataset.customerName || customerId,
+            email: row.dataset.customerEmail || 'example@email.com',
+            verifiedBy: row.dataset.verifiedBy || 'Admin',
+            status
+        };
+
+        const newRow = buildResolvedRow(data);
+        const header = resolvedResults.querySelector('.list-header');
+        if (header && header.nextSibling) {
+            resolvedResults.insertBefore(newRow, null);
+        } else {
+            resolvedResults.appendChild(newRow);
+        }
+
+        row.remove();
+        updateActiveEmptyState();
+        updateResolvedEmptyState();
+        updateTicketCounts();
+    };
+
+    if (activeResults) {
+        updateActiveEmptyState();
+        updateTicketCounts();
+        activeResults.addEventListener('click', (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) return;
+
+            if (target.classList.contains('deny-btn')) {
+                const row = target.closest('.document-item');
+                moveToResolved(row, 'Voided');
+            }
+
+            if (target.classList.contains('refund-btn')) {
+                const row = target.closest('.document-item');
+                moveToResolved(row, 'Refunded');
+            }
+        });
+    }
+
+    updateResolvedEmptyState();
+    updateTicketCounts();
 
     //Customer ID Enter key Functionality
     const customerIdInput = document.getElementById('customer-id-input');

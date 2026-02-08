@@ -36,11 +36,11 @@ Dashboard
     </div>
     <div class="stat-card red">
         <h3>Active <br>Tickets</h3>
-        <p>{{ printer_errors_count }}</p>
+        <p id="active-tickets-count">{{ printer_errors_count }}</p>
     </div>
     <div class="stat-card yellow">
         <h3>Resolved <br>Tickets</h3>
-        <p>{{ pending_customers_count }}</p>
+        <p id="resolved-tickets-count">{{ pending_customers_count }}</p>
     </div>
 </div>
 
@@ -87,7 +87,7 @@ Dashboard
                         <div class="ticket-doc">#DOC-1003<br>#DOC-1004</div>
                         <div class="actions">
                             <button class="deny-btn" type="button">Void</button>
-                            <button class="approve-btn" type="button">Verify</button>
+                            <button class="approve-btn" type="button" data-open-ticket-modal>Verify</button>
                             <button class="refund-btn" type="button">Refund</button>
                         </div>
                     </div>
@@ -104,7 +104,7 @@ Dashboard
                         <div class="ticket-doc">#DOC-1002</div>
                         <div class="actions">
                             <button class="deny-btn" type="button">Void</button>
-                            <button class="approve-btn" type="button">Verify</button>
+                            <button class="approve-btn" type="button" data-open-ticket-modal>Verify</button>
                             <button class="refund-btn" type="button">Refund</button>
                         </div>
                     </div>
@@ -121,7 +121,7 @@ Dashboard
                         <div class="ticket-doc">#DOC-1001</div>
                         <div class="actions">
                             <button class="deny-btn" type="button">Void</button>
-                            <button class="approve-btn" type="button">Verify</button>
+                            <button class="approve-btn" type="button" data-open-ticket-modal>Verify</button>
                             <button class="refund-btn" type="button">Refund</button>
                         </div>
                     </div>
@@ -189,7 +189,129 @@ Dashboard
 
 </div>
 
+<div id="ticket-modal" class="ticket-modal" aria-hidden="true">
+    <div class="ticket-modal__backdrop" data-close-ticket-modal></div>
+    <div class="ticket-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="ticket-modal-title">
+        <div class="ticket-modal__header">
+            <h3 id="ticket-modal-title">Ticket Details</h3>
+            <button class="ticket-modal__done" type="button" data-close-ticket-modal>Done</button>
+        </div>
+        <div class="ticket-modal__card">
+            <div class="ticket-modal__grid">
+                <div>
+                    <p class="ticket-modal__label">Customer ID</p>
+                    <p class="ticket-modal__value">#CID-4405</p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Document ID</p>
+                    <p class="ticket-modal__value">#DOC-1003<br>#DOC-1004</p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Customer Name</p>
+                    <p class="ticket-modal__value">Juan Dela Cruz</p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Document Name</p>
+                    <p class="ticket-modal__value">Abstract (2).pdf<br>School ID (2).pdf</p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Email</p>
+                    <p class="ticket-modal__value">juandelacruz@email.com</p>
+                </div>
+                <div></div>
+                <div>
+                    <p class="ticket-modal__label">Contact Number</p>
+                    <p class="ticket-modal__value">09912345678</p>
+                </div>
+            </div>
+            <div class="ticket-modal__issue">
+                <p class="ticket-modal__label">Issue</p>
+                <p class="ticket-modal__value">
+                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus eget tincidunt nisl.
+                    Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae;
+                    Aliquam erat volutpat. Phasellus nisi metus, viverra eu dignissim ultricies, viverra sit amet orci.
+                    Etiam sagittis hendrerit nibh, vitae molestie lorem facilisis sit amet. Proin semper fringilla purus
+                    vitae elementum. Nam pretium nunc vitae elit ullamcorper, id egestas ligula aliquet. Quisque nec
+                    ultrices erat.
+                </p>
+            </div>
+        </div>
+        <button class="ticket-modal__download" type="button">Download System Logs</button>
+    </div>
+</div>
+
 <script>
     var csrfToken = "{{ csrf_token }}";
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var activeCountEl = document.getElementById('active-tickets-count');
+        var resolvedCountEl = document.getElementById('resolved-tickets-count');
+        var activeResults = document.getElementById('document-results');
+        var resolvedResults = document.querySelector('.resolved-list-container .document-results');
+
+        if (activeCountEl && activeResults) {
+            var activeRows = Array.from(activeResults.querySelectorAll('.document-item'))
+                .filter(function (row) { return !row.classList.contains('empty-row'); });
+            activeCountEl.textContent = String(activeRows.length);
+        }
+
+        if (resolvedCountEl && resolvedResults) {
+            var resolvedRows = Array.from(resolvedResults.querySelectorAll('.document-item.resolved-row'))
+                .filter(function (row) { return !row.classList.contains('empty-row'); });
+            resolvedCountEl.textContent = String(resolvedRows.length);
+        }
+    });
+
+    window.addEventListener('load', function () {
+        var activeCountEl = document.getElementById('active-tickets-count');
+        var resolvedCountEl = document.getElementById('resolved-tickets-count');
+        var activeResults = document.getElementById('document-results');
+        var resolvedResults = document.querySelector('.resolved-list-container .document-results');
+
+        if (activeCountEl && activeResults) {
+            var activeRows = Array.from(activeResults.querySelectorAll('.document-item'))
+                .filter(function (row) { return !row.classList.contains('empty-row'); });
+            activeCountEl.textContent = String(activeRows.length);
+        }
+
+        if (resolvedCountEl && resolvedResults) {
+            var resolvedRows = Array.from(resolvedResults.querySelectorAll('.document-item.resolved-row'))
+                .filter(function (row) { return !row.classList.contains('empty-row'); });
+            resolvedCountEl.textContent = String(resolvedRows.length);
+        }
+    });
+
+    (function () {
+        var modal = document.getElementById('ticket-modal');
+        if (!modal) return;
+        var openButtons = document.querySelectorAll('[data-open-ticket-modal]');
+        var closeButtons = document.querySelectorAll('[data-close-ticket-modal]');
+
+        function openModal() {
+            modal.classList.add('is-open');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            modal.classList.remove('is-open');
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+
+        openButtons.forEach(function (button) {
+            button.addEventListener('click', openModal);
+        });
+
+        closeButtons.forEach(function (button) {
+            button.addEventListener('click', closeModal);
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && modal.classList.contains('is-open')) {
+                closeModal();
+            }
+        });
+    })();
 </script>
 {% endblock %}
