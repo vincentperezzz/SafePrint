@@ -23,7 +23,7 @@ services:
       - safeprint_logs:/home/safeprint/dev/SafePrint/logs
       - safeprint_gunicorn_logs:/var/log/gunicorn
       # Mount source code for development (optional - comment for isolated testing)
-      # - ..:/home/safeprint/dev/SafePrint:cached
+      - ..:/home/safeprint/dev/SafePrint:cached
     environment:
       - DJANGO_SECRET_KEY=your-secret-key-change-for-production
       - DB_NAME=SAFEPRINT_DB
