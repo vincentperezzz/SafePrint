@@ -37,6 +37,29 @@ def track_status_view(request):
     return render(request, 'track_status.html')
 
 
+@csrf_exempt
+def validate_cid(request):
+    """Check if a customer ID exists and bind it to session if found."""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            cid = data.get('customer_id', '').strip()
+        except:
+            return JsonResponse({'valid': False})
+
+        if not cid:
+            return JsonResponse({'valid': False})
+
+        # Check if documents exist for this CID
+        exists = Document.objects.filter(customer_id=cid).exists()
+        if exists:
+            # Bind the CID to the session so the confirmation page can verify
+            request.session['customer_id'] = cid
+            return JsonResponse({'valid': True})
+        return JsonResponse({'valid': False})
+    return JsonResponse({'valid': False})
+
+
 def confirmation(request, customer_id):
     session_customer_id = request.session.get('customer_id')
 
