@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+{% load static %}
+
+{% block title %}Track Status - SafePrint{% endblock %}
+
+{% block content %}
+<div class="track-status-page">
+    <div class="track-status-card">
+        <div class="track-status-header">
+            <h2 class="track-status-title">Track Your Print Status</h2>
+            <p class="track-status-subtitle">Enter your Customer ID to check your printing progress.</p>
+        </div>
+
+        <form id="track-status-form" class="track-status-form">
+            {% csrf_token %}
+            <div class="track-status-input-group">
+                <label for="track-cid-input" class="track-status-label">Customer ID</label>
+                <input 
+                    type="text" 
+                    id="track-cid-input" 
+                    class="track-status-input" 
+                    placeholder="e.g. CID-1234" 
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    required
+                >
+            </div>
+            <button type="submit" class="track-status-btn">Track Status</button>
+        </form>
+
+        <div id="track-status-error" class="track-status-error" style="display: none;">
+            No printing session found for this Customer ID.
+        </div>
+    </div>
+</div>
+{% endblock %}

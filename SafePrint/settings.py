@@ -51,6 +51,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'livereload.middleware.LiveReloadScript',
+    'SafePrint.middleware.Custom404Middleware',
 ]
 
 ROOT_URLCONF = 'SafePrint.urls'
