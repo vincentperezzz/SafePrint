@@ -23,7 +23,7 @@ Dashboard
     {% else %}
         <img src="{{ MEDIA_URL }}profile_images/default-avatar.png" alt="Default Avatar" class="user-avatar">
     {% endif %}
-        <h1>Welcome, {{ user.name }}</h1>
+        <h1>Hello, {{ user.name }}!</h1>
     </div>
     <button class="need-assistance-btn">Need Assistance?</button>
     <div id="pageMessages"></div>
@@ -35,11 +35,11 @@ Dashboard
         <p>{{ completed_jobs_count }}</p>
     </div>
     <div class="stat-card red">
-        <h3>Printer <br>Errors</h3>
+        <h3>Active <br>Tickets</h3>
         <p>{{ printer_errors_count }}</p>
     </div>
     <div class="stat-card yellow">
-        <h3>Pending <br>Customers</h3>
+        <h3>Resolved <br>Tickets</h3>
         <p>{{ pending_customers_count }}</p>
     </div>
 </div>
@@ -50,15 +50,14 @@ Dashboard
     <div class="dashboard-left">
         <div class="document-approvals">
             <div class="document-approvals-header">
-                <h2>Pending Document Approvals</h2>
-                <a href="{% url 'printing_queue' %}" class="view-all-btn">View all Pending Documents</a>
+                <h2>Active Tickets</h2>
             </div>
                 
             <div class="document-list-container">
                 <div id="document-results" class="document-results">
                     <div class="list-header">
                         <div class="search-bar">
-                            <input type="text" id="dashboard-search" placeholder="Search by Name or Document ID">
+                            <input type="text" id="dashboard-search" placeholder="Search by Ticket Number">
                             <span class="search-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
                                     <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -67,79 +66,127 @@ Dashboard
                             </span>
                         </div>
                         <div class="document-item-title">
-                            <span>Document Name</span>
+                            <span>Ticket Number</span>
+                            <p>Customer ID</p>
+                            <p>Date Submitted</p>
                             <p>Document ID</p>
+                            <span class="action-title"></span>
                         </div>
                     </div>
-                    
-                    <div class="no-documents">
-                        <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
-                        <p>No documents found, Please enter a Customer ID</p>
+
+                    <div class="document-item placeholder">
+                        <div class="ticket-cell">
+                            <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
+                            <div class="ticket-meta">
+                                <h6>71101054</h6>
+                                <span>₱45.00</span>
+                            </div>
+                        </div>
+                        <div class="ticket-customer">#CID-4405</div>
+                        <div class="ticket-date">2025-04-10 08:32:55</div>
+                        <div class="ticket-doc">#DOC-1003<br>#DOC-1004</div>
+                        <div class="actions">
+                            <button class="deny-btn" type="button">Void</button>
+                            <button class="approve-btn" type="button">Verify</button>
+                            <button class="refund-btn" type="button">Refund</button>
+                        </div>
+                    </div>
+                    <div class="document-item placeholder">
+                        <div class="ticket-cell">
+                            <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
+                            <div class="ticket-meta">
+                                <h6>48392617</h6>
+                                <span>₱15.00</span>
+                            </div>
+                        </div>
+                        <div class="ticket-customer">#CID-4406</div>
+                        <div class="ticket-date">2025-04-10 08:33:55</div>
+                        <div class="ticket-doc">#DOC-1002</div>
+                        <div class="actions">
+                            <button class="deny-btn" type="button">Void</button>
+                            <button class="approve-btn" type="button">Verify</button>
+                            <button class="refund-btn" type="button">Refund</button>
+                        </div>
+                    </div>
+                    <div class="document-item placeholder">
+                        <div class="ticket-cell">
+                            <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
+                            <div class="ticket-meta">
+                                <h6>90527463</h6>
+                                <span>₱5.00</span>
+                            </div>
+                        </div>
+                        <div class="ticket-customer">#CID-3298</div>
+                        <div class="ticket-date">2025-04-10 08:25:11</div>
+                        <div class="ticket-doc">#DOC-1001</div>
+                        <div class="actions">
+                            <button class="deny-btn" type="button">Void</button>
+                            <button class="approve-btn" type="button">Verify</button>
+                            <button class="refund-btn" type="button">Refund</button>
+                        </div>
                     </div>
                 </div>  
             </div>
         </div>
-    </div>
 
-    <div class="dashboard-right">
-        <div class="customer-info">
-            <div class='price-display'>
-                <p id="price-to-pay">₱{{ total_price|floatformat:2 }}</p>
-                <h2>Price to Pay</h2>
+        <div class="resolved-tickets">
+            <div class="document-approvals-header">
+                <h4>Resolved Tickets</h4>
             </div>
-            <div class='dashboard-rows'>  
-                <h2>Enter Customer ID</h2>
-                <button class="clear-btn" class="clear-btn" id="clear-btn">Clear</button>
-            </div>
-                {% csrf_token %}
-                <input type="text" name="customer_id" id="customer-id-input" placeholder="CID-XXXX" value="{% if customer_id %}{{ customer_id }}{% else %}{% endif %}" required>
-                <button type="submit" class="search-btn" id="search-btn">Search by Customer ID</button>
-                <div class="approval-buttons" id="approval-actions">
-                    <button class="deny-btn" id="deny-all-btn">Deny All</button>
-                    <button class="approve-btn" id="approve-all-btn">Approve All</button>
-                </div>
-        </div>
 
-        <div class="completed-jobs">
-            <div class='dashboard-rows'>
-                <h2>Completed Jobs</h2>
-                <button onclick="window.location.href='{% url 'print_completed' %}'" class="view-all-btn specific-view-all-btn">View All</button>
-            </div>
-            
-            {% if completed_documents %}
-            <div class="completedJobs-item-title">
-                <span>Document Name</span>
-                <p>Printer Assigned</p>
-            </div>
-        
-            <div class="jobs-item">
-                {% for doc in completed_documents %}
-                        <div class="jobs-item-wrapper">
-                            <h6 title="{{ doc.filename }}">{{ doc.filename }}</h6>
-                            <div class="Printer-Assigned">
-                                {% if doc.printed_at %}
-                                    {{ doc.printed_at }}
-                                {% else %}
-                                    No Printer
-                                {% endif %}
-                            </div>
-                            <button class="jobs-done-btn" data-doc-id="{{ doc.doc_id }}">Done</button>
+            <div class="document-list-container resolved-list-container">
+                <div class="document-results">
+                    <div class="list-header">
+                        <div class="search-bar">
+                            <input type="text" placeholder="Search by Ticket Number">
+                            <span class="search-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </span>
                         </div>
-                {% empty %}
-                    <div class="no-jobs">
-                        <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
-                        <p>All Completed!</p>
+                        <div class="document-item-title resolved-header">
+                            <span>Ticket Number</span>
+                            <p>Customer Name</p>
+                            <p>Email</p>
+                            <p>Verified by</p>
+                            <p>Status</p>
+                        </div>
                     </div>
-                {% endfor %}
+
+                    <div class="document-item resolved-row">
+                        <div class="ticket-cell">
+                            <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
+                            <div class="ticket-meta">
+                                <h6>76249138</h6>
+                                <span>₱30.00</span>
+                            </div>
+                        </div>
+                        <div class="resolved-customer">John Doe</div>
+                        <div class="resolved-email">example@email.com</div>
+                        <div class="resolved-verifier">Vincent Perez</div>
+                        <div class="resolved-status">Voided</div>
+                    </div>
+
+                    <div class="document-item resolved-row">
+                        <div class="ticket-cell">
+                            <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
+                            <div class="ticket-meta">
+                                <h6>31485720</h6>
+                                <span>₱15.00</span>
+                            </div>
+                        </div>
+                        <div class="resolved-customer">Jane Doe</div>
+                        <div class="resolved-email">example@email.com</div>
+                        <div class="resolved-verifier">Crystaline Datu</div>
+                        <div class="resolved-status">Refunded</div>
+                    </div>
+                </div>
             </div>
-        {% else %}
-            <div class="no-jobs">
-                <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
-                <p>All Completed!</p>
-            </div>
-        {% endif %}
         </div>
     </div>
+
 </div>
 
 <script>
