@@ -269,6 +269,24 @@ SafePrint
     </div>
 </div>
 
+{% if active_cid %}
+<div id="active-cid-alert" class="active-cid-alert">
+    <div class="active-cid-alert-content">
+        <div class="active-cid-alert-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#191A23" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+        </div>
+        <div class="active-cid-alert-text">
+            <strong>You have an active print session</strong>
+            <span>Customer ID: <strong>{{ active_cid }}</strong></span>
+        </div>
+        <a href="/confirmation/{{ active_cid }}/" class="active-cid-alert-btn">Return to Status</a>
+        <button class="active-cid-alert-close" onclick="document.getElementById('active-cid-alert').style.display='none'">&times;</button>
+    </div>
+</div>
+{% endif %}
+
 <script>
   const sessionKey = "{{ session_key }}";
 </script>

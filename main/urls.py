@@ -7,6 +7,7 @@ urlpatterns = [
     path('index/', views.index_view, name='index'),
     path('upload/', views.upload_view, name='upload'),
     path('confirmation/<str:customer_id>/', views.confirmation, name='confirmation'),
+    path('track-status/', views.track_status_view, name='track_status'),
     path('login/', views.login_view, name='login'),
     path('api/upload-file/', views.upload_file_view, name='upload_file'),
     path('api/delete-file/', views.delete_file_view, name='delete_file'),
