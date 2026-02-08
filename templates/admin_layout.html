@@ -32,7 +32,7 @@
                 <li><a href="{% url 'dashboard' %}" class="navbar-item {% if 'dashboard' in request.path %}active{% endif %}">
                     <img src="{% static 'assets/dashboard.svg' %}" alt="Dashboard Icon"> Dashboard</a></li>
                 <li><a href="{% url 'printing_queue' %}" class="navbar-item {% if 'queue' in request.path %}active{% endif %}">
-                    <img src="{% static 'assets/printing-queue.svg' %}" alt="Printing Queue Icon"> Printing Queue</a></li>
+                    <img src="{% static 'assets/printing-queue.svg' %}" alt="Printing Queue Icon"> Print Queue</a></li>
                 <li><a href="{% url 'print_completed' %}" class="navbar-item {% if 'completed' in request.path %}active{% endif %}">
                     <img src="{% static 'assets/print-completed.svg' %}" alt="Print Completed Icon"> Print Completed</a></li>
                 <li><a href="{% url 'printer_status' %}" class="navbar-item {% if 'status' in request.path %}active{% endif %}">

@@ -4123,10 +4123,10 @@ input:focus::placeholder {
 }
 
 .on-queue-header {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1.5fr 1.2fr 1fr 1fr;
     align-items: center;
     width: 100%;
-    height: 50px;
     font-family: 'Montserrat', sans-serif;
     font-size: 16px;
     padding: 16px;
@@ -4137,7 +4137,8 @@ input:focus::placeholder {
 }
 
 .on-queue-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1.5fr 1.2fr 1fr 1fr;
     align-items: center;
     width: 100%;
     height: auto;
