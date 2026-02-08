@@ -2344,6 +2344,21 @@ function submitFeedbackForm() {
             if (entry.isIntersecting) {
                 entry.target.classList.add('revealed');
                 observer.unobserve(entry.target); // Only animate once
+
+                // After reveal animation completes, remove scroll-reveal classes
+                // so the element's original hover transitions (transform, box-shadow, etc.) work again
+                const el = entry.target;
+                let totalTime = 700; // Base animation duration (0.7s)
+                for (let i = 1; i <= 6; i++) {
+                    if (el.classList.contains('delay-' + i)) {
+                        totalTime += i * 100;
+                        break;
+                    }
+                }
+                setTimeout(() => {
+                    el.classList.remove('scroll-reveal', 'revealed',
+                        'delay-1', 'delay-2', 'delay-3', 'delay-4', 'delay-5', 'delay-6');
+                }, totalTime + 100); // +100ms buffer
             }
         });
     }, {
