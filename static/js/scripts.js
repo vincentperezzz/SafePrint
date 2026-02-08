@@ -567,7 +567,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        window.location.href = confirmBtn.getAttribute('data-url');
+                        const cid = sessionStorage.getItem('customer_id');
+                        window.location.href = '/confirmation/' + cid + '/';
                     } else {
                         if (overlay) overlay.style.display = 'none';
                         alert('Failed to update settings: ' + (data.error || 'Unknown error'));

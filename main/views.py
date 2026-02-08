@@ -25,14 +25,21 @@ def upload_view(request):
     return render(request, 'upload.html', {'session_key': session_key})
 
 
-def confirmation(request):
-    customer_id = request.session.get('customer_id')
+def confirmation(request, customer_id):
+    session_customer_id = request.session.get('customer_id')
 
     # Allow test_customer parameter when DEBUG is True
     from django.conf import settings as django_settings
     if django_settings.DEBUG and request.GET.get('test_customer'):
         customer_id = request.GET.get('test_customer')
         request.session['customer_id'] = customer_id
+        session_customer_id = customer_id
+
+    # Verify the session owns this customer_id
+    if not session_customer_id or session_customer_id != customer_id:
+        # No valid session for this CID — show 404
+        from django.http import Http404
+        raise Http404("Page not found")
 
     if not customer_id:
         return redirect('home')

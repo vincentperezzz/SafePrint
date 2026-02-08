@@ -12,7 +12,7 @@ Creates a test customer (CID: TEST-0001) with documents in every status:
 - Rerouted + Printing (rerouted from one printer to another)
 - Rerouted + Finished (rerouted, then completed)
 
-Access the confirmation page at: /confirmation/?test_customer=TEST-0001
+Access the confirmation page at: /confirmation/TEST-0001/?test_customer=TEST-0001
 (Only works when DEBUG=True)
 """
 
@@ -325,5 +325,5 @@ class Command(BaseCommand):
         self.stdout.write(f'   DOC-T007: 🔄 Rerouted (Printer 1 → Printer 2) + Printing')
         self.stdout.write(f'   DOC-T008: 🔄🔄 Double rerouted (P1 → P3 → P2) + Finished')
         self.stdout.write('')
-        self.stdout.write(self.style.WARNING(f'   Access at: /confirmation/?test_customer=TEST-0001'))
+        self.stdout.write(self.style.WARNING(f'   Access at: /confirmation/TEST-0001/?test_customer=TEST-0001'))
         self.stdout.write(self.style.WARNING(f'   (DEBUG must be True)'))
