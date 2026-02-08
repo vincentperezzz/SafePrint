@@ -44,9 +44,9 @@ Print Completed
                     <div class="completed-col doc-printer">{{ document.printed_at }}</div>
                     <div class="completed-col doc-action">
                         {% if document.handed_over %}
-                            <span class="handed-over-status">✓ Handed Over</span>
+                            <span class="handed-over-status">✓ Picked Up</span>
                         {% else %}
-                            <button class="handed-over-btn">Handed Over</button>
+                            <button class="handed-over-btn">Picked Up</button>
                         {% endif %}
                     </div>
                 </div>
@@ -54,7 +54,7 @@ Print Completed
             {% else %}
                 <div class="completed-row completed-empty">
                     <img src="{% static 'assets/all-completed.png' %}" alt="All Completed" class="all-completed">
-                    <div class="completed-empty-text">All jobs handed over!</div>
+                    <div class="completed-empty-text">All jobs picked up!</div>
                 </div>
             {% endif %}
         </div>
