@@ -373,6 +373,8 @@ html {
     border-radius: 12px;
     border: 1px solid #000;
     background: #FBB41D;
+    color: #000;
+    -webkit-text-fill-color: #000;
     box-shadow: 0px 4px 0px 0px #18191F;
     font-family: 'Montserrat', sans-serif;
     font-weight: 800;
@@ -488,9 +490,30 @@ html {
 
 /* Card icon styling */
 .card-icon {
-    width: 600px;
+    width: 250px;
     height: auto;
     margin-left: 20px;
+    flex-shrink: 0;
+}
+
+/* iPad landscape - keep 2-column card grid */
+@media (max-width: 1240px) and (min-width: 769px) {
+    .card {
+        max-width: calc(50% - 20px);
+        padding: 30px;
+    }
+
+    .card-icon {
+        width: 140px;
+    }
+
+    .card-title {
+        font-size: 1.2rem;
+    }
+
+    .card-description {
+        font-size: 0.85rem;
+    }
 }
 
 /* Responsive styling for smaller resolutions */
@@ -723,6 +746,12 @@ html {
     height: auto;
     z-index: 1;
     pointer-events: none;
+}
+
+@media (max-width: 1240px) {
+    .feedback-illustration {
+        display: none;
+    }
 }
 
 
@@ -1140,15 +1169,15 @@ html {
 
 .doc-meta h6 {
     margin: 0;
-    font-size: 15px;
+    font-size: 13px;
     color: #222;
 }
 
 .doc-id {
     display: block;
     color: #9aa;
-    font-size: 13px;
-    margin-top: 4px;
+    font-size: 11px;
+    margin-top: 3px;
 }
 
 .doc-right {
@@ -1838,9 +1867,205 @@ input:focus::placeholder {
     margin-bottom: 20px;
 }
 
+/* Track Status Page */
+.track-status-page {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 60vh;
+    padding: 40px 20px;
+}
+
+.track-status-card {
+    max-width: 500px;
+    width: 100%;
+    border: 2px solid #191A23;
+    border-radius: 18px;
+    background: #fff;
+    padding: 40px;
+    box-shadow: 0px 5px 0px 0px #191A23;
+}
+
+.track-status-header {
+    margin-bottom: 30px;
+}
+
+.track-status-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #191A23;
+    margin-bottom: 8px;
+}
+
+.track-status-subtitle {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1rem;
+    color: #666;
+    margin: 0;
+}
+
+.track-status-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.track-status-label {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #191A23;
+}
+
+.track-status-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.track-status-input {
+    width: 100%;
+    padding: 14px 16px;
+    border: 2px solid #191A23;
+    border-radius: 12px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #191A23;
+    background: #f9f9f9;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.track-status-input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(251, 180, 29, 0.2);
+}
+
+.track-status-input::placeholder {
+    color: #aaa;
+    font-weight: 400;
+}
+
+.track-status-btn {
+    width: 100%;
+    padding: 14px;
+    background: #FBB41D;
+    color: #191A23;
+    border: 2px solid #191A23;
+    border-radius: 12px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    cursor: pointer;
+    box-shadow: 0px 4px 0px 0px #18191F;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.track-status-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0px 6px 0px 0px #18191F;
+}
+
+.track-status-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0px 2px 0px 0px #18191F;
+}
+
+.track-status-error {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid rgba(220, 38, 38, 0.15);
+    border-radius: 10px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+/* Active CID Alert Banner */
+.active-cid-alert {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    width: 90%;
+    max-width: 600px;
+    animation: slideUp 0.4s ease-out;
+}
+
+@keyframes slideUp {
+    from { transform: translateX(-50%) translateY(100px); opacity: 0; }
+    to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+.active-cid-alert-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    background: #FBB41D;
+    border: 2px solid #191A23;
+    border-radius: 14px;
+    box-shadow: 0px 4px 0px 0px #191A23, 0 8px 30px rgba(0,0,0,0.15);
+    font-family: 'Space Grotesk', sans-serif;
+}
+
+.active-cid-alert-icon {
+    flex-shrink: 0;
+}
+
+.active-cid-alert-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    font-size: 0.9rem;
+    color: #191A23;
+}
+
+.active-cid-alert-btn {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    background: #191A23;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.2s ease;
+}
+
+.active-cid-alert-btn:hover {
+    background: #333;
+}
+
+.active-cid-alert-close {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #191A23;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    opacity: 0.6;
+}
+
+.active-cid-alert-close:hover {
+    opacity: 1;
+}
+
 .confirmation-title {
+    font-family: "Space Grotesk", sans-serif;
     font-size: 1.3rem;
-    font-weight: bold;
+    font-weight: 700;
 }
 
 .confirmation-subtitle {
@@ -2375,6 +2600,32 @@ input:focus::placeholder {
     .feedback {
         align-items: center;
     }
+
+    .confirmation-title {
+        font-size: 14px;
+    }
+
+    .confirmation-subtitle {
+        font-size: 12px;
+    }
+
+    .doc-meta h6 {
+        font-size: 12px;
+    }
+
+    .doc-id {
+        font-size: 10px;
+    }
+
+    .badge {
+        font-size: 11px;
+        padding: 4px 8px;
+    }
+
+    .conf-doc-name,
+    .conf-printer-status {
+        font-size: 13px;
+    }
 }
 
 @media (max-width: 1000px) {
@@ -2449,12 +2700,12 @@ input:focus::placeholder {
 
     .file-upload-title,
     .confirmation-title {
-        font-size: 1rem;
+        font-size: 1.5rem;
     }
 
     .file-upload-subtitle,
     .confirmation-subtitle {
-        font-size: 0.8rem;
+        font-size: 1.3rem;
     }
 
     .browse-area,
@@ -5879,4 +6130,93 @@ input:focus::placeholder {
         transform: none;
         transition: none;
     }
+}
+
+/* ======================== */
+/*  404 Error Page Styles   */
+/* ======================== */
+.error-page {
+    font-family: 'Space Grotesk', sans-serif;
+    background: #fff;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2em;
+    margin: 0;
+}
+
+.error-box {
+    max-width: 600px;
+    width: 90vw;
+    min-width: 260px;
+    border: 2px solid #222;
+    border-radius: 18px;
+    background: #fff;
+    padding: 2em 2.5em 3em;
+    text-align: center;
+    box-shadow: 0 4px 32px rgba(0, 0, 0, 0.12);
+}
+
+.error-content {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    margin-bottom: 1em;
+}
+
+.error-title {
+    background: #FFC72C;
+    color: #222;
+    font-size: 1.5em;
+    font-weight: bold;
+    border-radius: 8px;
+    display: inline-block;
+    padding: 5px 8px;
+    width: fit-content;
+}
+
+.error-sub {
+    color: #444;
+    background: #f5f5f5;
+    border-radius: 8px;
+    display: inline-block;
+    padding: 5px 8px;
+    font-size: 1.1em;
+    width: fit-content;
+    margin-top: 4px;
+}
+
+.error-img {
+    width: 220px;
+    margin: 1em auto 0;
+    display: block;
+}
+
+.error-page .home-btn {
+    display: inline-block;
+    margin-top: 1.5em;
+    margin-bottom: 4px;
+    padding: 12px 28px;
+    background: #FFC72C;
+    color: #222;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    border: 2px solid #222;
+    border-radius: 12px;
+    text-decoration: none;
+    width: auto;
+    box-shadow: 0px 4px 0px 0px #18191F;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.error-page .home-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0px 6px 0px 0px #18191F;
+}
+
+.error-page .home-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0px 2px 0px 0px #18191F;
 }

@@ -567,7 +567,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        window.location.href = confirmBtn.getAttribute('data-url');
+                        const cid = sessionStorage.getItem('customer_id');
+                        window.location.href = '/confirmation/' + cid + '/';
                     } else {
                         if (overlay) overlay.style.display = 'none';
                         alert('Failed to update settings: ' + (data.error || 'Unknown error'));
@@ -2344,6 +2345,21 @@ function submitFeedbackForm() {
             if (entry.isIntersecting) {
                 entry.target.classList.add('revealed');
                 observer.unobserve(entry.target); // Only animate once
+
+                // After reveal animation completes, remove scroll-reveal classes
+                // so the element's original hover transitions (transform, box-shadow, etc.) work again
+                const el = entry.target;
+                let totalTime = 700; // Base animation duration (0.7s)
+                for (let i = 1; i <= 6; i++) {
+                    if (el.classList.contains('delay-' + i)) {
+                        totalTime += i * 100;
+                        break;
+                    }
+                }
+                setTimeout(() => {
+                    el.classList.remove('scroll-reveal', 'revealed',
+                        'delay-1', 'delay-2', 'delay-3', 'delay-4', 'delay-5', 'delay-6');
+                }, totalTime + 100); // +100ms buffer
             }
         });
     }, {
@@ -2352,4 +2368,47 @@ function submitFeedbackForm() {
     });
 
     document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
+})();
+
+/* ======================== */
+/*  Track Status Form       */
+/* ======================== */
+(function() {
+    const trackForm = document.getElementById('track-status-form');
+    if (!trackForm) return;
+
+    trackForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const cid = document.getElementById('track-cid-input').value.trim();
+        const errorDiv = document.getElementById('track-status-error');
+        const btn = document.querySelector('.track-status-btn');
+
+        if (!cid) return;
+
+        // Hide previous error
+        errorDiv.style.display = 'none';
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+
+        fetch('/api/validate-cid/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customer_id: cid })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.valid) {
+                window.location.href = '/confirmation/' + encodeURIComponent(cid) + '/';
+            } else {
+                errorDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Track Status';
+            }
+        })
+        .catch(() => {
+            errorDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Track Status';
+        });
+    });
 })();

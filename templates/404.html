@@ -1,0 +1,24 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+    <link rel="icon" href="{% static 'assets/safeprint-logo.ico' %}" type="image/x-icon">
+    <title>404 - Page Not Found</title>
+</head>
+<body class="error-page">
+    <div class="error-box">
+        <div class="error-content">
+            <div class="error-title">Oops! Page not found</div>
+            <div class="error-sub">The page you're looking for doesn't exist or has been moved.</div>
+        </div>
+        <img src="{% static 'assets/404-illus.png' %}" alt="404 illustration" class="error-img">
+        <a href="/" class="home-btn">Go to Homepage</a>
+    </div>
+</body>
+</html>
