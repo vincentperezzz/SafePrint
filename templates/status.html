@@ -128,6 +128,75 @@ Printer Status
     <button class="add-printer-btn" onclick="openAddPrinterPopup()">Configure to Add Printer</button>
 </div>
 
+<div class="printer-status-section">
+    <div class="queue-header">
+        <h2>Paper Refill</h2>
+    </div>
+    <div class="printer-status-card">
+        <div class="queue-search-bar">
+            <input type="text" id="paper-refill-search" placeholder="Search by Printer Name or IP Address">
+            <span class="search-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </span>
+        </div>
+        <div class="printer-table paper-refill-table">
+            <div class="printer-table-header">
+                <div>Printer Name</div>
+                <div>Paper Assigned</div>
+                <div>Tray Capacity</div>
+                <div>Tray Level</div>
+                <div>Last Refill Time</div>
+                <div>Refill Action</div>
+            </div>
+            <div class="printer-table-row">
+                <div class="printer-info">
+                    <div class="printer-name">Printer 1</div>
+                    <div class="printer-model">Brother DCP-T510DW</div>
+                </div>
+                <div>Long</div>
+                <div>250 sheets</div>
+                <div>
+                    <span class="status-dot ok"></span>
+                    Full
+                </div>
+                <div>Just now</div>
+                <div><button class="refill-btn">Mark as Refilled</button></div>
+            </div>
+            <div class="printer-table-row">
+                <div class="printer-info">
+                    <div class="printer-name">Printer 2</div>
+                    <div class="printer-model">Brother DCP-T820DW</div>
+                </div>
+                <div>Long</div>
+                <div>250 sheets</div>
+                <div>
+                    <span class="status-dot low"></span>
+                    Low
+                </div>
+                <div>2 hours ago</div>
+                <div><button class="refill-btn">Mark as Refilled</button></div>
+            </div>
+            <div class="printer-table-row">
+                <div class="printer-info">
+                    <div class="printer-name">Printer 3</div>
+                    <div class="printer-model">wwwwwwwwwwwwww</div>
+                </div>
+                <div>Short</div>
+                <div>250 sheets</div>
+                <div>
+                    <span class="status-dot danger"></span>
+                    Needs Refill
+                </div>
+                <div>Yesterday</div>
+                <div><button class="refill-btn">Mark as Refilled</button></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Add Printer Popup (hidden by default, styled like popup overlay) -->
 <div class="popup-overlay" id="addPrinterPopup" style="display:none;">
   <div class="popup-form">
