@@ -2369,3 +2369,46 @@ function submitFeedbackForm() {
 
     document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
 })();
+
+/* ======================== */
+/*  Track Status Form       */
+/* ======================== */
+(function() {
+    const trackForm = document.getElementById('track-status-form');
+    if (!trackForm) return;
+
+    trackForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const cid = document.getElementById('track-cid-input').value.trim();
+        const errorDiv = document.getElementById('track-status-error');
+        const btn = document.querySelector('.track-status-btn');
+
+        if (!cid) return;
+
+        // Hide previous error
+        errorDiv.style.display = 'none';
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+
+        fetch('/api/validate-cid/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customer_id: cid })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.valid) {
+                window.location.href = '/confirmation/' + encodeURIComponent(cid) + '/';
+            } else {
+                errorDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Track Status';
+            }
+        })
+        .catch(() => {
+            errorDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Track Status';
+        });
+    });
+})();
