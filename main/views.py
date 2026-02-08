@@ -14,7 +14,15 @@ import os, uuid, math, time, random, string, json, PyPDF2, subprocess
 
 
 def index_view(request):
-    return render(request, 'index.html')
+    active_cid = request.session.get('customer_id')
+    # Only pass CID if there are actually active (non-completed) documents
+    if active_cid:
+        has_active = Document.objects.filter(
+            customer_id=active_cid
+        ).exclude(doc_status__in=['Printed', 'Picked Up']).exists()
+        if not has_active:
+            active_cid = None
+    return render(request, 'index.html', {'active_cid': active_cid})
 
 
 def upload_view(request):
@@ -23,6 +31,10 @@ def upload_view(request):
         request.session['upload_session_key'] = str(uuid.uuid4())
     session_key = request.session['upload_session_key']
     return render(request, 'upload.html', {'session_key': session_key})
+
+
+def track_status_view(request):
+    return render(request, 'track_status.html')
 
 
 def confirmation(request, customer_id):
