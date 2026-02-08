@@ -490,7 +490,7 @@ html {
 
 /* Card icon styling */
 .card-icon {
-    width: 600px;
+    width: 250px;
     height: auto;
     margin-left: 20px;
     flex-shrink: 0;
