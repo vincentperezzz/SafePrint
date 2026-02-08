@@ -14,7 +14,7 @@ SECRET_KEY = config('DJANGO_SECRET_KEY', default='default-secret-key')
 # DEBUG = config('DEBUG', default=False, cast=bool)
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.0.100', 'safeprint', 'nanoprint.duckdns.org']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.0.100', 'safeprint', 'safeprint.duckdns.org']
 
 # CSRF settings for HTTPS
 CSRF_TRUSTED_ORIGINS = []
