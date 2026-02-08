@@ -5,6 +5,15 @@ echo "========================================"
 echo "SafePrint Docker Environment Startup"
 echo "========================================"
 
+VENV_PATH="/opt/venv"
+
+if [ ! -d "$VENV_PATH" ]; then
+    python3 -m venv "$VENV_PATH"
+fi
+
+"$VENV_PATH/bin/pip" install --upgrade pip
+"$VENV_PATH/bin/pip" install -r /home/safeprint/dev/SafePrint/requirements.txt
+
 # ========================================
 # MYSQL INITIALIZATION
 # ========================================
@@ -48,7 +57,7 @@ if [ -f "/home/safeprint/dev/SafePrint/docker/data/database_dump.sql" ]; then
 else
     echo "[2/6] No database dump found, running migrations..."
     cd /home/safeprint/dev/SafePrint
-    source venv/bin/activate
+    source "$VENV_PATH/bin/activate"
     python manage.py migrate --noinput
     
     # Create default notification sounds
@@ -72,8 +81,10 @@ fi
 # ========================================
 echo "[3/6] Setting up environment variables..."
 
-if [ ! -f "/home/safeprint/dev/SafePrint/venv/.env" ]; then
-    cat > /home/safeprint/dev/SafePrint/venv/.env << 'ENVFILE'
+mkdir -p "$VENV_PATH"
+
+if [ ! -f "$VENV_PATH/.env" ]; then
+    cat > "$VENV_PATH/.env" << 'ENVFILE'
 DJANGO_SECRET_KEY=your-secret-key-change-for-production
 DB_NAME=SAFEPRINT_DB
 DB_USER=SAFEPRINT_ADMIN
@@ -89,7 +100,7 @@ fi
 # ========================================
 echo "[4/6] Collecting static files..."
 cd /home/safeprint/dev/SafePrint
-source venv/bin/activate
+source "$VENV_PATH/bin/activate"
 python manage.py collectstatic --noinput --clear
 
 # ========================================
