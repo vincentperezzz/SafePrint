@@ -1036,8 +1036,10 @@ function displayDocuments(documents, total_price) {
         dashboardSearchInput.oninput = function () {
             const filter = dashboardSearchInput.value.trim().toLowerCase();
             const filteredDocs = lastDocuments.filter(doc =>
-                doc.filename.toLowerCase().includes(filter) ||
-                doc.doc_id.toLowerCase().includes(filter)
+                (doc.filename || '').toLowerCase().includes(filter) ||
+                (doc.doc_id || '').toLowerCase().includes(filter) ||
+                (doc.ticket_number || '').toLowerCase().includes(filter) ||
+                (doc.customer_id || '').toLowerCase().includes(filter)
             );
             renderDocumentItems(filteredDocs, resultsDiv);
         };
@@ -1049,19 +1051,27 @@ function renderDocumentItems(documents, resultsDiv) {
     Array.from(resultsDiv.querySelectorAll('.document-item, .no-documents')).forEach(el => el.remove());
     let html = '';
     documents.forEach(doc => {
+        const ticketNumber = doc.ticket_number || doc.doc_id || '';
+        const customerId = doc.customer_id ? `#${doc.customer_id.replace('#', '')}` : '';
+        const timeSubmitted = doc.time_submitted || '';
+        const documentId = doc.document_id || doc.doc_id || '';
+        const price = Number.parseFloat(doc.price || 0);
         html += `
         <div class="document-item" data-doc-id="${doc.doc_id}">
-            <div class="document-item-wrapper">
-                <img src="/static/assets/pdf-icon.svg" alt="PDF Icon">
-                <div class="document-info">
-                    <h6 title="${doc.filename}">${doc.filename}</h6>
-                    <span>₱${parseFloat(doc.price).toFixed(2)}</span>
+            <div class="ticket-cell">
+                <img src="/static/assets/pdf-icon.svg" alt="Ticket">
+                <div class="ticket-meta">
+                    <h6 title="${ticketNumber}">${ticketNumber}</h6>
+                    <span>₱${price.toFixed(2)}</span>
                 </div>
             </div>
-            <div class="document-id">${doc.doc_id}</div>
+            <div class="ticket-customer">${customerId}</div>
+            <div class="ticket-date">${timeSubmitted}</div>
+            <div class="ticket-doc">${documentId}</div>
             <div class="actions">
-                <button class="deny-btn">Deny</button>
-                <button class="approve-btn">Approve</button>
+                <button class="deny-btn" type="button">Void</button>
+                <button class="approve-btn" type="button">Verify</button>
+                <button class="refund-btn" type="button">Refund</button>
             </div>
         </div>
         `;
@@ -1097,14 +1107,17 @@ function renderDocumentItems(documents, resultsDiv) {
 
                         // Recalculate total price
                         let total = 0;
-                        resultsDiv.querySelectorAll('.document-item .document-info span').forEach(span => {
+                        resultsDiv.querySelectorAll('.document-item .ticket-meta span').forEach(span => {
                             total += parseFloat(span.textContent.replace('₱', '')) || 0;
                         });
-                        document.getElementById('price-to-pay').textContent = '₱' + total.toFixed(2);
+                        const priceDisplay = document.getElementById('price-to-pay');
+                        if (priceDisplay) priceDisplay.textContent = '₱' + total.toFixed(2);
 
                         // If no more documents, clear everything and hide search/title
                         if (resultsDiv.querySelectorAll('.document-item').length === 0) {
-                            clearCustomerIdAndPrice();
+                            if (typeof clearCustomerIdAndPrice === 'function') {
+                                clearCustomerIdAndPrice();
+                            }
                             const searchBar = resultsDiv.querySelector('.search-bar');
                             const docTitle = resultsDiv.querySelector('.document-item-title');
                             if (searchBar) searchBar.style.display = 'none';
@@ -1148,14 +1161,17 @@ function renderDocumentItems(documents, resultsDiv) {
 
                         // Recalculate total price
                         let total = 0;
-                        resultsDiv.querySelectorAll('.document-item .document-info span').forEach(span => {
+                        resultsDiv.querySelectorAll('.document-item .ticket-meta span').forEach(span => {
                             total += parseFloat(span.textContent.replace('₱', '')) || 0;
                         });
-                        document.getElementById('price-to-pay').textContent = '₱' + total.toFixed(2);
+                        const priceDisplay = document.getElementById('price-to-pay');
+                        if (priceDisplay) priceDisplay.textContent = '₱' + total.toFixed(2);
 
                         // If no more documents, clear everything
                         if (resultsDiv.querySelectorAll('.document-item').length === 0) {
-                            clearCustomerIdAndPrice();
+                            if (typeof clearCustomerIdAndPrice === 'function') {
+                                clearCustomerIdAndPrice();
+                            }
                             const searchBar = resultsDiv.querySelector('.search-bar');
                             const docTitle = resultsDiv.querySelector('.document-item-title');
                             if (searchBar) searchBar.style.display = 'none';
