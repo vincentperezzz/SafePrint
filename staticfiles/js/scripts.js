@@ -2592,3 +2592,244 @@ document.addEventListener('change', function(e) {
         }
     }
 });
+
+// =========================================================================
+// PAYMENT PAGE LOGIC
+// =========================================================================
+(function () {
+    // Only run on payment page
+    if (!window.PAYMENT_DATA) return;
+
+    const PAYMENT = window.PAYMENT_DATA;
+    let pollInterval = null;
+    let pollAttempts = 0;
+    const MAX_POLL_ATTEMPTS = 60; // 5 minutes at 5-second intervals
+    let checkoutUrl = null;
+
+    /** Show full-screen loading overlay */
+    function showOverlay() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) overlay.style.display = 'flex';
+    }
+
+    /** Hide full-screen loading overlay */
+    function hideOverlay() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    /**
+     * STEP 1: Initiate payment
+     * Sends phone number + CID to Django → KLCiS voucher → opens GCash checkout
+     */
+    window.initiatePayment = async function () {
+        const phoneInput = document.getElementById('phone-number');
+        const btn = document.getElementById('pay-now-btn');
+        const errorDiv = document.getElementById('payment-error');
+        const phone = phoneInput.value.replace(/\s/g, '').trim();
+
+        // Validate Philippine phone number
+        const phoneRegex = /^(\+?63|0)(9\d{9})$/;
+        if (!phoneRegex.test(phone)) {
+            errorDiv.textContent = 'Please enter a valid Philippine phone number (e.g., 09171234567).';
+            errorDiv.style.display = 'block';
+            phoneInput.focus();
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+        showOverlay();
+        errorDiv.style.display = 'none';
+
+        try {
+            const response = await fetch('/payment/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({
+                    action: 'initiate',
+                    customer_id: PAYMENT.customerId,
+                    doc_ids: PAYMENT.docIds,
+                    phone_number: phone,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                if (data.checkout_url) {
+                    checkoutUrl = data.checkout_url;
+                    window.open(data.checkout_url, '_blank');
+                }
+                document.getElementById('payment-step-1').style.display = 'none';
+                document.getElementById('payment-step-2').style.display = 'flex';
+                startAutoPolling();
+
+                // Show redirect button after 10s as fallback if auto-open was blocked
+                setTimeout(() => {
+                    const redirectBtn = document.getElementById('redirect-payment-btn');
+                    if (redirectBtn) redirectBtn.style.display = '';
+                }, 10000);
+            } else {
+                errorDiv.textContent = data.error || 'Payment setup failed. Please try again.';
+                errorDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Pay \u20B1' + Math.round(PAYMENT.totalPrice) + ' Now';
+            }
+        } catch (err) {
+            errorDiv.textContent = 'Network error. Please check your connection and try again.';
+            errorDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Pay \u20B1' + Math.round(PAYMENT.totalPrice) + ' Now';
+        } finally {
+            hideOverlay();
+        }
+    };
+
+    /**
+     * STEP 2: Verify payment
+     * Polls Django → KLCiS sold_vouchers → if paid, redirects to confirmation
+     */
+    window.verifyPayment = async function () {
+        const btn = document.getElementById('verify-btn');
+        const errorDiv = document.getElementById('verify-error');
+        const successDiv = document.getElementById('verify-success');
+
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+        showOverlay();
+        errorDiv.style.display = 'none';
+        successDiv.style.display = 'none';
+
+        try {
+            const response = await fetch('/payment/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({
+                    action: 'verify',
+                    customer_id: PAYMENT.customerId,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                stopAutoPolling();
+                successDiv.textContent = data.message || 'Payment verified! Redirecting to print queue...';
+                successDiv.style.display = 'block';
+                btn.style.display = 'none';
+                setTimeout(() => {
+                    window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
+                }, 2000);
+            } else {
+                if (data.status === 'pending') {
+                    errorDiv.textContent = 'Payment not yet detected. If you already paid, please wait a moment and try again.';
+                } else {
+                    errorDiv.textContent = data.error || 'Verification failed.';
+                }
+                errorDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'I Have Paid \u2713';
+            }
+        } catch (err) {
+            errorDiv.textContent = 'Network error. Please check your connection and try again.';
+            errorDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'I Have Paid \u2713';
+        } finally {
+            hideOverlay();
+        }
+    };
+
+    /**
+     * Auto-poll every 5 seconds to check if payment has been confirmed.
+     */
+    function startAutoPolling() {
+        pollAttempts = 0;
+        pollInterval = setInterval(async () => {
+            pollAttempts++;
+            if (pollAttempts > MAX_POLL_ATTEMPTS) {
+                stopAutoPolling();
+                return;
+            }
+            try {
+                const response = await fetch('/payment/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    },
+                    body: JSON.stringify({
+                        action: 'verify',
+                        customer_id: PAYMENT.customerId,
+                    }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    stopAutoPolling();
+                    const successDiv = document.getElementById('verify-success');
+                    const btn = document.getElementById('verify-btn');
+                    successDiv.textContent = data.message || 'Payment verified! Redirecting...';
+                    successDiv.style.display = 'block';
+                    btn.style.display = 'none';
+                    document.getElementById('verify-error').style.display = 'none';
+                    setTimeout(() => {
+                        window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
+                    }, 2000);
+                }
+            } catch (e) {
+                // Silently continue polling on network errors
+            }
+        }, 5000);
+    }
+
+    function stopAutoPolling() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    }
+
+    /**
+     * Cancel payment - confirms with user, deletes print job, redirects home
+     */
+    window.cancelPayment = function () {
+        if (!confirm('Are you sure you want to cancel this payment? Your print job will be deleted and you will need to start over.')) {
+            return;
+        }
+        stopAutoPolling();
+        fetch('/payment/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
+            },
+            body: JSON.stringify({
+                action: 'cancel',
+                customer_id: PAYMENT.customerId,
+            }),
+        }).finally(() => {
+            window.location.href = '/';
+        });
+    };
+
+    /**
+     * Redirect to Payment - re-opens the checkout URL in a new tab
+     */
+    window.redirectToPayment = function () {
+        if (checkoutUrl) {
+            window.open(checkoutUrl, '_blank');
+        } else {
+            alert('Payment link is not available. Please try paying again.');
+        }
+    };
+
+    // Clean up polling on page unload
+    window.addEventListener('beforeunload', stopAutoPolling);
+})();

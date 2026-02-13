@@ -405,6 +405,41 @@ def payment(request):
                         'status': 'pending'
                     })
 
+            elif action == 'cancel':
+                # Cancel payment - delete unpaid payments and associated documents
+                customer_id = data.get('customer_id')
+                if not customer_id:
+                    return JsonResponse({'success': False, 'error': 'Missing customer_id'})
+                
+                # Delete unpaid payments and their documents
+                unpaid_payments = Payment.objects.filter(
+                    doc__customer_id=customer_id,
+                    payment_status='Unpaid'
+                )
+                
+                for payment_obj in unpaid_payments:
+                    doc = payment_obj.doc
+                    # Delete the uploaded file
+                    if doc and doc.stored_name:
+                        file_path = os.path.join(settings.MEDIA_ROOT, 'uploads', customer_id, doc.stored_name)
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                    # Delete payment and document
+                    payment_obj.delete()
+                    if doc:
+                        doc.delete()
+                
+                # Clean up empty customer upload folder
+                customer_folder = os.path.join(settings.MEDIA_ROOT, 'uploads', customer_id)
+                if os.path.exists(customer_folder) and not os.listdir(customer_folder):
+                    os.rmdir(customer_folder)
+                
+                # Clear session flags
+                request.session.pop('pending_payment_cid', None)
+                request.session.pop('pending_payment_doc_ids', None)
+                
+                return JsonResponse({'success': True, 'message': 'Payment cancelled successfully.'})
+
             else:
                 return JsonResponse({
                     'success': False,
