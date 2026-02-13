@@ -1163,6 +1163,88 @@ window.addEventListener('DOMContentLoaded', function () {
 window.customerDocuments = [];
 let customerSSE = null;
 
+// --- Print completion sound & tab title flash ---
+const confirmationBaseTitle = document.title;
+let confirmationTitleFlashInterval = null;
+let previousDocStatuses = {}; // Track previous statuses by doc_id
+const printCompleteAudio = new Audio('/static/sounds/chime.mp3');
+const rerouteAlertAudio = new Audio('/static/sounds/rerouted.mp3');
+
+function playPrintCompleteSound() {
+    printCompleteAudio.currentTime = 0;
+    printCompleteAudio.volume = 1.0;
+    printCompleteAudio.play().catch(e => console.warn('Could not play completion sound:', e));
+}
+
+function playRerouteSound() {
+    rerouteAlertAudio.currentTime = 0;
+    rerouteAlertAudio.volume = 1.0;
+    rerouteAlertAudio.play().catch(e => console.warn('Could not play reroute sound:', e));
+}
+
+function startConfirmationTitleFlash(count) {
+    if (confirmationTitleFlashInterval) {
+        clearInterval(confirmationTitleFlashInterval);
+    }
+    let showAlert = true;
+    confirmationTitleFlashInterval = setInterval(() => {
+        document.title = showAlert
+            ? `(${count}) Document${count > 1 ? 's' : ''} Ready!`
+            : confirmationBaseTitle;
+        showAlert = !showAlert;
+    }, 1000);
+}
+
+function stopConfirmationTitleFlash() {
+    if (confirmationTitleFlashInterval) {
+        clearInterval(confirmationTitleFlashInterval);
+        confirmationTitleFlashInterval = null;
+    }
+    document.title = confirmationBaseTitle;
+}
+
+function checkForNewCompletions(documents) {
+    if (!documents || documents.length === 0) return;
+
+    let newlyFinished = 0;
+    let newlyRerouted = 0;
+
+    documents.forEach(doc => {
+        const prev = previousDocStatuses[doc.doc_id];
+        if (prev) {
+            // Detect newly finished
+            if (doc.doc_status === 'Finished' && prev !== 'Finished') {
+                newlyFinished++;
+            }
+            // Detect reroute: was Printing, now Queued (rerouted to another printer)
+            if (prev === 'Printing' && doc.doc_status === 'Queued') {
+                newlyRerouted++;
+            }
+        }
+    });
+
+    // Update previous statuses
+    documents.forEach(doc => {
+        previousDocStatuses[doc.doc_id] = doc.doc_status;
+    });
+
+    // Play appropriate sounds (finished takes priority)
+    if (newlyFinished > 0) {
+        playPrintCompleteSound();
+    } else if (newlyRerouted > 0) {
+        playRerouteSound();
+    }
+
+    // Count total finished (not picked up) for title flash
+    const finishedCount = documents.filter(d => d.doc_status === 'Finished').length;
+    if (finishedCount > 0) {
+        startConfirmationTitleFlash(finishedCount);
+    } else {
+        stopConfirmationTitleFlash();
+    }
+}
+// --- End print completion sound & tab title flash ---
+
 function initConfirmationSSE() {
     const customerIdEl = document.getElementById('customer-id-data');
     if (!customerIdEl) return;
@@ -1188,6 +1270,7 @@ function initConfirmationSSE() {
         try {
             const data = JSON.parse(event.data);
             window.customerDocuments = data.documents || [];
+            checkForNewCompletions(data.documents || []);
             renderDocumentRows(data.documents);
             updateConfirmationUI(data);
         } catch (e) {

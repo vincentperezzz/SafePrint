@@ -273,6 +273,16 @@ class Feedback(models.Model):
         db_table = 'feedback'
 
 
+def receipt_upload_path(instance, filename):
+    """Name the receipt screenshot after the ticket number."""
+    import os
+    ext = os.path.splitext(filename)[1]
+    if instance.ticket_number:
+        clean_ticket = instance.ticket_number.replace('#', '')
+        return f"receipt_screenshots/{clean_ticket}{ext}"
+    return f"receipt_screenshots/{filename}"
+
+
 class SupportTicket(models.Model):
     """
     Support ticket for print error reports and customer issues.
@@ -319,7 +329,7 @@ class SupportTicket(models.Model):
     
     # Payment receipt proof
     receipt_code = models.CharField(max_length=100, blank=True, default="")
-    receipt_screenshot = models.ImageField(upload_to='receipt_screenshots/', null=True, blank=True)
+    receipt_screenshot = models.ImageField(upload_to=receipt_upload_path, null=True, blank=True)
     
     # Status tracking
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='open')
@@ -340,7 +350,30 @@ class SupportTicket(models.Model):
             date_prefix = timezone.now().strftime('%y%m%d')
             random_suffix = ''.join(random.choices(string.digits, k=4))
             self.ticket_number = f"#TKT-{date_prefix}-{random_suffix}"
+        
+        # Delete old screenshot if being replaced
+        if self.pk:
+            try:
+                old = SupportTicket.objects.get(pk=self.pk)
+                if old.receipt_screenshot and old.receipt_screenshot != self.receipt_screenshot:
+                    import os
+                    if os.path.isfile(old.receipt_screenshot.path):
+                        os.remove(old.receipt_screenshot.path)
+            except SupportTicket.DoesNotExist:
+                pass
+        
         super().save(*args, **kwargs)
+    
+    def delete(self, *args, **kwargs):
+        # Delete the receipt screenshot file from disk
+        if self.receipt_screenshot:
+            import os
+            try:
+                if os.path.isfile(self.receipt_screenshot.path):
+                    os.remove(self.receipt_screenshot.path)
+            except Exception:
+                pass
+        super().delete(*args, **kwargs)
     
     def __str__(self):
         return f"{self.ticket_number} - {self.customer_name}"
