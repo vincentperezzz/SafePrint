@@ -132,6 +132,44 @@ def confirmation(request, customer_id):
         request.session['customer_id'] = customer_id
         session_customer_id = customer_id
 
+    # Debug mode: bypass session + create dummy docs for UI testing
+    if django_settings.DEBUG and request.GET.get('debug') == 'true':
+        request.session['customer_id'] = customer_id
+
+        # Create temporary test documents if they don't exist
+        from django.utils import timezone as tz
+        test_docs = [
+            ('DOC-TEST1', 'Test Document.pdf', 'Finished'),
+            ('DOC-TEST2', 'Essay.pdf', 'Printing'),
+        ]
+        for doc_id, filename, status in test_docs:
+            doc, created = Document.objects.get_or_create(
+                doc_id=doc_id,
+                defaults={
+                    'customer_id': customer_id,
+                    'filename': filename,
+                    'original_name': filename,
+                    'stored_name': f'{doc_id}.pdf',
+                    'file_name': filename,
+                    'file_type': 'pdf',
+                    'file_size': 1024,
+                    'pages_num': '1-3',
+                    'num_copies': 1,
+                    'doc_status': status,
+                    'time_submitted': tz.now(),
+                    'paper_size': 'Letter',
+                    'paper_quality': '80',
+                    'orientation': 'Portrait',
+                    'color_mode': 'Black and White',
+                }
+            )
+            if not created:
+                doc.customer_id = customer_id
+                doc.doc_status = status
+                doc.save()
+
+        # Fall through to normal rendering (SSE will pick up the test docs)
+
     # Verify the session owns this customer_id
     if not session_customer_id or session_customer_id != customer_id:
         # No valid session for this CID — show 404

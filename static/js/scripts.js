@@ -2061,6 +2061,8 @@ function submitTicketForm() {
     const customerName = document.getElementById('ticket-customer-name').value.trim();
     const email = document.getElementById('ticket-email').value.trim();
     const phoneNumber = document.getElementById('ticket-phone').value.trim();
+    const receiptCode = document.getElementById('ticket-receipt-code').value.trim();
+    const receiptFile = document.getElementById('ticket-receipt-screenshot').files[0];
     const description = document.getElementById('ticket-description').value.trim();
 
     if (!customerName) {
@@ -2089,6 +2091,18 @@ function submitTicketForm() {
         return;
     }
 
+    if (!receiptCode) {
+        alert('Please enter the receipt code from your payment receipt.');
+        document.getElementById('ticket-receipt-code').focus();
+        return;
+    }
+
+    if (!receiptFile) {
+        alert('Please upload a screenshot of your payment receipt.');
+        document.getElementById('ticket-receipt-screenshot').focus();
+        return;
+    }
+
     if (!description) {
         alert('Please describe the issue.');
         document.getElementById('ticket-description').focus();
@@ -2100,24 +2114,25 @@ function submitTicketForm() {
         ? state.selectedDocs[state.currentDocIndex]
         : state.selectedDocs[0];
 
-    // Prepare ticket data
-    const ticketData = {
-        customer_id: document.getElementById('ticket-customer-id').value,
-        document_id: currentDoc.doc_id,
-        document_name: currentDoc.doc_name,
-        customer_name: customerName,
-        email: email,
-        phone_number: phoneNumber,
-        problem_type: state.problemType,
-        description: description,
-        page_range: state.pageRange,
-        specific_pages: state.specificPages,
-        reprinted: state.hasReprinted
-    };
+    // Use FormData for file upload
+    var formData = new FormData();
+    formData.append('customer_id', document.getElementById('ticket-customer-id').value);
+    formData.append('document_id', currentDoc.doc_id);
+    formData.append('document_name', currentDoc.doc_name);
+    formData.append('customer_name', customerName);
+    formData.append('email', email);
+    formData.append('phone_number', phoneNumber);
+    formData.append('problem_type', state.problemType);
+    formData.append('description', description);
+    formData.append('page_range', state.pageRange);
+    formData.append('specific_pages', state.specificPages || '');
+    formData.append('reprinted', state.hasReprinted ? 'true' : 'false');
+    formData.append('receipt_code', receiptCode);
+    formData.append('receipt_screenshot', receiptFile);
 
     // For multiple docs in same-issue mode
     if (!state.isIndividualMode && state.selectedDocs.length > 1) {
-        ticketData.documents = state.selectedDocs;
+        formData.append('documents', JSON.stringify(state.selectedDocs));
     }
 
     showLoadingScreen('Submitting ticket...');
@@ -2125,10 +2140,9 @@ function submitTicketForm() {
     fetch('/api/submit-ticket/', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
             'X-CSRFToken': getCsrfToken()
         },
-        body: JSON.stringify(ticketData)
+        body: formData
     })
         .then(response => response.json())
         .then(data => {
@@ -2459,3 +2473,13 @@ function submitFeedbackForm() {
         });
     });
 })();
+
+// Receipt screenshot file input: show selected file name
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'ticket-receipt-screenshot') {
+        const label = document.getElementById('receipt-file-name');
+        if (label) {
+            label.textContent = e.target.files.length > 0 ? e.target.files[0].name : 'No file chosen';
+        }
+    }
+});
