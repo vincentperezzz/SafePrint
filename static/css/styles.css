@@ -29,6 +29,18 @@ body {
     padding: 0;
 }
 
+/* Prevent images and SVGs from being dragged */
+img, svg {
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-drag: none;
+    -webkit-user-select: none;
+    user-select: none;
+    pointer-events: auto;
+}
+
 html {
     scroll-padding-top: 160px;
 }
