@@ -1961,6 +1961,10 @@ def picked_up_document(request):
                         print(f"[PICKED UP] Deleted file {file_path} for document {doc_id}")
                         break
 
+        # Delete associated Payment records then the Document record
+        Payment.objects.filter(doc=doc).delete()
+        doc.delete()
+
         # Trigger folder cleanup
         subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
 
@@ -2012,11 +2016,6 @@ def finish_transaction(request):
         uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
 
         for doc in docs_to_process:
-            # Mark as Picked Up
-            doc.doc_status = 'Picked Up'
-            doc.status_updated_at = timezone.now()
-            doc.save()
-
             # Delete the file from storage
             if doc.stored_name:
                 for root, dirs, files in os.walk(uploads_dir):
@@ -2026,6 +2025,12 @@ def finish_transaction(request):
                             os.remove(file_path)
                             print(f"[FINISH TXN] Deleted file {file_path} for document {doc.doc_id}")
                             break
+
+            # Delete associated Payment records
+            Payment.objects.filter(doc=doc).delete()
+
+            # Delete the Document record itself
+            doc.delete()
 
             picked_up_count += 1
 
