@@ -2625,14 +2625,12 @@ document.addEventListener('change', function(e) {
     window.initiatePayment = async function () {
         const phoneInput = document.getElementById('phone-number');
         const btn = document.getElementById('pay-now-btn');
-        const errorDiv = document.getElementById('payment-error');
         const phone = phoneInput.value.replace(/\s/g, '').trim();
 
         // Validate Philippine phone number
         const phoneRegex = /^(\+?63|0)(9\d{9})$/;
         if (!phoneRegex.test(phone)) {
-            errorDiv.textContent = 'Please enter a valid Philippine phone number (e.g., 09171234567).';
-            errorDiv.style.display = 'block';
+            alert('Please enter a valid Philippine phone number (e.g., 09171234567).');
             phoneInput.focus();
             return;
         }
@@ -2640,7 +2638,6 @@ document.addEventListener('change', function(e) {
         btn.disabled = true;
         btn.textContent = 'Processing...';
         showOverlay();
-        errorDiv.style.display = 'none';
 
         try {
             const response = await fetch('/payment/', {
@@ -2660,28 +2657,29 @@ document.addEventListener('change', function(e) {
             const data = await response.json();
 
             if (data.success) {
-                if (data.checkout_url) {
-                    checkoutUrl = data.checkout_url;
-                    window.open(data.checkout_url, '_blank');
-                }
+                // Switch to step 2
                 document.getElementById('payment-step-1').style.display = 'none';
                 document.getElementById('payment-step-2').style.display = 'flex';
                 startAutoPolling();
 
-                // Show redirect button after 10s as fallback if auto-open was blocked
-                setTimeout(() => {
-                    const redirectBtn = document.getElementById('redirect-payment-btn');
-                    if (redirectBtn) redirectBtn.style.display = '';
-                }, 10000);
+                if (data.checkout_url) {
+                    checkoutUrl = data.checkout_url;
+                    // Try to open checkout in new tab
+                    const popup = window.open(data.checkout_url, '_blank');
+                    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+                        // Popup was blocked (common on iOS Safari)
+                        // Show redirect button immediately
+                        const redirectBtn = document.getElementById('redirect-payment-btn');
+                        if (redirectBtn) redirectBtn.style.display = '';
+                    }
+                }
             } else {
-                errorDiv.textContent = data.error || 'Payment setup failed. Please try again.';
-                errorDiv.style.display = 'block';
+                alert(data.error || 'Payment setup failed. Please try again.');
                 btn.disabled = false;
                 btn.textContent = 'Pay \u20B1' + Math.round(PAYMENT.totalPrice) + ' Now';
             }
         } catch (err) {
-            errorDiv.textContent = 'Network error. Please check your connection and try again.';
-            errorDiv.style.display = 'block';
+            alert('Network error. Please check your connection and try again.');
             btn.disabled = false;
             btn.textContent = 'Pay \u20B1' + Math.round(PAYMENT.totalPrice) + ' Now';
         } finally {
@@ -2695,14 +2693,10 @@ document.addEventListener('change', function(e) {
      */
     window.verifyPayment = async function () {
         const btn = document.getElementById('verify-btn');
-        const errorDiv = document.getElementById('verify-error');
-        const successDiv = document.getElementById('verify-success');
 
         btn.disabled = true;
         btn.textContent = 'Checking...';
         showOverlay();
-        errorDiv.style.display = 'none';
-        successDiv.style.display = 'none';
 
         try {
             const response = await fetch('/payment/', {
@@ -2721,25 +2715,19 @@ document.addEventListener('change', function(e) {
 
             if (data.success) {
                 stopAutoPolling();
-                successDiv.textContent = data.message || 'Payment verified! Redirecting to print queue...';
-                successDiv.style.display = 'block';
-                btn.style.display = 'none';
-                setTimeout(() => {
-                    window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
-                }, 2000);
+                alert(data.message || 'Payment verified! Redirecting to print queue...');
+                window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
             } else {
                 if (data.status === 'pending') {
-                    errorDiv.textContent = 'Payment not yet detected. If you already paid, please wait a moment and try again.';
+                    alert('Payment not yet detected. If you already paid, please wait a moment and try again.');
                 } else {
-                    errorDiv.textContent = data.error || 'Verification failed.';
+                    alert(data.error || 'Verification failed.');
                 }
-                errorDiv.style.display = 'block';
                 btn.disabled = false;
                 btn.textContent = 'I Have Paid \u2713';
             }
         } catch (err) {
-            errorDiv.textContent = 'Network error. Please check your connection and try again.';
-            errorDiv.style.display = 'block';
+            alert('Network error. Please check your connection and try again.');
             btn.disabled = false;
             btn.textContent = 'I Have Paid \u2713';
         } finally {
@@ -2773,15 +2761,8 @@ document.addEventListener('change', function(e) {
                 const data = await response.json();
                 if (data.success) {
                     stopAutoPolling();
-                    const successDiv = document.getElementById('verify-success');
-                    const btn = document.getElementById('verify-btn');
-                    successDiv.textContent = data.message || 'Payment verified! Redirecting...';
-                    successDiv.style.display = 'block';
-                    btn.style.display = 'none';
-                    document.getElementById('verify-error').style.display = 'none';
-                    setTimeout(() => {
-                        window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
-                    }, 2000);
+                    alert(data.message || 'Payment verified! Redirecting to print queue...');
+                    window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
                 }
             } catch (e) {
                 // Silently continue polling on network errors

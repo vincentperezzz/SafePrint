@@ -5,10 +5,17 @@ import os
 admin.site.register(AdminUser)
 admin.site.register(Printer)
 admin.site.register(Document)
-admin.site.register(Payment)
 admin.site.register(Feedback)
 admin.site.register(RerouteHistory)
 admin.site.register(NotificationSound)
+
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ('doc', 'price', 'payment_status', 'payment_method', 'phone_number', 'voucher_code', 'klcis_transaction_id', 'approved_by', 'approved_at')
+    list_filter = ('payment_status', 'payment_method')
+    search_fields = ('doc__doc_id', 'doc__customer_id', 'phone_number', 'voucher_code', 'klcis_transaction_id')
+    readonly_fields = ('klcis_transaction_id', 'approved_at')
 
 
 @admin.register(SupportTicket)
