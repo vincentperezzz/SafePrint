@@ -33,6 +33,17 @@ SafePrint
     <button class="proceed-btn" id="to-upload" data-url="{% url 'upload' %}" style="display: none;">Proceed</button>
 </div>
 
+<!-- Payment Channels Supported -->
+<div class="payment-channels-section">
+    <p class="payment-channels-title">Payment Channels Supported</p>
+    <div class="payment-channels-logos">
+        <img src="{% static 'assets/gcash-logo.png' %}" alt="GCash">
+        <img src="{% static 'assets/shopeepay-logo.png' %}" alt="ShopeePay">
+        <img src="{% static 'assets/maya-logo.png' %}" alt="Maya">
+        <img src="{% static 'assets/grabpay-logo.png' %}" alt="GrabPay">
+    </div>
+</div>
+
 <div class="section-container" id="help">
     <h2 class="section-title">Need help?</h2>
     <p class="section-text">
@@ -50,16 +61,16 @@ SafePrint
         <img src="{% static 'assets/drag-n-drop.svg' %}" alt="Drag and Drop Icon" class="card-icon">
     </div>    <div class="card">
         <div class="card-text">
-            <h3 class="card-title">Browse Files to</h3>
-            <h3 class="card-title">Upload</h3>
-            <p class="card-description">Select your document from your computer or mobile device.  Ensure the file format is supported.</p>
+            <h3 class="card-title">Browse Files</h3>
+            <h3 class="card-title">to upload</h3>
+            <p class="card-description">Select your document from your computer or mobile device. Ensure the file format is supported.</p>
         </div>
         <img src="{% static 'assets/browse.svg' %}" alt="Browse Icon" class="card-icon">
     </div>
     <div class="card">
         <div class="card-text">
             <h3 class="card-title">Print</h3>
-            <h3 class="card-title">Preference</h3>
+            <h3 class="card-title">Preferences</h3>
             <p class="card-description">Choose black or colored, what specific pages and what paper size suits your requirements.</p>
         </div>
         <img src="{% static 'assets/print-preference.svg' %}" alt="Print Preference Icon" class="card-icon">
@@ -68,9 +79,25 @@ SafePrint
         <div class="card-text">
             <h3 class="card-title">Payment</h3>
             <h3 class="card-title">Process</h3>
-            <p class="card-description">After submitting your document, complete payment via PayPal Checkout. Printing will begin once payment is confirmed.</p>
+            <p class="card-description">We support GCash, Maya, ShopeePay, and GrabPay. To pay, simply enter your registered mobile number in e-wallet, then save your receipt.</p>
         </div>
         <img src="{% static 'assets/payment.svg' %}" alt="Payment Icon" class="card-icon">
+    </div>
+    <div class="card">
+        <div class="card-text">
+            <h3 class="card-title">Screenshot</h3>
+            <h3 class="card-title">Your Receipt</h3>
+            <p class="card-description">Once your payment is successful, please take a screenshot of the "Thank You" page showing your Transaction Code. This screenshot is required if you need to report any technical issues or request a refund.</p>
+        </div>
+        <img src="{% static 'assets/screenshot.svg' %}" alt="Screenshot Receipt Icon" class="card-icon">
+    </div>
+    <div class="card">
+        <div class="card-text">
+            <h3 class="card-title">Monitor</h3>
+            <h3 class="card-title">Your Print</h3>
+            <p class="card-description">Disclaimer: Please stay near the printing area while your job is in progress. SafePrint is not responsible for documents left unattended or taken by others once they have been dispatched to the printer tray.</p>
+        </div>
+        <img src="{% static 'assets/monitor.svg' %}" alt="Monitor Print Icon" class="card-icon">
     </div>
     <div class="card">
         <div class="card-text">
@@ -84,7 +111,7 @@ SafePrint
         <div class="card-text">
             <h3 class="card-title">In case</h3>
             <h3 class="card-title">error occurs</h3>
-            <p class="card-description">If you encounter any issues during the submission or printing process, our personnel may request you to resend the document to ensure optimal print quality.</p>
+            <p class="card-description">If something doesn't look right during printing or automation, don't sweat it. Just click Report a Problem. Our system will provide Support Ticket to give you full assurance that your concern will be attended.</p>
         </div>
         <img src="{% static 'assets/error-occur.svg' %}" alt="Error Occur Icon" class="card-icon">
     </div>
@@ -168,6 +195,50 @@ SafePrint
             <p>Our system logs basic job details like the number of pages, color mode, and timestamp for queue management. However, document contents are not stored or analyzed.</p>
         </div>
     </div>
+    <div class="faq-card" tabindex="0">
+        <div class="faq-card-header">
+            <span class="faq-card-number">07</span>
+            <span class="faq-card-title">What is a CID and why do I need it?</span>
+            <img src="{% static 'assets/plus-icon.svg' %}" alt="Toggle Icon" class="faq-card-toggle">
+        </div>
+        <div class="faq-card-content">
+            <span class="faq-line"></span>
+            <p>A Customer ID (CID) is a unique reference number generated specifically for your print job. It acts as your digital ticket; you need it to authorize payment and to identify your documents in the printing queue. Without your CID, you cannot track or claim your printed files if the session is interrupted.</p>
+        </div>
+    </div>
+    <div class="faq-card" tabindex="0">
+        <div class="faq-card-header">
+            <span class="faq-card-number">08</span>
+            <span class="faq-card-title">What should I do if I accidentally close the page?</span>
+            <img src="{% static 'assets/plus-icon.svg' %}" alt="Toggle Icon" class="faq-card-toggle">
+        </div>
+        <div class="faq-card-content">
+            <span class="faq-line"></span>
+            <p>Don't worry! Simply go to the Track Status tab on our homepage and enter your CID. Our system will instantly retrieve your current print status, showing you if your job is "Pending," "Processing," or "Ready for Pickup."</p>
+        </div>
+    </div>
+    <div class="faq-card" tabindex="0">
+        <div class="faq-card-header">
+            <span class="faq-card-number">09</span>
+            <span class="faq-card-title">How do I use the "Track Status" feature?</span>
+            <img src="{% static 'assets/plus-icon.svg' %}" alt="Toggle Icon" class="faq-card-toggle">
+        </div>
+        <div class="faq-card-content">
+            <span class="faq-line"></span>
+            <p>Once you enter your CID in the Track Status field, you can see real-time updates of your document. You can check which printer number your job was assigned to and see a live progress bar as each page prints.</p>
+        </div>
+    </div>
+    <div class="faq-card" tabindex="0">
+        <div class="faq-card-header">
+            <span class="faq-card-number">10</span>
+            <span class="faq-card-title">Why am I seeing a different name during payment?</span>
+            <img src="{% static 'assets/plus-icon.svg' %}" alt="Toggle Icon" class="faq-card-toggle">
+        </div>
+        <div class="faq-card-content">
+            <span class="faq-line"></span>
+            <p>No cap, it's still us! To give you a seamless cashless experience without the corporate red tape, we use "CK French Perfume and Souvenir Shop" as our official payment gateway partner. Your payment is 100% secure and directly tied to your SafePrint job.</p>
+        </div>
+    </div>
 </div>
 
 <div class="section-container" id="about-us">
@@ -181,7 +252,10 @@ SafePrint
     <div class="aboutus-card">
         <div class="aboutus-content">
             <p class="aboutus-text">
-                SafePrint is a secure and efficient print management system developed as a college capstone project by Crystalline M. Datu, Charles Gabriel D. Gavino, and Vincent P. Perez taking BS Information Technology from Batangas State University The National Engineering University - Alangilan Campus. It aims to improve the printing process by providing a secure file transfer portal between customers and print shops, ensuring that documents are not stored or left behind on shop computers.
+                SafePrint is a secure and efficient print management system proudly funded by the Young LIFTers Program (YLP) at Batangas State University The National Engineering University. Developed as a college capstone project by Vincent P. Perez, Crystaline M. Datu, Lovely C. Guerra, and Jay E. Hosmillo. This project represents the innovation of Bachelor of Science in Information Technology and Bachelor in Industrial Technology students from the Alangilan Campus.
+
+                <br><br>
+                It aims to revolutionize the printing experience by providing a secure file transfer portal between customers and print shops. By utilizing a dedicated local server, the system ensures that documents are handled with maximum privacy and are never stored or left behind on public shop computers.
             </p>
             <img src="{% static 'assets/aboutus-image.svg' %}" alt="About Us Illustration" class="aboutus-image">
         </div>
@@ -219,7 +293,7 @@ SafePrint
             <label for="message">Message*</label>
             <textarea id="message" name="message" rows="4" required placeholder="Your message here..."></textarea>
         
-            <button type="submit">Submit</button>
+            <button type="submit">Send Feedback</button>
         </form>
         <div class="feedback-illustration">
             <img src="{% static 'assets/feedback-illustration.png' %}" alt="Illustration" class="illustration">
@@ -249,8 +323,9 @@ SafePrint
             <div class="quick-links">
                 <ul>
                     <li><a href="#help">Help</a></li>
-                    <li><a href="#faq">FAQs</a></li>
+                    <li><a href="#faqs">FAQs</a></li>
                     <li><a href="#about-us">About Us</a></li>
+                    <li><a href="{% url 'track_status' %}">Track Status</a></li>
                 </ul>
             </div>
 

@@ -405,6 +405,37 @@ html {
     flex-wrap: wrap;
 }
 
+/* Payment Channels Section */
+.payment-channels-section {
+    text-align: center;
+    margin: 40px auto 0;
+    padding: 0 10%;
+}
+
+.payment-channels-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.95rem;
+    color: #666;
+    margin-bottom: 16px;
+}
+
+.payment-channels-logos {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.payment-channels-logos img {
+    height: 72px;
+    border: none;
+    border-radius: 16px;
+    padding: 0;
+    background: transparent;
+    object-fit: contain;
+}
+
 .section-title-wrapper {
     display: flex;
     flex-direction: column;
@@ -473,7 +504,7 @@ html {
     background-color: var(--primary-color);
     font-weight: 800;
     font-size: 1.5rem;
-    border-radius: 12px;
+    border-radius: 7px;
     width: fit-content;
     padding: 3px 4px;
     color: #191A23;
@@ -664,7 +695,7 @@ html {
 .aboutus-card {
     display: flex;
     width: 1120px;
-    height: 337px;
+    height: 365px;
     padding: 40px 35px;
     justify-content: center;
     align-items: center;
