@@ -2404,7 +2404,16 @@ function submitFeedbackForm() {
         .then(res => res.json())
         .then(data => {
             if (data.valid) {
-                window.location.href = '/confirmation/' + encodeURIComponent(cid) + '/';
+                if (data.redirect === 'payment' && data.doc_ids && data.doc_ids.length > 0) {
+                    // Unpaid documents — redirect to payment page
+                    var docParams = data.doc_ids.map(function(id) {
+                        return 'doc_ids=' + encodeURIComponent(id);
+                    }).join('&');
+                    window.location.href = '/payment/?customer_id=' + encodeURIComponent(data.customer_id || cid) + '&' + docParams;
+                } else {
+                    // All paid — redirect to confirmation
+                    window.location.href = '/confirmation/' + encodeURIComponent(cid) + '/';
+                }
             } else {
                 errorDiv.style.display = 'block';
                 btn.disabled = false;
