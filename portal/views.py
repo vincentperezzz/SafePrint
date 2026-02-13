@@ -120,9 +120,12 @@ def search_customer(request):
 
 def payment(request):
     """
-    Handle payment gateway for documents.
-    GET: Display payment form with documents and total price
-    POST: Process payment submission
+    Handle payment gateway for documents via KLCiS integration.
+    
+    Flow:
+    1. GET: Display payment form with documents and total price
+    2. POST (action=initiate): Generate voucher code, upload to KLCiS, return payment URL
+    3. POST (action=verify): Verify voucher code entered by customer, approve documents
     """
     # Default context to prevent auto-close
     default_context = {
@@ -131,7 +134,8 @@ def payment(request):
         'total_price': 0,
         'stars': range(1, 6),
         'debug': False,
-        'error': None
+        'error': None,
+        'klcis_base_url': settings.KLCIS_BASE_URL,
     }
     
     if request.method == 'GET':
@@ -185,6 +189,7 @@ def payment(request):
             
             documents_data = []
             total_price = 0.0
+            doc_ids_list = []
             
             for doc in documents:
                 try:
@@ -199,6 +204,7 @@ def payment(request):
                     'price': price,
                     'status': doc.doc_status
                 })
+                doc_ids_list.append(doc.doc_id)
                 total_price += price
             
             # Generate star ratings (for feedback)
@@ -209,6 +215,7 @@ def payment(request):
                 'customer_id': customer_id,
                 'documents': documents_data,
                 'total_price': round(total_price, 2),
+                'doc_ids_json': json.dumps(doc_ids_list),
                 'stars': stars,
             })
             
@@ -222,58 +229,164 @@ def payment(request):
     elif request.method == 'POST':
         try:
             data = json.loads(request.body)
+            action = data.get('action', '')
             customer_id = data.get('customer_id', '').strip()
             documents_ids = data.get('doc_ids', [])
-            payment_method = data.get('payment_method', '')  # 'card' or 'paypal'
-            amount = data.get('amount', 0)
-            rating = data.get('rating', 0)
             
-            if not customer_id or not documents_ids or not payment_method:
+            if not customer_id:
                 return JsonResponse({
                     'success': False,
-                    'error': 'Missing required payment information'
+                    'error': 'Customer ID is required'
                 })
-            
-            # Validate payment method
-            if payment_method not in ['card', 'paypal']:
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Invalid payment method'
-                })
-            
-            # Update documents to mark as paid (you'll integrate actual payment gateway here)
-            # For now, this is a draft structure for the payment flow
-            documents = Document.objects.filter(doc_id__in=documents_ids)
-            
-            for doc in documents:
-                # Mark documents as approved/ready to print after payment
-                doc.doc_status = 'Approved'
-                doc.save()
+
+            # ─────────────────────────────────────────────
+            # ACTION: INITIATE — Create voucher, return direct checkout URL
+            # ─────────────────────────────────────────────
+            if action == 'initiate':
+                phone_number = data.get('phone_number', '').strip()
+
+                if not documents_ids:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'No documents specified'
+                    })
+
+                if not phone_number:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Phone number is required for SMS receipt'
+                    })
                 
-                # Create or update payment record
-                Payment.objects.update_or_create(
-                    doc=doc,
-                    defaults={
-                        'payment_method': payment_method,
-                        'amount_paid': amount,
-                        'payment_status': 'Completed',
-                        'payment_date': timezone.now()
-                    }
-                )
-            
-            # Save feedback if rating provided
-            if rating > 0:
-                Feedback.objects.create(
-                    customer_id=customer_id,
-                    rating=rating,
-                    feedback_type='payment_experience'
-                )
-            
-            return JsonResponse({
-                'success': True,
-                'message': 'Payment processed successfully',
-                'redirect_url': '/thank-you/'
-            })
+                # Calculate total price from Payment records
+                total_price = 0.0
+                for doc_id in documents_ids:
+                    try:
+                        payment_obj = Payment.objects.get(doc__doc_id=doc_id)
+                        total_price += float(payment_obj.price)
+                    except Payment.DoesNotExist:
+                        pass
+                
+                if total_price <= 0:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Invalid payment amount'
+                    })
+                
+                # Generate a unique voucher code
+                import random, string
+                voucher_code = ''.join(random.choices(
+                    string.ascii_lowercase + string.digits, k=8
+                ))
+                
+                # Upload voucher to KLCiS dashboard
+                from portal.services.klcis import create_and_upload_voucher, get_checkout_url
+                result = create_and_upload_voucher(voucher_code, total_price)
+                
+                if not result['success']:
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'Payment setup failed: {result["message"]}'
+                    })
+                
+                # Store the voucher code in all Payment records for this transaction
+                for doc_id in documents_ids:
+                    try:
+                        payment_obj = Payment.objects.get(doc__doc_id=doc_id)
+                        payment_obj.voucher_code = voucher_code
+                        payment_obj.payment_method = 'klcis'
+                        payment_obj.phone_number = phone_number
+                        payment_obj.save()
+                    except Payment.DoesNotExist:
+                        pass
+                
+                # Build direct checkout URL (bypasses KLCiS shop, goes straight to Xendit/GCash)
+                checkout_url = get_checkout_url(total_price, phone_number)
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Payment link created',
+                    'checkout_url': checkout_url,
+                    'voucher_code': voucher_code,
+                    'amount': int(round(total_price)),
+                })
+
+            # ─────────────────────────────────────────────
+            # ACTION: VERIFY — Poll KLCiS to check if payment is complete
+            # ─────────────────────────────────────────────
+            elif action == 'verify':
+                # Find pending payments for this customer that have a voucher code
+                payments = Payment.objects.filter(
+                    doc__customer_id=customer_id,
+                    payment_status='Unpaid',
+                    voucher_code__isnull=False,
+                ).exclude(voucher_code='')
+                
+                if not payments.exists():
+                    # Check if payments are already Paid (user re-visiting page)
+                    already_paid = Payment.objects.filter(
+                        doc__customer_id=customer_id,
+                        payment_status='Paid',
+                    ).exists()
+                    
+                    if already_paid:
+                        return JsonResponse({
+                            'success': True,
+                            'message': 'Payment already verified! Your documents are queued for printing.',
+                            'redirect_url': f'/confirmation/{customer_id}/'
+                        })
+                    
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'No pending payment found for this customer.'
+                    })
+                
+                # Get phone number and total amount for transaction verification
+                first_payment = payments.first()
+                phone_number = first_payment.phone_number
+                total_amount = sum(float(p.price) for p in payments)
+                
+                if not phone_number:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'No phone number on record for this payment.'
+                    })
+                
+                # Check the KLCiS Transaction Logs page for a PAID entry
+                # matching this phone number + amount (direct checkout flow)
+                from portal.services.klcis import verify_transaction_payment
+                result = verify_transaction_payment(phone_number, total_amount)
+                
+                if result['success']:
+                    # Payment confirmed! Mark all documents as Queued
+                    with transaction.atomic():
+                        for payment_obj in payments:
+                            payment_obj.payment_status = 'Paid'
+                            payment_obj.approved_at = timezone.now()
+                            payment_obj.approved_by = 'KLCiS-Auto'
+                            payment_obj.save()
+                            
+                            # Update document status to Queued (triggers WRR print)
+                            doc = payment_obj.doc
+                            doc.doc_status = 'Queued'
+                            doc.save()
+                    
+                    return JsonResponse({
+                        'success': True,
+                        'message': 'Payment verified! Your documents are now queued for printing.',
+                        'redirect_url': f'/confirmation/{customer_id}/'
+                    })
+                else:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Payment not yet confirmed. Please complete the payment and try again.',
+                        'status': 'pending'
+                    })
+
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid action'
+                })
             
         except json.JSONDecodeError:
             return JsonResponse({

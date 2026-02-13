@@ -238,6 +238,9 @@ class Payment(models.Model):
     doc = models.ForeignKey(Document, to_field='doc_id', on_delete=models.CASCADE)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     payment_status = models.CharField(max_length=50)
+    voucher_code = models.CharField(max_length=50, null=True, blank=True, unique=True)
+    payment_method = models.CharField(max_length=50, null=True, blank=True)  # 'klcis', 'gcash', etc.
+    phone_number = models.CharField(max_length=20, null=True, blank=True)  # Student phone for GCash verification
     approved_by = models.CharField(max_length=255, null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
 

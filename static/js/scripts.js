@@ -568,7 +568,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 .then(data => {
                     if (data.success) {
                         const cid = sessionStorage.getItem('customer_id');
-                        window.location.href = '/confirmation/' + cid + '/';
+                        const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
+                        // Build doc_ids query parameters for payment page
+                        const docIdParams = docs.map(d => 'doc_ids=' + encodeURIComponent(d.doc_id)).join('&');
+                        // Redirect to payment page with CID and doc_ids
+                        window.location.href = '/payment/?customer_id=' + encodeURIComponent(cid) + '&' + docIdParams;
                     } else {
                         if (overlay) overlay.style.display = 'none';
                         alert('Failed to update settings: ' + (data.error || 'Unknown error'));
