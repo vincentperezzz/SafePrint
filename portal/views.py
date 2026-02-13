@@ -302,6 +302,11 @@ def payment(request):
                 # Build direct checkout URL (bypasses KLCiS shop, goes straight to Xendit/GCash)
                 checkout_url = get_checkout_url(total_price, phone_number)
                 
+                # Store pending payment info in session so the homepage can
+                # redirect back if the student lands there after KLCiS redirect
+                request.session['pending_payment_cid'] = customer_id
+                request.session['pending_payment_doc_ids'] = documents_ids
+                
                 return JsonResponse({
                     'success': True,
                     'message': 'Payment link created',
@@ -383,6 +388,10 @@ def payment(request):
                             doc = payment_obj.doc
                             doc.doc_status = 'Queued'
                             doc.save()
+                    
+                    # Clear pending payment session flag
+                    request.session.pop('pending_payment_cid', None)
+                    request.session.pop('pending_payment_doc_ids', None)
                     
                     return JsonResponse({
                         'success': True,

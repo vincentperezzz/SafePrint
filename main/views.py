@@ -14,6 +14,16 @@ import os, uuid, math, time, random, string, json, PyPDF2, subprocess
 
 
 def index_view(request):
+    # If student has a pending payment, redirect back to the payment page
+    # (handles KLCiS redirect after GCash payment)
+    pending_cid = request.session.get('pending_payment_cid')
+    pending_doc_ids = request.session.get('pending_payment_doc_ids')
+    if pending_cid and pending_doc_ids:
+        from urllib.parse import urlencode
+        params = urlencode({'customer_id': pending_cid}, doseq=False)
+        doc_params = '&'.join(f'doc_ids={did}' for did in pending_doc_ids)
+        return redirect(f'/payment/?{params}&{doc_params}')
+
     active_cid = request.session.get('customer_id')
     # Only pass CID if there are actually active (non-completed) documents
     if active_cid:
