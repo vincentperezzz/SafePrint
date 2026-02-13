@@ -549,6 +549,14 @@ html {
 
 /* Responsive styling for smaller resolutions */
 @media (max-width: 768px) {
+    .payment-channels-logos img {
+        height: 56px;
+    }
+
+    .section-container {
+        margin: 50px 10%;
+    }
+
     .card {
         flex-direction: column;
         padding: 30px;
