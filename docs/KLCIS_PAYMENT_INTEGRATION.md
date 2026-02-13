@@ -1,7 +1,7 @@
 # KLCiS Payment Integration — SafePrint
 
-> **Last Updated:** February 2026
-> **Author:** SafePrint Dev Team
+> **Last Updated:** February 2026  
+> **Author:** SafePrint Dev Team  
 > **Status:** Production-ready
 
 ---
@@ -14,28 +14,29 @@
 4. [Payment Flow (System Perspective)](#payment-flow-system-perspective)
 5. [KLCiS API Endpoints](#klcis-api-endpoints)
 6. [Session Management](#session-management)
-7. [Files Modified](#files-modified)
-8. [Configuration](#configuration)
-9. [Database Changes](#database-changes)
-10. [Frontend Changes](#frontend-changes)
-11. [JavaScript Fixes (admin.js)](#javascript-fixes-adminjs)
-12. [Troubleshooting](#troubleshooting)
+7. [Transaction Deduplication](#transaction-deduplication)
+8. [Files & Structure](#files--structure)
+9. [Configuration](#configuration)
+10. [Database Schema](#database-schema)
+11. [Frontend Architecture](#frontend-architecture)
+12. [Deletion & Cleanup Audit](#deletion--cleanup-audit)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-SafePrint integrates with **KLCiS (KL Internet Services)** as a transaction middleman to the **Xendit** payment gateway. This allows students to pay for their print jobs via **GCash, Maya, and other e-wallets** without SafePrint needing a direct Xendit merchant account.
+SafePrint integrates with **KLCiS (KL Internet Services)** as a transaction middleman to the **Xendit** payment gateway. Students pay for print jobs via **GCash, Maya, ShopeePay, GrabPay**, and other e-wallets without SafePrint needing a direct Xendit merchant account.
 
 ### Why KLCiS?
 
-- SafePrint runs on a **local network** (Dell Optiplex behind Pi-hole/DuckDNS) and is **not publicly accessible** — webhooks from Xendit can't reach it.
-- KLCiS handles the Xendit integration and provides a web dashboard where we can verify payments.
-- We use a **"Pull" model** — SafePrint polls the KLCiS dashboard to check payment status instead of waiting for webhook callbacks.
+- SafePrint runs on a **local network** (Dell Optiplex behind Pi-hole/DuckDNS) — **not publicly accessible** — Xendit webhooks can't reach it.
+- KLCiS handles the Xendit integration and provides a web dashboard.
+- We use a **"Pull" model** — SafePrint polls the KLCiS `/transactions` page to check payment status.
 
-### Key Design Decision: Direct Checkout ("Boss" Flow)
+### Direct Checkout ("Boss" Flow)
 
-Instead of sending students to the KLCiS shop page (where they'd need to browse products and enter a phone number), we use a **direct checkout URL** that bypasses the shop entirely:
+Instead of sending students to the KLCiS shop page, we use a **direct checkout URL** that bypasses the shop:
 
 ```
 https://s2.klinternetservices.com/xendit/payment?token={API_KEY}&amount={PRICE}&number={PHONE}
@@ -57,64 +58,74 @@ This takes the student **straight to GCash/Xendit** — zero extra steps.
        │  + Click "Pay Now"    │                        │
        │──────────────────────>│                        │
        │                       │                        │
-       │                       │  2. POST /core/        │
-       │                       │  create_voucher_core   │
+       │                       │  2. Create voucher      │
+       │                       │  + Snapshot existing    │
+       │                       │    PAID transactions    │
        │                       │───────────────────────>│
        │                       │                        │
-       │                       │  3. "success"          │
-       │                       │<───────────────────────│
+       │  3. Full-screen       │                        │
+       │     loading overlay   │                        │
        │                       │                        │
-       │  4. Open GCash in     │                        │
-       │     new tab (direct   │                        │
-       │     checkout URL)     │                        │
+       │  4. Auto-open GCash   │                        │
+       │     in new tab        │                        │
        │<──────────────────────│                        │
        │                       │                        │
        │  5. Pay via GCash     │                        │
        │─────────────────────────────────────────────>  │ (Xendit)
        │                       │                        │
-       │  6. Click "I Have     │                        │
-       │     Paid" (or auto-   │                        │
-       │     poll every 5s)    │                        │
+       │  6. Auto-poll every   │                        │
+       │     5s (or click      │                        │
+       │     "I Have Paid")    │                        │
        │──────────────────────>│                        │
        │                       │                        │
-       │                       │  7. GET /voucher_status│
-       │                       │  (check sold_vouchers  │
-       │                       │   table for voucher)   │
+       │                       │  7. GET /transactions   │
+       │                       │  → parse PAID rows     │
+       │                       │  → match phone+amount  │
+       │                       │  → exclude baseline +  │
+       │                       │    used txn IDs        │
        │                       │───────────────────────>│
        │                       │                        │
-       │                       │  8. Found in table     │
-       │                       │  = Payment confirmed   │
+       │                       │  8. New PAID txn found  │
+       │                       │  → save to persistent  │
+       │                       │    UsedKLCiSTransaction │
        │                       │<───────────────────────│
        │                       │                        │
-       │  9. "Payment verified!│                        │
-       │     Redirect to       │                        │
-       │     confirmation"     │                        │
+       │  9. Alert: "Payment   │                        │
+       │     verified!"        │                        │
+       │  → redirect to        │                        │
+       │     confirmation      │                        │
        │<──────────────────────│                        │
        │                       │                        │
-       │                       │  10. doc_status =      │
-       │                       │      'Queued'          │
-       │                       │  (triggers WRR print)  │
-       │                       │                        │
+       │                       │  10. doc_status =       │
+       │                       │      'Queued'           │
+       │                       │  (triggers WRR print)   │
 ```
 
 ---
 
 ## Payment Flow (Student Perspective)
 
-1. **Upload documents** → Get Customer ID (e.g., `CID-4405`)
+1. **Upload documents** → Get Customer ID (e.g., `CID-5925`)
 2. **Redirected to payment page** → See document list + total price
-3. **Enter phone number** (09XX XXX XXXX) → Click **"Pay ₱45 Now"**
-4. **GCash opens in new tab** → Complete the payment
-5. **Return to SafePrint tab** → Click **"I Have Paid ✓"** (or wait for auto-detection)
-6. **"Payment verified!"** → Auto-redirect to confirmation page
-7. **Documents are queued** for printing automatically
+3. **Enter phone number** (09XX XXX XXXX) → Click **"Pay ₱6 Now"**
+4. **Full-screen loading overlay** appears while setting up
+5. **GCash opens automatically** in new tab (or "Redirect to Payment" button appears immediately if popup was blocked on iOS)
+6. **Auto-detection** polls every 5 seconds — or click **"I Have Paid ✓"** manually
+7. **Alert: "Payment verified!"** → Auto-redirect to confirmation page
+8. **Documents are queued** for printing automatically
+
+### Cancel Flow
+
+At any step, the student can click **Cancel** (red button):
+- Confirmation dialog: "Are you sure?"
+- Backend deletes all unpaid Payment + Document records + uploaded files
+- Student is redirected to the homepage
 
 ### Auto-Polling
 
-The payment page automatically polls every 5 seconds in the background. Even if the student doesn't click "I Have Paid", the system will detect the payment and redirect them automatically.
-
-- **Max polling duration:** 5 minutes (60 attempts × 5 seconds)
-- **Polling stops** when: payment confirmed, max attempts reached, or page closed
+- **Interval:** Every 5 seconds
+- **Max duration:** 5 minutes (60 attempts)
+- **Stops when:** payment confirmed, max attempts reached, or page closed/cancelled
 
 ---
 
@@ -126,27 +137,29 @@ The payment page automatically polls every 5 seconds in the background. Even if 
 ```json
 {
     "action": "initiate",
-    "customer_id": "CID-4405",
-    "doc_ids": ["DOC-1001", "DOC-1002"],
+    "customer_id": "CID-5925",
+    "doc_ids": ["DOC-XHJZ"],
     "phone_number": "09171234567"
 }
 ```
 
 **Backend actions:**
 1. Calculate total price from `Payment` records
-2. Generate random 8-character voucher code (e.g., `sp4a05bx`)
+2. Generate random 8-character voucher code
 3. Create voucher on KLCiS via `POST /core/create_voucher_core`
-4. Store `voucher_code` and `payment_method='klcis'` in all `Payment` records
-5. Build direct checkout URL
+4. **Snapshot existing PAID transactions** on KLCiS for this phone+amount → store in session as `baseline_txn_ids`
+5. Store `voucher_code`, `payment_method='klcis'`, `phone_number` in all Payment records
+6. Build direct checkout URL
+7. Store `pending_payment_cid` and `pending_payment_doc_ids` in session
 
 **Response:**
 ```json
 {
     "success": true,
     "message": "Payment link created",
-    "checkout_url": "https://s2.klinternetservices.com/xendit/payment?token=...&amount=45&number=09171234567",
+    "checkout_url": "https://s2.klinternetservices.com/xendit/payment?token=...&amount=6&number=09171234567",
     "voucher_code": "sp4a05bx",
-    "amount": 45
+    "amount": 6
 }
 ```
 
@@ -156,23 +169,23 @@ The payment page automatically polls every 5 seconds in the background. Even if 
 ```json
 {
     "action": "verify",
-    "customer_id": "CID-4405"
+    "customer_id": "CID-5925"
 }
 ```
 
 **Backend actions:**
-1. Find unpaid `Payment` records for this customer that have a `voucher_code`
-2. Log into KLCiS (reuses singleton session)
-3. Check `voucher_status` page → look for voucher in `sold_vouchers` table
-4. Also check `voucher_import` page for status column changes
-5. If found as paid: mark all payments as `Paid`, set documents to `Queued`
+1. Find unpaid `Payment` records for this customer with a `voucher_code`
+2. Build exclusion set: `used_txn_ids` (from Payment table) + `UsedKLCiSTransaction` table + `baseline_txn_ids` (from session)
+3. Fetch KLCiS `/transactions` page
+4. Parse table rows: match STATUS == "PAID" + phone matches + amount matches + txn_id NOT in exclusion set
+5. If found: save txn_id to `UsedKLCiSTransaction` (persistent), mark payments as `Paid`, set documents to `Queued`, clear session flags
 
 **Response (success):**
 ```json
 {
     "success": true,
     "message": "Payment verified! Your documents are now queued for printing.",
-    "redirect_url": "/confirmation/CID-4405/"
+    "redirect_url": "/confirmation/CID-5925/"
 }
 ```
 
@@ -185,22 +198,49 @@ The payment page automatically polls every 5 seconds in the background. Even if 
 }
 ```
 
+### Step 3: Cancel Payment (`action=cancel`)
+
+**Request:** `POST /payment/`
+```json
+{
+    "action": "cancel",
+    "customer_id": "CID-5925"
+}
+```
+
+**Backend actions:**
+1. Find all unpaid Payment records for this customer
+2. Delete uploaded PDF files from `media/uploads/{customer_id}/`
+3. Delete Payment and Document records
+4. Remove empty customer folder
+5. Clear session flags
+
 ---
 
 ## KLCiS API Endpoints
 
-All endpoints are on `https://s2.klinternetservices.com`:
+All endpoints on `https://s2.klinternetservices.com`:
 
-| Method | Path | Purpose | Data |
-|--------|------|---------|------|
-| `POST` | `/login` | Dashboard login | `username`, `password` |
-| `POST` | `/core/create_voucher_core` | Create a voucher | `voucher`, `amount` → returns `"success"` |
-| `POST` | `/core/delete_voucher_core` | Delete a voucher | `id` → returns `"success"` |
-| `POST` | `/core/edit_voucher_core` | Edit a voucher | (not used) |
-| `GET` | `/voucher_import` | Voucher management page | Table: Code, Status, Amount, Date, Actions |
-| `GET` | `/voucher_status` | Transaction history | Table `#sold_vouchers`: Date, Code, Amount, Status, Number, TxID |
-| `GET` | `/xendit/payment?token=...&amount=...&number=...` | Direct checkout (public) | Bypasses shop, goes to Xendit |
-| `GET` | `/shop/v1?key=...` | Shop page (not used) | — |
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/login` | Dashboard login (`username`, `password`) |
+| `POST` | `/core/create_voucher_core` | Create voucher (`voucher`, `amount`) → `"success"` |
+| `POST` | `/core/delete_voucher_core` | Delete voucher (`id`) → `"success"` |
+| `GET` | `/voucher_status` | Sold vouchers table (backup check) |
+| `GET` | `/voucher_import` | Voucher management page |
+| `GET` | `/transactions` | **Primary verification** — Transaction Logs table |
+| `GET` | `/xendit/payment?token=...&amount=...&number=...` | Direct checkout (public, no login) |
+
+### Transaction Logs Table Columns (6 cells)
+
+| Index | Column | Example |
+|-------|--------|---------|
+| 0 | Date | `2026-02-08 10:30:15` |
+| 1 | Amount | `₱6.00` |
+| 2 | Status | `PAID` / `PENDING` / `FAILED` |
+| 3 | Contact | `09171234567` |
+| 4 | Transaction ID | `txn_abc123...` |
+| 5 | Action | (buttons) |
 
 ### KLCiS Credentials
 
@@ -210,87 +250,113 @@ Password: @Safeprint2025
 API Key:  C5O1dhQ8ElS60irmTr1CsBe9X
 ```
 
-These are configured in `venv/.env` and read via `python-decouple`.
+Configured in `venv/.env`, read via `python-decouple`.
 
 ---
 
 ## Session Management
 
-### The Problem
+### Thread-Safe Singleton Client
 
-SafePrint is a local server. When multiple students pay simultaneously and each polls every 5 seconds, a naive implementation would log into KLCiS on **every single request** — potentially 10+ login requests every 5 seconds.
-
-### The Solution: Thread-Safe Singleton
-
-The `KLCiSClient` class implements the **Singleton pattern** with thread safety:
+`KLCiSClient` implements Singleton + thread safety:
 
 ```python
 class KLCiSClient:
     _instance = None
     _instance_lock = threading.Lock()
-
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._instance_lock:
-                if cls._instance is None:
-                    instance = super().__new__(cls)
-                    cls._instance = instance
-        return cls._instance
+    # Only ONE instance across all requests
+    # All methods acquire self._lock before operating
 ```
 
-**How it works:**
+**Lifecycle:**
+1. **First request:** Login → store PHPSESSID cookie
+2. **Subsequent requests:** Reuse same session (no re-login)
+3. **Session expiry detected:** Auto re-authenticate (via redirect-to-login detection)
+4. **Safety net:** Force re-login after 25 minutes
 
-1. **First request:** Creates a new `KLCiSClient`, logs into KLCiS, stores the PHPSESSID cookie
-2. **Subsequent requests:** Returns the SAME instance — no re-login, reuses the existing session
-3. **Session expiry:** If KLCiS redirects to `/login` (session expired), automatically re-authenticates
-4. **Safety net:** Forces re-login after 25 minutes (PHP default session timeout is ~24 minutes)
-5. **Thread safety:** All operations acquire a `threading.Lock()` — safe for Django's multi-threaded request handling
-
-### Session Lifecycle Diagram
-
-```
-Student A pays    ──► KLCiSClient() ──► Login ──► Session created (PHPSESSID)
-Student B pays    ──► KLCiSClient() ──► Same instance! ──► Reuse session
-Student C polls   ──► KLCiSClient() ──► Same instance! ──► Reuse session
-... (25 min pass) ...
-Student D polls   ──► KLCiSClient() ──► Session expired ──► Auto re-login
-Student E pays    ──► KLCiSClient() ──► Same instance! ──► Reuse new session
-```
-
-### Key Methods
-
-| Method | Purpose |
-|--------|---------|
-| `_ensure_logged_in()` | Checks session age, logs in if expired |
-| `_request_with_reauth()` | Makes HTTP request, auto-retries on session expiry |
-| `_is_session_expired()` | Checks if session exceeds 25-minute max age |
-| `_is_login_page()` | Detects if KLCiS redirected us to the login page |
+**Concurrency:**
+- Django serves requests in threads — `threading.Lock()` prevents race conditions
+- If Student A and Student B poll simultaneously, one waits for the other
 
 ---
 
-## Files Modified
+## Transaction Deduplication
 
-### New Files
+### The Problem
+
+Old PAID transactions on KLCiS with the same phone+amount can cause **false positives**:
+1. Student pays → transaction PAID on KLCiS
+2. Student picks up documents → Payment record deleted (loses `klcis_transaction_id`)
+3. Student uploads new docs, pays again with same phone+amount
+4. Verify immediately matches the **old** PAID transaction → false positive!
+
+### Three-Layer Protection
+
+#### Layer 1: Active Payment Records
+```python
+used_txn_ids = set(
+    Payment.objects.filter(klcis_transaction_id__isnull=False)
+    .exclude(klcis_transaction_id='')
+    .values_list('klcis_transaction_id', flat=True)
+)
+```
+
+#### Layer 2: Persistent `UsedKLCiSTransaction` Table
+Survives Payment/Document deletion (e.g., on pickup):
+```python
+used_txn_ids |= set(
+    UsedKLCiSTransaction.objects.values_list('transaction_id', flat=True)
+)
+```
+
+#### Layer 3: Baseline Snapshot (Session-Based)
+At payment initiation, snapshot ALL existing PAID transactions for this phone+amount:
+```python
+baseline_ids = set(request.session.get('baseline_txn_ids', []))
+exclude_ids = used_txn_ids | baseline_ids
+```
+
+**Result:** Only transactions that appear AFTER initiation AND are not in the persistent table can match.
+
+---
+
+## Files & Structure
+
+### Core Files
 
 | File | Purpose |
 |------|---------|
-| `portal/services/__init__.py` | Package init (empty) |
-| `portal/services/klcis.py` | KLCiS dashboard automation service (singleton client) |
-| `portal/migrations/0014_add_voucher_code_to_payment.py` | Migration for Payment model fields |
-| `docs/KLCIS_PAYMENT_INTEGRATION.md` | This documentation |
+| `portal/services/klcis.py` | KLCiS dashboard automation (singleton client, 550+ lines) |
+| `portal/views.py` | Payment view: `initiate`, `verify`, `cancel` actions |
+| `portal/models.py` | `Payment`, `UsedKLCiSTransaction` models |
+| `portal/admin.py` | Admin registration with full field display |
+| `templates/payment.html` | Payment page template (minimal — JS externalized) |
+| `static/js/scripts.js` | Payment JS functions (bottom of file, IIFE) |
+| `static/css/styles.css` | Payment CSS classes |
 
-### Modified Files
+### KLCiS Client Methods
 
-| File | Changes |
-|------|---------|
-| `SafePrint/settings.py` | Added `KLCIS_BASE_URL`, `KLCIS_USERNAME`, `KLCIS_PASSWORD` settings |
-| `venv/.env` | Added KLCiS credentials |
-| `requirements.txt` | Added `requests` library |
-| `portal/models.py` | Added `voucher_code` and `payment_method` fields to `Payment` model |
-| `portal/views.py` | Rewrote `payment()` view with `initiate` and `verify` actions |
-| `templates/payment.html` | New UX: phone number → GCash → auto-poll verify |
-| `static/js/admin.js` | Fixed SSE reconnection bugs, removed duplicate modal handlers |
-| `staticfiles/js/admin.js` | Copied from `static/js/admin.js` |
+| Method | Purpose |
+|--------|---------|
+| `login()` | Authenticate with KLCiS dashboard |
+| `create_voucher()` | Create voucher via API |
+| `get_direct_checkout_url()` | Build Xendit checkout URL |
+| `check_transaction_paid()` | Find PAID transaction matching phone+amount |
+| `get_paid_transaction_ids()` | Snapshot all matching PAID transactions |
+| `check_voucher_paid()` | Check voucher in sold_vouchers table |
+| `_normalize_phone()` | Standardize PH phone numbers for comparison |
+| `_find_paid_transaction()` | Parse table HTML for matching PAID row |
+| `_collect_paid_transaction_ids()` | Parse table HTML to collect all matching IDs |
+
+### Public Convenience Functions
+
+| Function | Purpose |
+|----------|---------|
+| `create_and_upload_voucher()` | Create voucher (singleton, thread-safe) |
+| `get_checkout_url()` | Get direct checkout URL |
+| `verify_transaction_payment()` | Check transaction page for PAID entry |
+| `snapshot_existing_transactions()` | Get existing PAID txn IDs for baseline |
+| `verify_voucher_payment()` | Check voucher status page (backup) |
 
 ---
 
@@ -307,154 +373,171 @@ KLCIS_PASSWORD=@Safeprint2025
 ### Django Settings (`SafePrint/settings.py`)
 
 ```python
-# KLCiS Payment Integration
 KLCIS_BASE_URL = config('KLCIS_BASE_URL', default='https://s2.klinternetservices.com')
 KLCIS_USERNAME = config('KLCIS_USERNAME', default='')
 KLCIS_PASSWORD = config('KLCIS_PASSWORD', default='')
 ```
 
-### Dependencies (`requirements.txt`)
-
-```
-requests  # HTTP client for KLCiS dashboard automation
-```
-
 ---
 
-## Database Changes
+## Database Schema
 
-### Migration: `0014_add_voucher_code_to_payment`
-
-Added two fields to the `Payment` model:
+### `payments` Table (Payment Model)
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `voucher_code` | `CharField(max_length=50, unique=True, null=True)` | KLCiS voucher code (e.g., `sp4a05bx`) |
-| `payment_method` | `CharField(max_length=50, null=True)` | Payment method identifier (`klcis`, etc.) |
+| `doc` | FK → Document(doc_id) | Related document |
+| `price` | Decimal(10,2) | Amount for this document |
+| `payment_status` | CharField(50) | `Unpaid` → `Paid` |
+| `voucher_code` | CharField(50), unique, nullable | KLCiS voucher code |
+| `payment_method` | CharField(50), nullable | `klcis` |
+| `phone_number` | CharField(20), nullable | Student phone (PH format) |
+| `klcis_transaction_id` | CharField(64), unique, nullable | Matched KLCiS Transaction ID |
+| `approved_by` | CharField(255), nullable | `KLCiS-Auto` on verify |
+| `approved_at` | DateTimeField, nullable | Verification timestamp |
 
-### Payment Model (Updated)
+### `used_klcis_transactions` Table (UsedKLCiSTransaction Model)
 
-```python
-class Payment(models.Model):
-    doc = models.ForeignKey(Document, ...)
-    price = models.DecimalField(...)
-    payment_status = models.CharField(...)          # 'Unpaid' → 'Paid'
-    voucher_code = models.CharField(...)            # NEW: KLCiS voucher code
-    payment_method = models.CharField(...)          # NEW: 'klcis'
-    approved_by = models.CharField(...)             # Set to 'KLCiS-Auto' on verify
-    approved_at = models.DateTimeField(...)         # Timestamp of verification
-```
+| Field | Type | Purpose |
+|-------|------|---------|
+| `transaction_id` | CharField(64), unique | KLCiS Transaction ID (permanent) |
+| `phone_number` | CharField(20) | Phone number at time of match |
+| `amount` | Decimal(10,2) | Amount at time of match |
+| `used_at` | DateTimeField (auto) | When the transaction was matched |
 
----
+### Migrations
 
-## Frontend Changes
-
-### `templates/payment.html` — Complete Rewrite
-
-**Before:** Card payment form (card number, CVV, expiry) + PayPal button — non-functional placeholder.
-
-**After:** Two-step GCash flow:
-
-#### Step 1: Phone Number + Pay Now
-- Phone number input with PH format validation (`/^(\+?63|0)(9\d{9})$/`)
-- "Pay ₱XX Now" button
-- On submit: AJAX to backend → opens Xendit checkout in new tab → shows Step 2
-
-#### Step 2: Waiting for Payment
-- "I Have Paid ✓" button (manual trigger)
-- Background auto-polling every 5 seconds (automatic detection)
-- Success: green message + auto-redirect to `/confirmation/{CID}/`
-- Pending: red message "Payment not yet detected"
-
-### JavaScript (payment.html)
-
-| Function | Purpose |
-|----------|---------|
-| `initiatePayment()` | AJAX POST action=initiate, validates phone, opens GCash tab |
-| `verifyPayment()` | AJAX POST action=verify, checks payment status |
-| `startAutoPolling()` | Background poll every 5s (max 60 attempts = 5 min) |
-| `stopAutoPolling()` | Clears interval on success or page unload |
-| `getCookie()` | Reads CSRF token from Django cookie |
+| Migration | Purpose |
+|-----------|---------|
+| `0014` | Add `voucher_code` to Payment |
+| `0015` | Add `phone_number` to Payment |
+| `0016` | Add `klcis_transaction_id` to Payment |
+| `0019` | Create `UsedKLCiSTransaction` table |
 
 ---
 
-## JavaScript Fixes (admin.js)
+## Frontend Architecture
 
-### Fix 1: SSE Printer Status Reconnection
+### Template (`payment.html`)
 
-**Bug:** When the EventSource connection dropped and reconnected, the new instance didn't get `onerror`/`onmessage` handlers re-attached. After the first reconnection, subsequent drops were never recovered.
+Minimal template — only contains:
+- Document list + price display (price on right, doc_id under filename)
+- Step 1: Phone input + Pay/Cancel buttons
+- Step 2: I Have Paid / Redirect to Payment / Cancel buttons
+- Small `<script>` block setting `window.PAYMENT_DATA` from Django context
 
-**Fix:** Wrapped in `setupPrinterSSE()` function that re-attaches all handlers on each reconnection:
+### JavaScript (`scripts.js` — Payment IIFE)
+
+All payment logic is in a self-contained IIFE at the bottom of scripts.js:
 
 ```javascript
-function setupPrinterSSE() {
-    let evtSource = new EventSource('/sse/printer-status/');
-    evtSource.onerror = function (err) {
-        evtSource.close();
-        setTimeout(setupPrinterSSE, 5000);  // Recursive — re-attaches handlers
-    };
-    evtSource.onmessage = function (event) { ... };
-}
-setupPrinterSSE();
+(function () {
+    if (!window.PAYMENT_DATA) return;  // Only runs on payment page
+    
+    const PAYMENT = window.PAYMENT_DATA;
+    // ... initiatePayment, verifyPayment, cancelPayment, etc.
+})();
 ```
 
-### Fix 2: SSE Dashboard Reconnection
+| Function | Scope | Purpose |
+|----------|-------|---------|
+| `initiatePayment()` | window | Phone validation → API → open checkout → show step 2 |
+| `verifyPayment()` | window | API verify → alert result → redirect on success |
+| `startAutoPolling()` | local | Background poll every 5s |
+| `stopAutoPolling()` | local | Clear polling interval |
+| `cancelPayment()` | window | Confirm → API cancel → redirect home |
+| `redirectToPayment()` | window | Re-open checkout URL in new tab |
+| `showOverlay()` | local | Show `#loading-overlay` (full-screen spinner) |
+| `hideOverlay()` | local | Hide `#loading-overlay` |
 
-Same bug and fix pattern as Fix 1, applied to the dashboard SSE stream (`/sse/dashboard-status/`).
+### CSS Classes (`styles.css`)
 
-### Fix 3: Duplicate Modal Event Handlers
+| Class | Purpose |
+|-------|---------|
+| `.card-payment-details` | Payment card container (flex column, stretch, light blue bg) |
+| `.card-pay-btn` | Black pill button (Pay / I Have Paid) |
+| `.card-cancel-btn` | Red pill button (Cancel) |
+| `.card-redirect-btn` | Yellow pill button (Redirect to Payment) |
+| `.payment-hint` | Instruction text (Space Grotesk, 14px, #555) |
+| `.phone-input` | Phone number input (letter-spacing, 16px) |
+| `.payment-error-msg` | Error text styling (red, hidden by default) |
+| `.payment-success-msg` | Success text styling (green, hidden by default) |
 
-**Bug:** `feedbackBtn` and `problemBtn` had both `addEventListener('click', ...)` (which fetched data via AJAX) AND `.onclick = ...` (which only opened the modal). Both fired on click, causing redundant modal opens.
+### Loading Behavior
 
-**Fix:** Removed the redundant `.onclick` assignments. The `addEventListener` handlers already open the modal AND fetch the data.
+Uses the **shared full-screen loading overlay** (`#loading-overlay` from `layout.html`) — same as the index→uploads transition. Shows during API calls (initiate, verify).
 
-Also changed `window.onclick = ...` to `window.addEventListener('click', ...)` to avoid overwriting other global click handlers, and added null checks for modal elements.
+### iOS Popup Handling
+
+`window.open()` is often blocked on iOS Safari. After initiating payment:
+1. Try `window.open(checkoutUrl, '_blank')`
+2. Check return value — if `null` or `closed` (popup blocked)
+3. Immediately show "Redirect to Payment" button (no delay)
+
+### Error/Success Messages
+
+All messages use native `alert()` dialogs instead of inline text — works reliably on all devices including iPhone.
+
+---
+
+## Deletion & Cleanup Audit
+
+| # | Action | Trigger | Deletes Files? | Deletes DB Records? | Conflicts with Payment? |
+|---|--------|---------|---------------|---------------------|------------------------|
+| 1 | `clean_empty_upload_folders.py` | Hourly cron + post-pickup | Orphan files only (10-min grace) | No | **No** |
+| 2 | `delete_all_uploads_view` | X/close on index.html | Session uploads | No | **No** — only before Proceed |
+| 3 | `delete_document` | X button on uploads.html | Single file | Document only | **No** — pre-payment stage |
+| 4 | `delete_all_documents` | X button on uploads.html | All preview files | Documents only | **No** — pre-payment stage |
+| 5 | Cancel (`payment.html`) | Cancel button | Uploaded PDFs | Payment + Document | **No** — `klcis_transaction_id` is null |
+| 6 | `picked_up_document` | Picked Up button | PDF file | Payment + Document | **Protected** — txn ID in `UsedKLCiSTransaction` |
+| 7 | `finish_transaction` | All Good button | All PDF files | Payment + Document | **Protected** — txn ID in `UsedKLCiSTransaction` |
+
+### Key Safeguard
+
+Before Payment records are deleted (pickup/finish), the `klcis_transaction_id` is already persisted in the `UsedKLCiSTransaction` table (saved during verification). This ensures old transactions are never re-matched.
 
 ---
 
 ## Troubleshooting
 
-### "Payment setup failed" error
+### "Payment setup failed"
 
 1. Check KLCiS credentials in `venv/.env`
-2. Verify KLCiS is reachable: `curl -v https://s2.klinternetservices.com/login`
-3. Check Django logs for `KLCiSError` messages
-4. Try logging in manually at https://s2.klinternetservices.com/login
+2. Test connectivity: `curl -v https://s2.klinternetservices.com/login`
+3. Check Django logs for `KLCiSError`
+4. Verify manually at https://s2.klinternetservices.com/login
 
 ### Payment not detected after paying
 
-1. The polling checks the `sold_vouchers` table and `voucher_import` page
-2. KLCiS may take a few seconds to process the Xendit callback
-3. Wait for the next auto-poll (every 5 seconds) or click "I Have Paid" again
-4. Check the KLCiS dashboard manually at `/voucher_status`
+1. Polling checks `/transactions` page for STATUS == "PAID" + phone + amount match
+2. KLCiS may take a few seconds to process Xendit callback
+3. Check exclusion sets — transaction may be in `used_txn_ids` or `baseline_txn_ids`
+4. Check `UsedKLCiSTransaction` in admin for the transaction ID
+5. Verify on KLCiS dashboard: `/transactions` page
 
-### Session-related errors
+### False positive (confirmed before paying)
 
-1. The singleton client auto-handles session expiry
-2. Force reset: restart the Django server (clears the singleton)
-3. Check logs for "KLCiS session expired" messages
+1. An old PAID transaction matched. Check:
+   - `baseline_txn_ids` in session — was snapshot taken?
+   - `UsedKLCiSTransaction` table — is the old txn ID recorded?
+2. The three-layer dedup should prevent this — if it still happens, check `klcis.py` logs
 
-### Multiple students paying simultaneously
+### Popup blocked on iPhone
 
-The singleton client is thread-safe:
-- All operations acquire a `threading.Lock()`
-- One student's request completes before the next begins (for KLCiS-bound operations)
-- The checkout URL generation doesn't need the lock (it's just URL construction)
+The "Redirect to Payment" button appears immediately when `window.open()` returns null (blocked by iOS Safari). Student can tap it to open the checkout manually.
+
+### Deploying changes
+
+```bash
+cd /home/safeprint/dev/SafePrint
+cp static/css/styles.css staticfiles/css/styles.css
+cp static/js/scripts.js staticfiles/js/scripts.js
+kill -HUP 1146894  # Graceful reload — zero downtime
+```
 
 ### Running migrations
 
 ```bash
-cd /home/safeprint/dev/SafePrint
 source venv/bin/activate
-python3 manage.py migrate portal
-```
-
-### Collecting static files
-
-After modifying `static/js/admin.js`:
-
-```bash
-python3 manage.py collectstatic --noinput
-# Or manually:
-cp static/js/admin.js staticfiles/js/admin.js
+python manage.py migrate portal
 ```
