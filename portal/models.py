@@ -317,6 +317,10 @@ class SupportTicket(models.Model):
     # Reprint tracking
     was_reprinted = models.BooleanField(default=False)
     
+    # Payment receipt proof
+    receipt_code = models.CharField(max_length=100, blank=True, default="")
+    receipt_screenshot = models.ImageField(upload_to='receipt_screenshots/', null=True, blank=True)
+    
     # Status tracking
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='open')
     created_at = models.DateTimeField(auto_now_add=True)

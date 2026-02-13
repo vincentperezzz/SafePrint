@@ -369,8 +369,25 @@ SafePrint
             </div>
 
             <div class="ticket-field full-width">
-                <label>Phone Number <span class="required">*</span></label>
-                <input type="tel" id="ticket-phone" placeholder="Enter your phone number" required>
+                <label>Contact Number <span class="required">*</span></label>
+                <input type="tel" id="ticket-phone" placeholder="Enter your contact number" required>
+            </div>
+
+            <div class="ticket-field full-width">
+                <label>Receipt Code <span class="required">*</span></label>
+                <input type="text" id="ticket-receipt-code" placeholder="Enter the code shown on your payment receipt" required>
+            </div>
+
+            <div class="ticket-field full-width">
+                <label>Receipt Screenshot <span class="required">*</span></label>
+                <div class="receipt-upload-area">
+                    <input type="file" id="ticket-receipt-screenshot" accept="image/*" required style="display:none;">
+                    <button type="button" class="browse-btn receipt-browse-btn" onclick="document.getElementById('ticket-receipt-screenshot').click()">
+                        Browse Image
+                    </button>
+                    <span class="receipt-file-name" id="receipt-file-name">No file chosen</span>
+                </div>
+                <small style="color: #999; margin-top: 4px; display: block;">Please upload a screenshot of your payment receipt</small>
             </div>
 
             <div class="ticket-field full-width">
