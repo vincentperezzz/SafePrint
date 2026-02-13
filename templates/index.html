@@ -281,7 +281,7 @@ SafePrint
             <strong>You have an active print session</strong>
             <span>Customer ID: <strong>{{ active_cid }}</strong></span>
         </div>
-        <a href="/confirmation/{{ active_cid }}/" class="active-cid-alert-btn">Return to Status</a>
+        <a href="{{ active_cid_url }}" class="active-cid-alert-btn">{% if active_cid_redirect == 'payment' %}Complete Payment{% else %}Return to Status{% endif %}</a>
         <button class="active-cid-alert-close" onclick="document.getElementById('active-cid-alert').style.display='none'">&times;</button>
     </div>
 </div>
