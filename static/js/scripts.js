@@ -1231,6 +1231,7 @@ function checkForNewCompletions(documents) {
     // Play appropriate sounds (finished takes priority)
     if (newlyFinished > 0) {
         playPrintCompleteSound();
+        showPrintCompleteToast();
     } else if (newlyRerouted > 0) {
         playRerouteSound();
     }
@@ -1244,6 +1245,31 @@ function checkForNewCompletions(documents) {
     }
 }
 // --- End print completion sound & tab title flash ---
+
+// --- Toast notification ---
+let toastAutoDismissTimer = null;
+
+function showPrintCompleteToast() {
+    const toast = document.getElementById('printCompleteToast');
+    if (!toast) return;
+    toast.classList.remove('toast-hiding');
+    toast.style.display = 'flex';
+    // Auto-dismiss after 10 seconds
+    if (toastAutoDismissTimer) clearTimeout(toastAutoDismissTimer);
+    toastAutoDismissTimer = setTimeout(dismissToast, 10000);
+}
+
+function dismissToast() {
+    const toast = document.getElementById('printCompleteToast');
+    if (!toast) return;
+    if (toastAutoDismissTimer) {
+        clearTimeout(toastAutoDismissTimer);
+        toastAutoDismissTimer = null;
+    }
+    toast.classList.add('toast-hiding');
+    setTimeout(() => { toast.style.display = 'none'; }, 300);
+}
+// --- End toast notification ---
 
 function initConfirmationSSE() {
     const customerIdEl = document.getElementById('customer-id-data');

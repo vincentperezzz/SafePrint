@@ -427,4 +427,11 @@ SafePrint
     </div>
 </div>
 
+<!-- Toast notification for print completion reminder -->
+<div class="confirmation-toast" id="printCompleteToast" style="display:none;">
+    <div class="toast-icon">&#9888;</div>
+    <div class="toast-message">Please don't leave your printed documents unattended. Pick them up as soon as possible!</div>
+    <button class="toast-close" onclick="dismissToast()">&times;</button>
+</div>
+
 {% endblock %}
