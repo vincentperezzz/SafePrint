@@ -351,18 +351,32 @@ def payment(request):
                         'error': 'No phone number on record for this payment.'
                     })
                 
+                # Collect Transaction IDs already used by previous payments (dedup)
+                used_txn_ids = set(
+                    Payment.objects.filter(
+                        klcis_transaction_id__isnull=False,
+                    ).exclude(
+                        klcis_transaction_id=''
+                    ).values_list('klcis_transaction_id', flat=True)
+                )
+                
                 # Check the KLCiS Transaction Logs page for a PAID entry
-                # matching this phone number + amount (direct checkout flow)
+                # matching this phone number + amount, excluding already-used txn IDs
                 from portal.services.klcis import verify_transaction_payment
-                result = verify_transaction_payment(phone_number, total_amount)
+                result = verify_transaction_payment(phone_number, total_amount, used_txn_ids)
                 
                 if result['success']:
+                    txn_id = result.get('transaction_id')
+                    
                     # Payment confirmed! Mark all documents as Queued
                     with transaction.atomic():
-                        for payment_obj in payments:
+                        for i, payment_obj in enumerate(payments):
                             payment_obj.payment_status = 'Paid'
                             payment_obj.approved_at = timezone.now()
                             payment_obj.approved_by = 'KLCiS-Auto'
+                            # Store txn_id on first payment only (unique constraint)
+                            if i == 0 and txn_id:
+                                payment_obj.klcis_transaction_id = txn_id
                             payment_obj.save()
                             
                             # Update document status to Queued (triggers WRR print)

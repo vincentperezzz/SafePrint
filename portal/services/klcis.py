@@ -284,7 +284,7 @@ class KLCiSClient:
                 logger.error(f'Failed to check voucher status: {str(e)}')
                 return False
 
-    def check_transaction_paid(self, phone_number, amount):
+    def check_transaction_paid(self, phone_number, amount, used_txn_ids=None):
         """
         Check if a payment has been completed by checking the KLCiS
         Transaction Logs page (/transactions) for a PAID entry matching
@@ -293,15 +293,24 @@ class KLCiSClient:
         The direct checkout URL creates transactions (not voucher sales),
         so this is the correct verification method for the "Boss" flow.
 
-        Table columns: Claim Key | Date | Amount | Status | Contact | Email | Transaction ID | Action
+        Deduplication: If used_txn_ids is provided, transactions with those
+        IDs are skipped (already matched to previous payments).
+
+        Actual rendered columns (6 cells):
+        0=Date, 1=Amount, 2=Status, 3=Contact, 4=Transaction ID, 5=Action
 
         Args:
             phone_number: The student's phone number used during checkout
             amount: The expected payment amount in pesos
+            used_txn_ids: Set of Transaction IDs already claimed by other payments
 
         Returns:
-            True if a matching PAID transaction is found, False otherwise
+            The Transaction ID string if a matching PAID transaction is found,
+            None otherwise
         """
+        if used_txn_ids is None:
+            used_txn_ids = set()
+
         with self._lock:
             transactions_url = f'{self.base_url}{TRANSACTION_PATH}'
 
@@ -323,11 +332,15 @@ class KLCiSClient:
                     if not cells or len(cells) < 5:
                         continue
 
-                    # Actual rendered columns (6 cells):
                     # 0=Date, 1=Amount, 2=Status, 3=Contact, 4=Transaction ID, 5=Action
                     status_text = re.sub(r'<[^>]+>', '', cells[2]).strip().upper()
                     contact_text = re.sub(r'<[^>]+>', '', cells[3]).strip()
                     amount_text = re.sub(r'<[^>]+>', '', cells[1]).strip()
+                    txn_id = re.sub(r'<[^>]+>', '', cells[4]).strip()
+
+                    # Skip already-used Transaction IDs (dedup)
+                    if txn_id in used_txn_ids:
+                        continue
 
                     # Normalize contact number
                     clean_contact = re.sub(r'[\s\-\+]', '', contact_text)
@@ -345,21 +358,20 @@ class KLCiSClient:
                     if (status_text == 'PAID'
                             and clean_contact == clean_phone
                             and row_amount_int == amount_int):
-                        txn_id = re.sub(r'<[^>]+>', '', cells[4]).strip()
                         logger.info(
                             f'Transaction PAID found: phone={contact_text}, '
                             f'amount=₱{row_amount_int}, txn_id={txn_id}'
                         )
-                        return True
+                        return txn_id
 
                 logger.debug(
                     f'No PAID transaction found for phone={phone_number}, amount=₱{amount_int}'
                 )
-                return False
+                return None
 
             except requests.RequestException as e:
                 logger.error(f'Failed to check transaction status: {str(e)}')
-                return False
+                return None
 
     def delete_voucher(self, voucher_id):
         """Delete a voucher from KLCiS by its internal ID."""
@@ -472,29 +484,38 @@ def get_checkout_url(amount, phone_number):
     return client.get_direct_checkout_url(amount, phone_number)
 
 
-def verify_transaction_payment(phone_number, amount):
+def verify_transaction_payment(phone_number, amount, used_txn_ids=None):
     """
     Check if a direct-checkout payment has been completed on KLCiS
     by checking the Transaction Logs page for a PAID entry matching
     the given phone number and amount.
 
-    This is the primary verification method for the direct checkout flow
-    (student → GCash → Xendit → KLCiS transaction log).
+    Deduplication: pass used_txn_ids (set of Transaction IDs already
+    claimed by previous payments) to avoid double-matching.
 
     Args:
         phone_number: Student's phone number used during checkout
         amount: Expected payment amount in pesos
+        used_txn_ids: Set of Transaction IDs to exclude (already used)
 
     Returns:
-        dict with 'success' (True if paid) and 'message' keys
+        dict with 'success' (True if paid), 'message', and 'transaction_id' keys
     """
     try:
         client = _get_client()
-        is_paid = client.check_transaction_paid(phone_number, amount)
-        return {
-            'success': is_paid,
-            'message': 'Payment verified' if is_paid else 'Payment not yet confirmed'
-        }
+        txn_id = client.check_transaction_paid(phone_number, amount, used_txn_ids)
+        if txn_id:
+            return {
+                'success': True,
+                'message': 'Payment verified',
+                'transaction_id': txn_id
+            }
+        else:
+            return {
+                'success': False,
+                'message': 'Payment not yet confirmed',
+                'transaction_id': None
+            }
     except KLCiSError as e:
         logger.error(f'KLCiS transaction verification failed: {str(e)}')
         return {
