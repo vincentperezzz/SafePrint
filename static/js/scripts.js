@@ -2209,6 +2209,38 @@ function reportPrintError() {
 }
 
 function confirmAllGood() {
+    // Check if any documents are NOT finished printing yet
+    var docs = window.customerDocuments || [];
+    var unfinishedDocs = docs.filter(function(d) {
+        return d.doc_status !== 'Finished' && d.doc_status !== 'Picked Up';
+    });
+
+    var forcePickup = false;
+
+    if (unfinishedDocs.length > 0) {
+        // Build warning message listing unfinished documents
+        var docList = unfinishedDocs.map(function(d) {
+            var statusText = d.doc_status || 'Unknown';
+            if (statusText === 'Queued') statusText = 'Waiting';
+            if (statusText === 'Printing') statusText = 'Printing...';
+            if (statusText === 'Cancelled') statusText = 'Cancelled';
+            return '• ' + (d.filename || d.doc_id) + ' — ' + statusText;
+        }).join('\n');
+
+        var confirmed = confirm(
+            '⚠️ Some documents are not yet finished printing:\n\n' +
+            docList + '\n\n' +
+            'If you proceed, ALL documents will be marked as picked up and their files will be permanently deleted from the server. ' +
+            'Unfinished documents will NOT be printed.\n\n' +
+            'Are you sure you want to proceed?'
+        );
+
+        if (!confirmed) {
+            return;  // User cancelled — don't proceed
+        }
+        forcePickup = true;
+    }
+
     hasProceeded = true;
     hidePrintQualityOverlay();
 
@@ -2233,7 +2265,7 @@ function confirmAllGood() {
             'Content-Type': 'application/json',
             'X-CSRFToken': getCsrfToken()
         },
-        body: JSON.stringify({ customer_id: customerId })
+        body: JSON.stringify({ customer_id: customerId, force: forcePickup })
     })
         .then(response => response.json())
         .then(data => {

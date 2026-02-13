@@ -1928,8 +1928,12 @@ def picked_up_document(request):
 @csrf_exempt
 def finish_transaction(request):
     """
-    Mark all finished documents for a customer as 'Picked Up' and delete their files.
+    Mark all documents for a customer as 'Picked Up' and delete their files.
     This is the 'Picked Up All Printed Documents' action.
+    
+    If force=True (user confirmed disclaimer), ALL documents are processed
+    regardless of status — including Queued, Printing, and Cancelled docs.
+    Otherwise, only 'Finished' documents are processed.
     """
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
@@ -1937,23 +1941,30 @@ def finish_transaction(request):
     try:
         data = json.loads(request.body)
         customer_id = data.get('customer_id')
+        force = data.get('force', False)
 
         if not customer_id:
             return JsonResponse({'success': False, 'error': 'customer_id is required'})
 
-        # Get all finished documents for this customer
-        finished_docs = Document.objects.filter(
-            customer_id=customer_id,
-            doc_status='Finished'
-        )
+        if force:
+            # Force mode: process ALL non-picked-up documents (user confirmed disclaimer)
+            docs_to_process = Document.objects.filter(
+                customer_id=customer_id
+            ).exclude(doc_status='Picked Up')
+        else:
+            # Normal mode: only process finished documents
+            docs_to_process = Document.objects.filter(
+                customer_id=customer_id,
+                doc_status='Finished'
+            )
 
-        if not finished_docs.exists():
-            return JsonResponse({'success': False, 'error': 'No finished documents found'})
+        if not docs_to_process.exists():
+            return JsonResponse({'success': False, 'error': 'No documents found to process'})
 
         picked_up_count = 0
         uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
 
-        for doc in finished_docs:
+        for doc in docs_to_process:
             # Mark as Picked Up
             doc.doc_status = 'Picked Up'
             doc.status_updated_at = timezone.now()
