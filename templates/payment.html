@@ -2,14 +2,14 @@
 {% load static %}
 
 {% block title %}
-SafePrint
+SafePrint - Payment
 {% endblock %}
 
 {% block content %}
 <div class="confirmation">
     <div class="confirmation-wrapper">
-        <div class="confirmation-title">Please complete your Payment below via Card or Paypal</div>
-        <div class="confirmation-subtitle">TIP: No card? Use your Maya card linked to your School ID!</div>
+        <div class="confirmation-title">Complete your Payment via GCash or E-Wallet</div>
+        <div class="confirmation-subtitle">TIP: Use your GCash or Maya linked to your phone!</div>
     </div>
 
     <div class="customer-id">
@@ -43,62 +43,281 @@ SafePrint
             <h3>₱{{ total_price|floatformat:2 }}</h3>
             <span>Amount to Pay</span>
         </div>
-            <div class="card-payment-details">
-                <h3>Card Payment</h3>
-                <form class="card-payment-form" autocomplete="off">
-                    <label class="card-label" for="card-number">Card Number</label>
-                    <input
-                        id="card-number"
-                        name="card_number"
-                        type="text"
-                        inputmode="numeric"
-                        placeholder="1234 5678 9012 3456"
-                        class="card-input"
-                    />
 
-                    <label class="card-label" for="cardholder-name">Cardholder Name</label>
-                    <input
-                        id="cardholder-name"
-                        name="cardholder_name"
-                        type="text"
-                        placeholder="JUAN DELA CRUZ"
-                        class="card-input"
-                    />
-
-                    <div class="card-row">
-                        <div class="card-field">
-                            <label class="card-label" for="expiry-date">Expiry Date</label>
-                            <input
-                                id="expiry-date"
-                                name="expiry_date"
-                                type="text"
-                                inputmode="numeric"
-                                placeholder="MM/YY"
-                                class="card-input"
-                            />
-                        </div>
-                        <div class="card-field">
-                            <label class="card-label" for="cvv">CVV</label>
-                            <input
-                                id="cvv"
-                                name="cvv"
-                                type="password"
-                                inputmode="numeric"
-                                placeholder="123"
-                                class="card-input"
-                            />
-                        </div>
-                    </div>
-
-                    <button type="button" class="card-pay-btn">Pay using Card</button>
-                    <button type="button" class="paypal-btn">
-                        <img src="{% static 'assets/paypal-logo.svg' %}" alt="PayPal" />
-                    </button>
-                </form>
+        <!-- STEP 1: Phone number + Pay Now -->
+        <div id="payment-step-1" class="card-payment-details">
+            <h3>Pay with GCash / E-Wallet</h3>
+            <p style="font-family: 'Space Grotesk', sans-serif; font-size: 14px; color: #555; margin: 0 0 12px 0;">
+                Enter your phone number to receive an SMS receipt, then click Pay Now to proceed to GCash.
+            </p>
+            <form class="card-payment-form" autocomplete="off" onsubmit="event.preventDefault(); initiatePayment();">
+                <label class="card-label" for="phone-number">Phone Number</label>
+                <input
+                    id="phone-number"
+                    name="phone_number"
+                    type="tel"
+                    inputmode="numeric"
+                    placeholder="09XX XXX XXXX"
+                    class="card-input"
+                    style="letter-spacing: 1px; font-size: 16px;"
+                    maxlength="13"
+                    required
+                />
+                <button type="submit" id="pay-now-btn" class="card-pay-btn">
+                    Pay ₱{{ total_price|floatformat:0 }} Now
+                </button>
+            </form>
+            <div id="payment-loading" style="display: none; text-align: center; padding: 10px;">
+                <span style="font-family: 'Space Grotesk', sans-serif; font-size: 14px; color: #555;">
+                    Setting up payment... Please wait.
+                </span>
             </div>
+            <div id="payment-error" style="display: none; color: #e74c3c; font-family: 'Space Grotesk', sans-serif; font-size: 14px; padding: 8px 0;"></div>
         </div>
+
+        <!-- STEP 2: Waiting for payment confirmation -->
+        <div id="payment-step-2" class="card-payment-details" style="display: none;">
+            <h3>Waiting for Payment</h3>
+            <p id="step2-instructions" style="font-family: 'Space Grotesk', sans-serif; font-size: 14px; color: #555; margin: 0 0 12px 0;">
+                Complete the payment on the GCash page, then click the button below.
+            </p>
+            <button type="button" id="verify-btn" class="card-pay-btn" onclick="verifyPayment()">
+                I Have Paid ✓
+            </button>
+            <div id="verify-loading" style="display: none; text-align: center; padding: 10px;">
+                <span style="font-family: 'Space Grotesk', sans-serif; font-size: 14px; color: #555;">
+                    Verifying payment with GCash... Please wait.
+                </span>
+            </div>
+            <div id="verify-error" style="display: none; color: #e74c3c; font-family: 'Space Grotesk', sans-serif; font-size: 14px; padding: 8px 0;"></div>
+            <div id="verify-success" style="display: none; color: #27ae60; font-family: 'Space Grotesk', sans-serif; font-size: 14px; padding: 8px 0; font-weight: 600;"></div>
+        </div>
+    </div>
     </div>
 
 </div>
+
+<script>
+    // Payment data from Django context
+    const PAYMENT_DATA = {
+        customerId: '{{ customer_id }}',
+        docIds: {{ doc_ids_json|safe|default:"[]" }},
+        totalPrice: {{ total_price|default:0 }},
+    };
+
+    let pollInterval = null; // For auto-polling
+    let pollAttempts = 0;
+    const MAX_POLL_ATTEMPTS = 60; // 5 minutes at 5-second intervals
+
+    /**
+     * STEP 1: Initiate payment
+     * - Sends phone number + CID to Django
+     * - Django creates voucher on KLCiS
+     * - Returns direct checkout URL (bypasses KLCiS shop)
+     * - Opens GCash in new tab
+     */
+    async function initiatePayment() {
+        const phoneInput = document.getElementById('phone-number');
+        const btn = document.getElementById('pay-now-btn');
+        const loading = document.getElementById('payment-loading');
+        const errorDiv = document.getElementById('payment-error');
+        const phone = phoneInput.value.replace(/\s/g, '').trim();
+
+        // Validate Philippine phone number
+        const phoneRegex = /^(\+?63|0)(9\d{9})$/;
+        if (!phoneRegex.test(phone)) {
+            errorDiv.textContent = 'Please enter a valid Philippine phone number (e.g., 09171234567).';
+            errorDiv.style.display = 'block';
+            phoneInput.focus();
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+        loading.style.display = 'block';
+        errorDiv.style.display = 'none';
+
+        try {
+            const response = await fetch('/payment/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify({
+                    action: 'initiate',
+                    customer_id: PAYMENT_DATA.customerId,
+                    doc_ids: PAYMENT_DATA.docIds,
+                    phone_number: phone,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Open GCash/Xendit payment directly in new tab
+                if (data.checkout_url) {
+                    window.open(data.checkout_url, '_blank');
+                }
+
+                // Show Step 2: "I Have Paid" button
+                document.getElementById('payment-step-1').style.display = 'none';
+                document.getElementById('payment-step-2').style.display = 'flex';
+
+                // Start auto-polling every 5 seconds
+                startAutoPolling();
+            } else {
+                errorDiv.textContent = data.error || 'Payment setup failed. Please try again.';
+                errorDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = `Pay ₱${Math.round(PAYMENT_DATA.totalPrice)} Now`;
+            }
+        } catch (err) {
+            errorDiv.textContent = 'Network error. Please check your connection and try again.';
+            errorDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = `Pay ₱${Math.round(PAYMENT_DATA.totalPrice)} Now`;
+        } finally {
+            loading.style.display = 'none';
+        }
+    }
+
+    /**
+     * STEP 2: Verify payment
+     * Polls Django → Django checks KLCiS sold_vouchers table
+     * If paid → auto-approves and redirects to confirmation
+     */
+    async function verifyPayment() {
+        const btn = document.getElementById('verify-btn');
+        const loading = document.getElementById('verify-loading');
+        const errorDiv = document.getElementById('verify-error');
+        const successDiv = document.getElementById('verify-success');
+
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+        loading.style.display = 'block';
+        errorDiv.style.display = 'none';
+        successDiv.style.display = 'none';
+
+        try {
+            const response = await fetch('/payment/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify({
+                    action: 'verify',
+                    customer_id: PAYMENT_DATA.customerId,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Payment confirmed!
+                stopAutoPolling();
+                successDiv.textContent = data.message || 'Payment verified! Redirecting to print queue...';
+                successDiv.style.display = 'block';
+                btn.style.display = 'none';
+
+                // Redirect to confirmation page
+                setTimeout(() => {
+                    window.location.href = data.redirect_url || `/confirmation/${PAYMENT_DATA.customerId}/`;
+                }, 2000);
+            } else {
+                if (data.status === 'pending') {
+                    errorDiv.textContent = 'Payment not yet detected. If you already paid, please wait a moment and try again.';
+                } else {
+                    errorDiv.textContent = data.error || 'Verification failed.';
+                }
+                errorDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'I Have Paid ✓';
+            }
+        } catch (err) {
+            errorDiv.textContent = 'Network error. Please check your connection and try again.';
+            errorDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'I Have Paid ✓';
+        } finally {
+            loading.style.display = 'none';
+        }
+    }
+
+    /**
+     * Auto-poll every 5 seconds to check if payment has been confirmed.
+     * This runs in the background so the student doesn't have to click.
+     */
+    function startAutoPolling() {
+        pollAttempts = 0;
+        pollInterval = setInterval(async () => {
+            pollAttempts++;
+            if (pollAttempts > MAX_POLL_ATTEMPTS) {
+                stopAutoPolling();
+                return;
+            }
+
+            try {
+                const response = await fetch('/payment/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: JSON.stringify({
+                        action: 'verify',
+                        customer_id: PAYMENT_DATA.customerId,
+                    }),
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    stopAutoPolling();
+                    const successDiv = document.getElementById('verify-success');
+                    const btn = document.getElementById('verify-btn');
+                    successDiv.textContent = data.message || 'Payment verified! Redirecting...';
+                    successDiv.style.display = 'block';
+                    btn.style.display = 'none';
+                    document.getElementById('verify-error').style.display = 'none';
+
+                    setTimeout(() => {
+                        window.location.href = data.redirect_url || `/confirmation/${PAYMENT_DATA.customerId}/`;
+                    }, 2000);
+                }
+            } catch (e) {
+                // Silently continue polling on network errors
+            }
+        }, 5000);
+    }
+
+    function stopAutoPolling() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    }
+
+    /**
+     * Get CSRF cookie for Django POST requests.
+     */
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    // Clean up polling on page unload
+    window.addEventListener('beforeunload', stopAutoPolling);
+</script>
 
 {% endblock %}
