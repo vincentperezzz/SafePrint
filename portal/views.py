@@ -279,7 +279,7 @@ def payment(request):
                 ))
                 
                 # Upload voucher to KLCiS dashboard
-                from portal.services.klcis import create_and_upload_voucher, get_checkout_url
+                from portal.services.klcis import create_and_upload_voucher, get_checkout_url, snapshot_existing_transactions
                 result = create_and_upload_voucher(voucher_code, total_price)
                 
                 if not result['success']:
@@ -287,6 +287,12 @@ def payment(request):
                         'success': False,
                         'error': f'Payment setup failed: {result["message"]}'
                     })
+                
+                # Snapshot existing PAID transactions for this phone+amount
+                # so they can be excluded during verification (prevents false positives
+                # from old transactions with the same phone/amount)
+                baseline_txn_ids = snapshot_existing_transactions(phone_number, total_price)
+                request.session['baseline_txn_ids'] = baseline_txn_ids
                 
                 # Store the voucher code in all Payment records for this transaction
                 for doc_id in documents_ids:
@@ -365,10 +371,15 @@ def payment(request):
                     ).values_list('klcis_transaction_id', flat=True)
                 )
                 
+                # Merge baseline snapshot IDs (transactions that existed BEFORE
+                # this payment was initiated — prevents matching old transactions)
+                baseline_ids = set(request.session.get('baseline_txn_ids', []))
+                exclude_ids = used_txn_ids | baseline_ids
+                
                 # Check the KLCiS Transaction Logs page for a PAID entry
-                # matching this phone number + amount, excluding already-used txn IDs
+                # matching this phone number + amount, excluding old + used txn IDs
                 from portal.services.klcis import verify_transaction_payment
-                result = verify_transaction_payment(phone_number, total_amount, used_txn_ids)
+                result = verify_transaction_payment(phone_number, total_amount, exclude_ids)
                 
                 if result['success']:
                     txn_id = result.get('transaction_id')
@@ -389,9 +400,10 @@ def payment(request):
                             doc.doc_status = 'Queued'
                             doc.save()
                     
-                    # Clear pending payment session flag
+                    # Clear pending payment session flags
                     request.session.pop('pending_payment_cid', None)
                     request.session.pop('pending_payment_doc_ids', None)
+                    request.session.pop('baseline_txn_ids', None)
                     
                     return JsonResponse({
                         'success': True,

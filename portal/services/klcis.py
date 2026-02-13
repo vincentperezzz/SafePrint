@@ -316,62 +316,137 @@ class KLCiSClient:
 
             try:
                 resp = self._request_with_reauth('GET', transactions_url, timeout=15)
-
-                # Normalize phone number for matching (remove leading +63, spaces, dashes)
-                clean_phone = re.sub(r'[\s\-\+]', '', phone_number)
-                if clean_phone.startswith('63') and len(clean_phone) > 10:
-                    clean_phone = '0' + clean_phone[2:]
-
-                amount_int = int(round(float(amount)))
-
-                # Parse all table rows
-                rows = re.findall(r'<tr[^>]*>(.*?)</tr>', resp.text, re.DOTALL)
-
-                for row in rows:
-                    cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
-                    if not cells or len(cells) < 5:
-                        continue
-
-                    # 0=Date, 1=Amount, 2=Status, 3=Contact, 4=Transaction ID, 5=Action
-                    status_text = re.sub(r'<[^>]+>', '', cells[2]).strip().upper()
-                    contact_text = re.sub(r'<[^>]+>', '', cells[3]).strip()
-                    amount_text = re.sub(r'<[^>]+>', '', cells[1]).strip()
-                    txn_id = re.sub(r'<[^>]+>', '', cells[4]).strip()
-
-                    # Skip already-used Transaction IDs (dedup)
-                    if txn_id in used_txn_ids:
-                        continue
-
-                    # Normalize contact number
-                    clean_contact = re.sub(r'[\s\-\+]', '', contact_text)
-                    if clean_contact.startswith('63') and len(clean_contact) > 10:
-                        clean_contact = '0' + clean_contact[2:]
-
-                    # Extract numeric amount (strip ₱, commas, spaces)
-                    amount_match = re.search(r'[\d,]+\.?\d*', amount_text)
-                    if not amount_match:
-                        continue
-                    row_amount = float(amount_match.group().replace(',', ''))
-                    row_amount_int = int(round(row_amount))
-
-                    # Match: PAID status + matching phone + matching amount
-                    if (status_text == 'PAID'
-                            and clean_contact == clean_phone
-                            and row_amount_int == amount_int):
-                        logger.info(
-                            f'Transaction PAID found: phone={contact_text}, '
-                            f'amount=₱{row_amount_int}, txn_id={txn_id}'
-                        )
-                        return txn_id
-
-                logger.debug(
-                    f'No PAID transaction found for phone={phone_number}, amount=₱{amount_int}'
+                return self._find_paid_transaction(
+                    resp.text, phone_number, amount, used_txn_ids
                 )
-                return None
 
             except requests.RequestException as e:
                 logger.error(f'Failed to check transaction status: {str(e)}')
                 return None
+
+    def get_paid_transaction_ids(self, phone_number, amount):
+        """
+        Return a set of ALL Transaction IDs on KLCiS /transactions page
+        that are PAID and match the given phone number + amount.
+
+        Used at payment initiation time to "snapshot" existing transactions
+        so they can be excluded during verification — preventing false
+        positives from old payments with the same phone/amount.
+
+        Args:
+            phone_number: The student's phone number
+            amount: The payment amount in pesos
+
+        Returns:
+            Set of Transaction ID strings (may be empty)
+        """
+        with self._lock:
+            transactions_url = f'{self.base_url}{TRANSACTION_PATH}'
+
+            try:
+                resp = self._request_with_reauth('GET', transactions_url, timeout=15)
+                return self._collect_paid_transaction_ids(
+                    resp.text, phone_number, amount
+                )
+            except requests.RequestException as e:
+                logger.error(f'Failed to snapshot transactions: {str(e)}')
+                return set()
+
+    def _find_paid_transaction(self, html, phone_number, amount, exclude_ids):
+        """
+        Parse transaction table HTML and find the first PAID transaction
+        matching phone + amount that is NOT in exclude_ids.
+
+        Returns the Transaction ID string or None.
+        """
+        clean_phone = self._normalize_phone(phone_number)
+        amount_int = int(round(float(amount)))
+        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.DOTALL)
+
+        for row in rows:
+            cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
+            if not cells or len(cells) < 5:
+                continue
+
+            # 0=Date, 1=Amount, 2=Status, 3=Contact, 4=Transaction ID, 5=Action
+            status_text = re.sub(r'<[^>]+>', '', cells[2]).strip().upper()
+            contact_text = re.sub(r'<[^>]+>', '', cells[3]).strip()
+            amount_text = re.sub(r'<[^>]+>', '', cells[1]).strip()
+            txn_id = re.sub(r'<[^>]+>', '', cells[4]).strip()
+
+            # Skip excluded IDs (dedup + baseline snapshot)
+            if txn_id in exclude_ids:
+                continue
+
+            clean_contact = self._normalize_phone(contact_text)
+
+            # Extract numeric amount
+            amount_match = re.search(r'[\d,]+\.?\d*', amount_text)
+            if not amount_match:
+                continue
+            row_amount_int = int(round(float(amount_match.group().replace(',', ''))))
+
+            # Match: STATUS == PAID + phone matches + amount matches
+            if (status_text == 'PAID'
+                    and clean_contact == clean_phone
+                    and row_amount_int == amount_int):
+                logger.info(
+                    f'Transaction PAID found: phone={contact_text}, '
+                    f'amount=₱{row_amount_int}, txn_id={txn_id}'
+                )
+                return txn_id
+
+        logger.debug(
+            f'No PAID transaction found for phone={phone_number}, amount=₱{amount_int}'
+        )
+        return None
+
+    def _collect_paid_transaction_ids(self, html, phone_number, amount):
+        """
+        Parse transaction table HTML and collect ALL PAID transaction IDs
+        matching phone + amount.
+
+        Returns a set of Transaction ID strings.
+        """
+        clean_phone = self._normalize_phone(phone_number)
+        amount_int = int(round(float(amount)))
+        result = set()
+        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.DOTALL)
+
+        for row in rows:
+            cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
+            if not cells or len(cells) < 5:
+                continue
+
+            status_text = re.sub(r'<[^>]+>', '', cells[2]).strip().upper()
+            contact_text = re.sub(r'<[^>]+>', '', cells[3]).strip()
+            amount_text = re.sub(r'<[^>]+>', '', cells[1]).strip()
+            txn_id = re.sub(r'<[^>]+>', '', cells[4]).strip()
+
+            clean_contact = self._normalize_phone(contact_text)
+            amount_match = re.search(r'[\d,]+\.?\d*', amount_text)
+            if not amount_match:
+                continue
+            row_amount_int = int(round(float(amount_match.group().replace(',', ''))))
+
+            if (status_text == 'PAID'
+                    and clean_contact == clean_phone
+                    and row_amount_int == amount_int):
+                result.add(txn_id)
+
+        logger.info(
+            f'Snapshot: {len(result)} existing PAID transaction(s) for '
+            f'phone={phone_number}, amount=₱{amount_int}'
+        )
+        return result
+
+    @staticmethod
+    def _normalize_phone(phone):
+        """Normalize a Philippine phone number for comparison."""
+        clean = re.sub(r'[\s\-\+]', '', phone)
+        if clean.startswith('63') and len(clean) > 10:
+            clean = '0' + clean[2:]
+        return clean
 
     def delete_voucher(self, voucher_id):
         """Delete a voucher from KLCiS by its internal ID."""
@@ -482,6 +557,28 @@ def get_checkout_url(amount, phone_number):
     """
     client = _get_client()
     return client.get_direct_checkout_url(amount, phone_number)
+
+
+def snapshot_existing_transactions(phone_number, amount):
+    """
+    Snapshot all existing PAID transaction IDs on KLCiS matching
+    the given phone number + amount. Called at payment initiation time
+    so these can be excluded during verification (prevents false positives
+    from old transactions with the same phone/amount).
+
+    Args:
+        phone_number: Student's phone number
+        amount: Payment amount in pesos
+
+    Returns:
+        List of Transaction ID strings (serializable for session storage)
+    """
+    try:
+        client = _get_client()
+        return list(client.get_paid_transaction_ids(phone_number, amount))
+    except Exception as e:
+        logger.error(f'Failed to snapshot transactions: {str(e)}')
+        return []
 
 
 def verify_transaction_payment(phone_number, amount, used_txn_ids=None):
