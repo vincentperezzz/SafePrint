@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket
+from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction
 import os
 
 admin.site.register(AdminUser)
@@ -35,3 +35,10 @@ class SupportTicketAdmin(admin.ModelAdmin):
                 except Exception:
                     pass
         queryset.delete()
+
+
+@admin.register(UsedKLCiSTransaction)
+class UsedKLCiSTransactionAdmin(admin.ModelAdmin):
+    list_display = ('transaction_id', 'phone_number', 'amount', 'used_at')
+    search_fields = ('transaction_id', 'phone_number')
+    readonly_fields = ('transaction_id', 'phone_number', 'amount', 'used_at')

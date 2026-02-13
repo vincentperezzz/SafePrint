@@ -363,12 +363,18 @@ def payment(request):
                     })
                 
                 # Collect Transaction IDs already used by previous payments (dedup)
+                # From active Payment records
                 used_txn_ids = set(
                     Payment.objects.filter(
                         klcis_transaction_id__isnull=False,
                     ).exclude(
                         klcis_transaction_id=''
                     ).values_list('klcis_transaction_id', flat=True)
+                )
+                # From persistent used-transaction table (survives Payment deletion)
+                from portal.models import UsedKLCiSTransaction
+                used_txn_ids |= set(
+                    UsedKLCiSTransaction.objects.values_list('transaction_id', flat=True)
                 )
                 
                 # Merge baseline snapshot IDs (transactions that existed BEFORE
@@ -383,6 +389,17 @@ def payment(request):
                 
                 if result['success']:
                     txn_id = result.get('transaction_id')
+                    
+                    # Persist the transaction ID so it survives Payment deletion
+                    if txn_id:
+                        from portal.models import UsedKLCiSTransaction
+                        UsedKLCiSTransaction.objects.get_or_create(
+                            transaction_id=txn_id,
+                            defaults={
+                                'phone_number': phone_number or '',
+                                'amount': total_amount,
+                            }
+                        )
                     
                     # Payment confirmed! Mark all documents as Queued
                     with transaction.atomic():

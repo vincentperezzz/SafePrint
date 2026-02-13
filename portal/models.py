@@ -251,6 +251,26 @@ class Payment(models.Model):
     class Meta:
         db_table = 'payments'
 
+
+class UsedKLCiSTransaction(models.Model):
+    """
+    Persistent record of KLCiS Transaction IDs that have been matched
+    to payments. Survives payment/document deletion (pickup) so old
+    transactions are never re-matched to new payments.
+    """
+    transaction_id = models.CharField(max_length=64, unique=True)
+    phone_number = models.CharField(max_length=20, blank=True, default='')
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    used_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.transaction_id} (₱{self.amount})"
+
+    class Meta:
+        db_table = 'used_klcis_transactions'
+        verbose_name = 'Used KLCiS Transaction'
+        verbose_name_plural = 'Used KLCiS Transactions'
+
 class Feedback(models.Model):
     CATEGORY_CHOICES = [
         ('Comment', 'Comment'),
