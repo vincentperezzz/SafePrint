@@ -241,6 +241,7 @@ class Payment(models.Model):
     voucher_code = models.CharField(max_length=50, null=True, blank=True, unique=True)
     payment_method = models.CharField(max_length=50, null=True, blank=True)  # 'klcis', 'gcash', etc.
     phone_number = models.CharField(max_length=20, null=True, blank=True)  # Student phone for GCash verification
+    klcis_transaction_id = models.CharField(max_length=64, null=True, blank=True, unique=True)  # KLCiS Transaction ID for dedup
     approved_by = models.CharField(max_length=255, null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
 
