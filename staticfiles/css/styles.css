@@ -6295,3 +6295,71 @@ input:focus::placeholder {
     transform: translateY(2px);
     box-shadow: 0px 2px 0px 0px #18191F;
 }
+
+/* ============================================================
+   CONFIRMATION TOAST NOTIFICATION
+   ============================================================ */
+.confirmation-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    max-width: 600px;
+    width: calc(100% - 32px);
+    background: #FFF3CD;
+    border: 2px solid #856404;
+    border-radius: 14px;
+    padding: 16px 48px 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    z-index: 9999;
+    animation: toastSlideUp 0.4s ease forwards;
+    font-family: 'Space Grotesk', sans-serif;
+}
+
+@keyframes toastSlideUp {
+    to {
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+@keyframes toastSlideDown {
+    from {
+        transform: translateX(-50%) translateY(0);
+    }
+    to {
+        transform: translateX(-50%) translateY(100px);
+        opacity: 0;
+    }
+}
+
+.confirmation-toast.toast-hiding {
+    animation: toastSlideDown 0.3s ease forwards;
+}
+
+.toast-icon {
+    font-size: 1.6em;
+    flex-shrink: 0;
+}
+
+.toast-message {
+    font-size: 0.95em;
+    font-weight: 600;
+    color: #856404;
+    line-height: 1.4;
+}
+
+.toast-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    background: none;
+    border: none;
+    font-size: 1.5em;
+    color: #856404;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+}
