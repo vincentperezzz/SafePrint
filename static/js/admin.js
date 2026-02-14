@@ -107,8 +107,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Populate modal fields from data attributes on the clicked button
         if (button) {
-            document.getElementById('modal-customer-id').textContent = '#' + (button.getAttribute('data-customer-id') || '');
-            document.getElementById('modal-doc-id').textContent = button.getAttribute('data-doc-id') || '—';
+            document.getElementById('modal-customer-id').textContent = button.getAttribute('data-customer-id') || '';
+            document.getElementById('modal-doc-id').textContent = '#' + (button.getAttribute('data-doc-id') || '—');
             document.getElementById('modal-customer-name').textContent = button.getAttribute('data-customer-name') || '';
             document.getElementById('modal-doc-name').textContent = button.getAttribute('data-doc-name') || '';
             document.getElementById('modal-email').textContent = button.getAttribute('data-email') || '';
@@ -116,7 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('modal-issue').textContent = button.getAttribute('data-issue') || '';
             document.getElementById('modal-problem-type').textContent = button.getAttribute('data-problem-type') || '';
             document.getElementById('modal-reprinted').textContent = button.getAttribute('data-was-reprinted') === 'True' ? 'Yes' : 'No';
-            document.getElementById('ticket-modal-title').textContent = 'Ticket ' + (button.getAttribute('data-ticket-number') || '');
+            document.getElementById('ticket-modal-title').textContent = button.getAttribute('data-ticket-number') || '';
         }
 
         ticketModal.classList.add('is-open');
@@ -305,96 +305,8 @@ document.addEventListener('DOMContentLoaded', () => {
         updateTicketCounts();
     };
 
-    // Void / Refund button handlers (same pattern as 'Picked Up' on completed page)
-    if (activeResults) {
-        updateActiveEmptyState();
-
-        // Void buttons
-        activeResults.querySelectorAll('.deny-btn[data-action="void"]').forEach(btn => {
-            btn.addEventListener('click', function () {
-                const row = btn.closest('.document-item');
-                const ticketId = btn.getAttribute('data-ticket-id');
-                if (!ticketId) return;
-
-                fetch('/portal/api/void-ticket/', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': csrfToken,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ ticket_id: ticketId })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        if (row) row.remove();
-
-                        // Build and add resolved row
-                        if (resolvedResults) {
-                            const emptyRow = resolvedResults.querySelector('.empty-row');
-                            if (emptyRow) emptyRow.remove();
-                            const newRow = buildResolvedRow(data);
-                            resolvedResults.appendChild(newRow);
-                        }
-
-                        updateActiveEmptyState();
-                        updateResolvedEmptyState();
-                        updateTicketCounts();
-
-                        if (typeof createAlert === 'function') {
-                            createAlert('Success', 'Voided', 'Ticket has been voided.', 'success', true, true, 'pageMessages');
-                        }
-                    } else {
-                        alert('Error: ' + (data.error || 'Unknown error'));
-                    }
-                })
-                .catch(err => alert('Request failed: ' + err.message));
-            });
-        });
-
-        // Refund buttons
-        activeResults.querySelectorAll('.refund-btn[data-action="refund"]').forEach(btn => {
-            btn.addEventListener('click', function () {
-                const row = btn.closest('.document-item');
-                const ticketId = btn.getAttribute('data-ticket-id');
-                if (!ticketId) return;
-
-                fetch('/portal/api/refund-ticket/', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': csrfToken,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ ticket_id: ticketId })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        if (row) row.remove();
-
-                        // Build and add resolved row
-                        if (resolvedResults) {
-                            const emptyRow = resolvedResults.querySelector('.empty-row');
-                            if (emptyRow) emptyRow.remove();
-                            const newRow = buildResolvedRow(data);
-                            resolvedResults.appendChild(newRow);
-                        }
-
-                        updateActiveEmptyState();
-                        updateResolvedEmptyState();
-                        updateTicketCounts();
-
-                        if (typeof createAlert === 'function') {
-                            createAlert('Success', 'Refunded', 'Ticket has been refunded.', 'success', true, true, 'pageMessages');
-                        }
-                    } else {
-                        alert('Error: ' + (data.error || 'Unknown error'));
-                    }
-                })
-                .catch(err => alert('Request failed: ' + err.message));
-            });
-        });
-    }
+    // Attach event listeners to any existing dynamic elements
+    attachTicketEventListeners();
 
     updateResolvedEmptyState();
 
@@ -2002,8 +1914,72 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function playNotificationSound() {
+            // Helper that attempts to play via <audio> then falls back to WebAudio
+            function tryPlayAudio(path) {
+                return new Promise((resolve, reject) => {
+                    try {
+                        notificationAudio.src = path;
+                        notificationAudio.volume = 1.0;
+                        const p = notificationAudio.play();
+                        if (p && typeof p.then === 'function') {
+                            p.then(() => resolve('audio'))
+                                .catch(err => reject(err));
+                        } else {
+                            // If play returned undefined, assume success
+                            resolve('audio');
+                        }
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+            }
 
-            // If sound settings are missing from localStorage, fetch them from server first
+            function tryWebAudio(path) {
+                return new Promise((resolve, reject) => {
+                    try {
+                        const AudioContext = window.AudioContext || window.webkitAudioContext;
+                        if (!AudioContext) return reject(new Error('WebAudio not supported'));
+                        const ctx = new AudioContext();
+                        Promise.resolve(ctx.state === 'suspended' ? ctx.resume() : ctx)
+                            .then(() => fetch(path))
+                            .then(res => res.arrayBuffer())
+                            .then(buf => ctx.decodeAudioData(buf))
+                            .then(decoded => {
+                                const src = ctx.createBufferSource();
+                                src.buffer = decoded;
+                                src.connect(ctx.destination);
+                                try {
+                                    src.start(0);
+                                    resolve('webaudio');
+                                } catch (e) {
+                                    reject(e);
+                                }
+                            })
+                            .catch(reject);
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+            }
+
+            function playIfEnabled(path) {
+                // Prefer <audio> element first, then WebAudio fallback
+                return tryPlayAudio(path).catch(err => {
+                    console.warn('Audio element play failed, trying WebAudio fallback:', err);
+                    return tryWebAudio(path);
+                });
+            }
+
+            function runPlay(soundSlug) {
+                if (!soundSlug) soundSlug = 'chime';
+                const soundPath = `/static/sounds/${soundSlug}.mp3`;
+                playIfEnabled(soundPath).then(method => {
+                    console.log('Notification sound played via', method);
+                }).catch(err => {
+                    console.warn('All playback methods failed:', err);
+                });
+            }
+
             if (!localStorage.getItem('sound_slug')) {
                 fetch('/api/get-notification-prefs/', {
                     method: 'POST',
@@ -2015,37 +1991,20 @@ document.addEventListener('DOMContentLoaded', function () {
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            // Save to localStorage
                             localStorage.setItem('sound_slug', data.sound_slug);
                             localStorage.setItem('sound_enabled', data.sound_enabled ? 'true' : 'false');
-
-                            // Only play if actually enabled
-                            if (data.sound_enabled) {
-                                const soundPath = `/static/sounds/${data.sound_slug}.mp3`;
-                                notificationAudio.src = soundPath;
-                                notificationAudio.volume = 1.0;
-                                notificationAudio.play()
-                                    .then(() => console.log("Sound played successfully"))
-                                    .catch(e => console.error("Couldn't play notification sound:", e));
-                            }
+                            if (data.sound_enabled) runPlay(data.sound_slug);
                         }
                     })
-                    .catch(e => console.error("Couldn't fetch sound preferences:", e));
+                    .catch(e => console.warn("Couldn't fetch sound preferences:", e));
             } else {
-                // Sound settings exist in localStorage
-                const soundEnabled = localStorage.getItem('sound_enabled') === 'true';
-                let soundSlug = localStorage.getItem('sound_slug');
-
-                if (soundEnabled) {
-                    // Normal path - sound slug is available
-                    const soundPath = `/static/sounds/${soundSlug}.mp3`;
-                    notificationAudio.src = soundPath;
-                    notificationAudio.volume = 1.0;
-                    notificationAudio.play()
-                        .then(() => console.log("Sound played successfully"))
-                        .catch(e => console.error("Couldn't play notification sound:", e));
-                }
+                const enabled = localStorage.getItem('sound_enabled') === 'true';
+                const slug = localStorage.getItem('sound_slug') || 'chime';
+                if (enabled) runPlay(slug);
             }
+
+            // Expose SSE sound player so other scripts can reuse it
+            try { window.playNotificationSound = playNotificationSound; } catch (e) { /* ignore */ }
         }
 
         function startTitleFlash(activeCount) {
@@ -2740,12 +2699,55 @@ if (addPrinterForm) {
                     document.getElementById('active-tickets-count').textContent = activeCount;
                     document.getElementById('resolved-tickets-count').textContent = resolvedCount;
 
+                    // Update notification bell badge if present
+                    const notifCountEl = document.getElementById('notification-count');
+                    if (notifCountEl) notifCountEl.textContent = activeCount;
+
+                    // Populate notification panel with a compact list
+                    const panelList = document.getElementById('notification-panel-list');
+                    if (panelList) {
+                        panelList.innerHTML = '';
+                        if (Array.isArray(data.active_tickets) && data.active_tickets.length > 0) {
+                            data.active_tickets.slice(0, 20).forEach(t => {
+                                const item = document.createElement('div');
+                                item.className = 'notif-item';
+                                item.style.padding = '6px 4px';
+                                item.style.borderBottom = '1px solid #f1f1f1';
+                                item.innerHTML = `<div style="font-weight:600">${t.ticket_number}</div><div style="font-size:0.9rem;color:#666">${t.problem_type} • ${t.created_at}</div>`;
+                                item.addEventListener('click', function() {
+                                    // Open ticket modal using the same attributes
+                                    document.getElementById('modal-customer-id').textContent = t.customer_id || '';
+                                    document.getElementById('modal-doc-id').textContent = t.doc_id || '';
+                                    document.getElementById('modal-customer-name').textContent = t.customer_name || '';
+                                    document.getElementById('modal-doc-name').textContent = t.document_name || '';
+                                    document.getElementById('modal-email').textContent = t.email || '';
+                                    document.getElementById('modal-problem-type').textContent = t.problem_type || '';
+                                    document.getElementById('modal-phone').textContent = t.phone_number || '';
+                                    document.getElementById('modal-reprinted').textContent = t.was_reprinted ? 'Yes' : 'No';
+                                    document.getElementById('modal-issue').textContent = t.description || '';
+                                    document.getElementById('ticket-modal').setAttribute('aria-hidden', 'false');
+                                    // Hide panel
+                                    const panel = document.getElementById('notification-panel');
+                                    if (panel) panel.style.display = 'none';
+                                });
+                                panelList.appendChild(item);
+                            });
+                        } else {
+                            panelList.innerHTML = '<div style="padding:8px;color:#666">No active tickets</div>';
+                        }
+                    }
+
                     // Update ticket lists
                     updateActiveTickets(data.active_tickets);
                     updateResolvedTickets(data.resolved_tickets);
 
-                    // Play notification sound if new tickets arrived
-                    if (lastActiveCount !== null && activeCount > lastActiveCount) {
+                    // Play notification sound on initial load if there are active tickets,
+                    // or when the active ticket count increases thereafter.
+                    if (lastActiveCount === null) {
+                        if (activeCount > 0) {
+                            playNotificationSound();
+                        }
+                    } else if (activeCount > lastActiveCount) {
                         playNotificationSound();
                     }
 
@@ -2757,18 +2759,129 @@ if (addPrinterForm) {
     }
 
     function playNotificationSound() {
+        // Prefer existing global playNotificationSound (SSE block) if available
         try {
-            const soundElement = document.getElementById('notification-sound');
-            if (soundElement) {
-                soundElement.currentTime = 0;
-                soundElement.play().catch(err => console.log('Audio play error:', err));
+            if (typeof window.playNotificationSound === 'function') {
+                const p = window.playNotificationSound();
+                if (p && typeof p.then === 'function') {
+                    p.catch(err => console.warn('Global playNotificationSound() failed:', err));
+                }
+                return;
+            }
+        } catch (e) {
+            console.log('Error calling global playNotificationSound():', e);
+        }
+
+        // Reuse a single Audio element to ensure repeated plays work
+        try {
+            window._sp_fallback_audio = window._sp_fallback_audio || new Audio();
+            const audio = window._sp_fallback_audio;
+            const soundSlug = localStorage.getItem('sound_slug') || 'chime';
+            const soundPath = `/static/sounds/${soundSlug}.mp3`;
+            // If src differs, set it
+            if (audio.src.indexOf(soundPath) === -1) audio.src = soundPath;
+            audio.volume = 1.0;
+            // Reset playback position
+            try { audio.currentTime = 0; } catch (e) { /* ignore */ }
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                    console.warn('Fallback audio.play() failed:', err);
+                    // Try WebAudio fallback
+                    try {
+                        const AudioContext = window.AudioContext || window.webkitAudioContext;
+                        if (!AudioContext) throw new Error('WebAudio not supported');
+                        const ctx = window._sp_audio_ctx || new AudioContext();
+                        window._sp_audio_ctx = ctx;
+                        Promise.resolve(ctx.state === 'suspended' ? ctx.resume() : ctx)
+                            .then(() => fetch(soundPath))
+                            .then(res => res.arrayBuffer())
+                            .then(buf => ctx.decodeAudioData(buf))
+                            .then(decoded => {
+                                const src = ctx.createBufferSource();
+                                src.buffer = decoded;
+                                src.connect(ctx.destination);
+                                try { src.start(0); } catch (e) { console.warn('WebAudio start failed:', e); }
+                            })
+                            .catch(webErr => console.warn('WebAudio fallback failed:', webErr));
+                    } catch (we) {
+                        console.warn('WebAudio fallback unavailable:', we);
+                    }
+                });
             }
         } catch (error) {
-            console.log('Could not play notification sound:', error);
+            console.log('Could not play notification sound (fallback):', error);
         }
     }
+    // Note: removed explicit enable-sound button. Browsers may still block
+    // autoplay; if so, playback requires a user gesture in that browser.
 
     // Initial fetch and setup polling
     refreshTickets();
     setInterval(refreshTickets, 5000); // Poll every 5 seconds
+})();
+
+// Notification bell interactions and sound enable prompt
+(function(){
+    // Toggle notification panel when bell clicked
+    const bell = document.getElementById('notification-bell');
+    if (bell) {
+        bell.addEventListener('click', function(e){
+            e.preventDefault();
+            const panel = document.getElementById('notification-panel');
+            if (!panel) return;
+            panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
+        });
+    }
+
+    // Small unobtrusive enable-sound prompt if audio not unlocked
+    if (!localStorage.getItem('sound_opt_in')) {
+        const banner = document.createElement('div');
+        banner.id = 'enable-sound-banner';
+        banner.style.position = 'fixed';
+        banner.style.bottom = '20px';
+        banner.style.right = '20px';
+        banner.style.background = '#fff';
+        banner.style.border = '1px solid #ddd';
+        banner.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+        banner.style.padding = '8px 12px';
+        banner.style.zIndex = '2000';
+        banner.style.borderRadius = '6px';
+        banner.innerHTML = '<span style="margin-right:8px;">Enable sound notifications?</span>';
+        const btn = document.createElement('button');
+        btn.textContent = 'Enable';
+        btn.style.marginLeft = '6px';
+        btn.className = 'btn btn-primary';
+        btn.addEventListener('click', function(){
+            // trigger a user gesture to unlock audio
+            try {
+                const audio = window._sp_fallback_audio || new Audio();
+                const slug = localStorage.getItem('sound_slug') || 'chime';
+                audio.src = `/static/sounds/${slug}.mp3`;
+                audio.muted = true;
+                const p = audio.play();
+                if (p && typeof p.then === 'function') {
+                    p.then(()=>{
+                        audio.pause(); audio.muted = false;
+                        localStorage.setItem('sound_opt_in', 'true');
+                        document.body.removeChild(banner);
+                        // play audible test
+                        audio.play().catch(()=>{});
+                    }).catch(()=>{
+                        localStorage.setItem('sound_opt_in', 'true');
+                        try { document.body.removeChild(banner); } catch(e){}
+                    });
+                } else {
+                    localStorage.setItem('sound_opt_in', 'true');
+                    try { document.body.removeChild(banner); } catch(e){}
+                }
+                window._sp_fallback_audio = audio;
+            } catch (e) {
+                localStorage.setItem('sound_opt_in', 'true');
+                try { document.body.removeChild(banner); } catch(e){}
+            }
+        });
+        banner.appendChild(btn);
+        document.body.appendChild(banner);
+    }
 })();
