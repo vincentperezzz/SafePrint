@@ -463,6 +463,84 @@ class KLCiSClient:
                 logger.warning(f'Failed to delete voucher {voucher_id}: {str(e)}')
                 return False
 
+    def find_voucher_on_dashboard(self, voucher_code):
+        """
+        Check if a voucher exists on the KLCiS voucher_import page
+        and return its internal ID if found.
+
+        The voucher_import page renders each voucher as a table row with:
+        - A checkbox: <input type="checkbox" class="rowCheckbox" data-id="INTERNAL_ID">
+        - Cells: Code | Status (badge) | Amount | Date | Actions
+
+        Args:
+            voucher_code: The voucher code to search for
+
+        Returns:
+            The internal ID string if found, None if not found
+        """
+        with self._lock:
+            import_url = f'{self.base_url}{VOUCHER_IMPORT_PATH}'
+            try:
+                resp = self._request_with_reauth('GET', import_url, timeout=30)
+                idx = resp.text.find(voucher_code)
+                if idx == -1:
+                    logger.debug(f'Voucher {voucher_code} not found on KLCiS import page')
+                    return None
+
+                # Look backward from the voucher code to find the data-id
+                snippet_start = max(0, idx - 300)
+                snippet = resp.text[snippet_start:idx + 100]
+                match = re.search(r'data-id="(\d+)"', snippet)
+                if match:
+                    internal_id = match.group(1)
+                    logger.info(
+                        f'Voucher {voucher_code} found on KLCiS (internal_id={internal_id})'
+                    )
+                    return internal_id
+
+                logger.warning(
+                    f'Voucher {voucher_code} found in text but could not extract data-id'
+                )
+                return None
+
+            except requests.RequestException as e:
+                logger.error(f'Failed to check voucher existence: {str(e)}')
+                return None
+
+    def delete_voucher_by_code(self, voucher_code):
+        """
+        Find a voucher by its code on the KLCiS dashboard and delete it.
+
+        This is a two-step operation:
+        1. Fetch /voucher_import page and find the voucher's internal ID
+        2. POST to /core/delete_voucher_core with that ID
+
+        Used after payment verification (cleanup) and on cancellation.
+
+        Args:
+            voucher_code: The voucher code to find and delete
+
+        Returns:
+            True if deleted, False if not found or deletion failed
+        """
+        # find_voucher_on_dashboard acquires _lock internally
+        internal_id = self.find_voucher_on_dashboard(voucher_code)
+        if not internal_id:
+            logger.info(
+                f'Voucher {voucher_code} not found on KLCiS — may already be deleted'
+            )
+            return False
+
+        # delete_voucher acquires _lock internally
+        result = self.delete_voucher(internal_id)
+        if result:
+            logger.info(f'Deleted voucher {voucher_code} (id={internal_id}) from KLCiS')
+        else:
+            logger.warning(
+                f'Failed to delete voucher {voucher_code} (id={internal_id})'
+            )
+        return result
+
 
 # ─────────────────────────────────────────────
 # PUBLIC CONVENIENCE FUNCTIONS
@@ -579,6 +657,52 @@ def snapshot_existing_transactions(phone_number, amount):
     except Exception as e:
         logger.error(f'Failed to snapshot transactions: {str(e)}')
         return []
+
+
+def voucher_exists(voucher_code):
+    """
+    Check if a voucher still exists on the KLCiS dashboard.
+
+    Used as Layer 4 of payment deduplication:
+    - Voucher EXISTS = payment is still pending/active
+    - Voucher GONE = payment was already verified or cancelled
+
+    Args:
+        voucher_code: The voucher code to check
+
+    Returns:
+        True if the voucher exists on KLCiS, False otherwise
+    """
+    try:
+        client = _get_client()
+        internal_id = client.find_voucher_on_dashboard(voucher_code)
+        return internal_id is not None
+    except Exception as e:
+        logger.error(f'Failed to check voucher existence: {str(e)}')
+        # Fail open — don't block verification if KLCiS is temporarily unreachable
+        return True
+
+
+def cleanup_voucher(voucher_code):
+    """
+    Delete a voucher from the KLCiS dashboard after payment verification or cancellation.
+
+    This is the cleanup step in the voucher-as-state-flag pattern:
+    - After VERIFIED: delete voucher (marks payment as resolved on KLCiS side)
+    - After CANCELLED: delete voucher (don't leave orphaned vouchers)
+
+    Args:
+        voucher_code: The voucher code to delete
+
+    Returns:
+        True if deleted, False if not found or failed
+    """
+    try:
+        client = _get_client()
+        return client.delete_voucher_by_code(voucher_code)
+    except Exception as e:
+        logger.error(f'Failed to cleanup voucher {voucher_code}: {str(e)}')
+        return False
 
 
 def verify_transaction_payment(phone_number, amount, used_txn_ids=None):

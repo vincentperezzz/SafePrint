@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import logging
 import threading
 import subprocess
 from django.db.models import Q
@@ -19,6 +20,7 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.decorators import login_required
 
+logger = logging.getLogger(__name__)
 
 now = timezone.now()
 
@@ -354,6 +356,7 @@ def payment(request):
                 # Get phone number and total amount for transaction verification
                 first_payment = payments.first()
                 phone_number = first_payment.phone_number
+                voucher_code = first_payment.voucher_code
                 total_amount = sum(float(p.price) for p in payments)
                 
                 if not phone_number:
@@ -361,6 +364,33 @@ def payment(request):
                         'success': False,
                         'error': 'No phone number on record for this payment.'
                     })
+                
+                # ── Layer 4: Voucher existence check ──
+                # If the voucher no longer exists on KLCiS, this payment was
+                # already verified or cancelled — don't match any transactions.
+                if voucher_code:
+                    from portal.services.klcis import voucher_exists
+                    if not voucher_exists(voucher_code):
+                        logger.info(
+                            f'Voucher {voucher_code} no longer on KLCiS — '
+                            f'payment already resolved for {customer_id}'
+                        )
+                        # Check if it was verified (not cancelled)
+                        already_paid = Payment.objects.filter(
+                            doc__customer_id=customer_id,
+                            payment_status='Paid',
+                        ).exists()
+                        if already_paid:
+                            return JsonResponse({
+                                'success': True,
+                                'message': 'Payment already verified! Your documents are queued for printing.',
+                                'redirect_url': f'/confirmation/{customer_id}/'
+                            })
+                        return JsonResponse({
+                            'success': False,
+                            'error': 'Payment session expired. Please start a new payment.',
+                            'status': 'expired'
+                        })
                 
                 # Collect Transaction IDs already used by previous payments (dedup)
                 # From active Payment records
@@ -417,6 +447,14 @@ def payment(request):
                             doc.doc_status = 'Queued'
                             doc.save()
                     
+                    # ── Layer 4 cleanup: Delete voucher from KLCiS ──
+                    # Voucher served its purpose as an "active payment" flag.
+                    # Deleting it ensures future payments with the same
+                    # phone+amount won't be confused with this one.
+                    if voucher_code:
+                        from portal.services.klcis import cleanup_voucher
+                        cleanup_voucher(voucher_code)
+                    
                     # Clear pending payment session flags
                     request.session.pop('pending_payment_cid', None)
                     request.session.pop('pending_payment_doc_ids', None)
@@ -445,6 +483,20 @@ def payment(request):
                     doc__customer_id=customer_id,
                     payment_status='Unpaid'
                 )
+                
+                # ── Layer 4 cleanup: Delete voucher from KLCiS on cancel ──
+                # Don't leave orphaned vouchers sitting on the KLCiS dashboard
+                voucher_codes_to_delete = set(
+                    unpaid_payments.exclude(
+                        voucher_code__isnull=True
+                    ).exclude(
+                        voucher_code=''
+                    ).values_list('voucher_code', flat=True)
+                )
+                if voucher_codes_to_delete:
+                    from portal.services.klcis import cleanup_voucher
+                    for vc in voucher_codes_to_delete:
+                        cleanup_voucher(vc)
                 
                 for payment_obj in unpaid_payments:
                     doc = payment_obj.doc
