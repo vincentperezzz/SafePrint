@@ -161,51 +161,44 @@ Printer Status
                 </button>
             </div>
             </div>
-            <div class="printer-table-row">
+            {% for printer in printers %}
+            <div class="printer-table-row" data-printer-id="{{ printer.id }}">
                 <div class="printer-info">
-                    <div class="printer-name">Printer 1</div>
-                    <div class="printer-model">Brother DCP-T510DW</div>
+                    <div class="printer-name">{{ printer.printer_name }}</div>
+                    <div class="printer-model">{{ printer.model_name }}</div>
                 </div>
-                <div>Long</div>
-                <div>250 sheets</div>
+                <div>{{ printer.paper_assigned }}</div>
+                <div class="tray-capacity-cell">
+                    <span class="tray-capacity-display" data-printer-id="{{ printer.id }}">{{ printer.tray_capacity }} sheets</span>
+                    <input type="number" class="tray-capacity-input" data-printer-id="{{ printer.id }}" value="{{ printer.tray_capacity }}" style="display:none; width: 80px; text-align: center;">
+                </div>
                 <div>
-                    <span class="status-dot ok"></span>
-                    Full
+                    <span class="status-dot {% if printer.tray_level == 'Full' %}ok{% elif printer.tray_level == 'Low' %}low{% else %}danger{% endif %}"></span>
+                    {{ printer.tray_level }}
                 </div>
-                <div>Just now</div>
-                <div><button class="refill-btn">Mark as Refilled</button></div>
+                <div class="refill-time" data-printer-id="{{ printer.id }}" data-timestamp="{{ printer.last_refill_time|date:'c' }}">
+                    {% if printer.last_refill_time %}
+                        {{ printer.last_refill_time|timesince }} ago
+                    {% else %}
+                        Never
+                    {% endif %}
+                </div>
+                <div><button class="refill-btn" data-printer-id="{{ printer.id }}">Mark as Refilled</button></div>
             </div>
+            {% empty %}
             <div class="printer-table-row">
-                <div class="printer-info">
-                    <div class="printer-name">Printer 2</div>
-                    <div class="printer-model">Brother DCP-T820DW</div>
-                </div>
-                <div>Long</div>
-                <div>250 sheets</div>
-                <div>
-                    <span class="status-dot low"></span>
-                    Low
-                </div>
-                <div>2 hours ago</div>
-                <div><button class="refill-btn">Mark as Refilled</button></div>
+                <div style="grid-column: 1 / -1; text-align: center;">No printers configured.</div>
             </div>
-            <div class="printer-table-row">
-                <div class="printer-info">
-                    <div class="printer-name">Printer 3</div>
-                    <div class="printer-model">wwwwwwwwwwwwww</div>
-                </div>
-                <div>Short</div>
-                <div>250 sheets</div>
-                <div>
-                    <span class="status-dot danger"></span>
-                    Needs Refill
-                </div>
-                <div>Yesterday</div>
-                <div><button class="refill-btn">Mark as Refilled</button></div>
-            </div>
+            {% endfor %}
         </div>
     </div>
 
+<script>
+    var csrfToken = "{{ csrf_token }}";
+</script>
+{% endblock %}
+
+{% block modals %}
 <!-- Add Printer Popup (hidden by default, styled like popup overlay) -->
 <div class="popup-overlay" id="addPrinterPopup" style="display:none;">
   <div class="popup-form">
@@ -250,9 +243,4 @@ Printer Status
     </div>
   </div>
 </div>
-</div>
-
-<script>
-    var csrfToken = "{{ csrf_token }}";
-</script>
 {% endblock %}

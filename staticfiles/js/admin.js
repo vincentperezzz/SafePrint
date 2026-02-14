@@ -2841,3 +2841,158 @@ if (addPrinterForm) {
         });
     }
 })();
+
+// Paper Refill - Tray Capacity editing and Mark as Refilled
+(function() {
+    // Time ago helper function
+    function timeAgo(date) {
+        const now = new Date();
+        const seconds = Math.floor((now - date) / 1000);
+        
+        if (seconds < 5) return 'Just now';
+        if (seconds < 60) return seconds + ' seconds ago';
+        
+        const minutes = Math.floor(seconds / 60);
+        if (minutes === 1) return '1 minute ago';
+        if (minutes < 60) return minutes + ' minutes ago';
+        
+        const hours = Math.floor(minutes / 60);
+        if (hours === 1) return '1 hour ago';
+        if (hours < 24) return hours + ' hours ago';
+        
+        const days = Math.floor(hours / 24);
+        if (days === 1) return 'Yesterday';
+        if (days < 7) return days + ' days ago';
+        
+        const weeks = Math.floor(days / 7);
+        if (weeks === 1) return '1 week ago';
+        if (weeks < 4) return weeks + ' weeks ago';
+        
+        const months = Math.floor(days / 30);
+        if (months === 1) return '1 month ago';
+        return months + ' months ago';
+    }
+
+    // Update all refill times on the page
+    function updateRefillTimes() {
+        document.querySelectorAll('.refill-time[data-timestamp]').forEach(el => {
+            const timestamp = el.dataset.timestamp;
+            if (timestamp && timestamp !== 'None' && timestamp !== '') {
+                const date = new Date(timestamp);
+                if (!isNaN(date.getTime())) {
+                    el.textContent = timeAgo(date);
+                }
+            }
+        });
+    }
+
+    // Click on tray capacity to edit
+    document.querySelectorAll('.tray-capacity-display').forEach(display => {
+        display.style.cursor = 'pointer';
+        display.addEventListener('click', function() {
+            const printerId = this.dataset.printerId;
+            const input = document.querySelector(`.tray-capacity-input[data-printer-id="${printerId}"]`);
+            if (input) {
+                this.style.display = 'none';
+                input.style.display = 'inline-block';
+                input.focus();
+                input.select();
+            }
+        });
+    });
+
+    // Handle tray capacity input
+    document.querySelectorAll('.tray-capacity-input').forEach(input => {
+        const saveCapacity = function() {
+            const printerId = input.dataset.printerId;
+            const display = document.querySelector(`.tray-capacity-display[data-printer-id="${printerId}"]`);
+            const value = parseInt(input.value, 10);
+            
+            if (isNaN(value) || value <= 0) {
+                input.value = parseInt(display.textContent, 10);
+                input.style.display = 'none';
+                display.style.display = 'inline';
+                return;
+            }
+
+            fetch('/portal/api/update_printer_field/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken
+                },
+                body: `printer_id=${printerId}&field=tray_capacity&value=${value}`
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    display.textContent = value + ' sheets';
+                }
+                input.style.display = 'none';
+                display.style.display = 'inline';
+            })
+            .catch(err => {
+                console.error('Error updating tray capacity:', err);
+                input.style.display = 'none';
+                display.style.display = 'inline';
+            });
+        };
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveCapacity();
+            } else if (e.key === 'Escape') {
+                const printerId = input.dataset.printerId;
+                const display = document.querySelector(`.tray-capacity-display[data-printer-id="${printerId}"]`);
+                input.value = parseInt(display.textContent, 10);
+                input.style.display = 'none';
+                display.style.display = 'inline';
+            }
+        });
+
+        input.addEventListener('blur', saveCapacity);
+    });
+
+    // Mark as Refilled button
+    document.querySelectorAll('.refill-btn[data-printer-id]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const printerId = this.dataset.printerId;
+            const row = this.closest('.printer-table-row');
+            
+            fetch('/portal/api/mark_printer_refilled/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken
+                },
+                body: `printer_id=${printerId}`
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Update tray level display
+                    const trayLevelCell = row.querySelector('.status-dot');
+                    if (trayLevelCell) {
+                        trayLevelCell.className = 'status-dot ok';
+                        trayLevelCell.parentElement.innerHTML = '<span class="status-dot ok"></span> Full';
+                    }
+                    
+                    // Update refill time
+                    const refillTimeCell = row.querySelector('.refill-time');
+                    if (refillTimeCell) {
+                        refillTimeCell.dataset.timestamp = data.last_refill_time;
+                        refillTimeCell.textContent = 'Just now';
+                    }
+                }
+            })
+            .catch(err => {
+                console.error('Error marking printer as refilled:', err);
+            });
+        });
+    });
+
+    // Update refill times initially and every minute
+    updateRefillTimes();
+    setInterval(updateRefillTimes, 60000);
+})();
