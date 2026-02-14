@@ -386,6 +386,15 @@ def payment(request):
                                 pass
                     
                     remaining = float(credit_voucher.remaining_balance)
+                    
+                    # Store remaining credit info in session for confirmation page coupon
+                    if remaining > 0:
+                        request.session['credit_info'] = {
+                            'code': voucher_credit_code,
+                            'balance': remaining,
+                            'expires_at': credit_voucher.expires_at.strftime('%B %d, %Y'),
+                        }
+                    
                     return JsonResponse({
                         'success': True,
                         'mode': 'credit_only',
@@ -592,41 +601,27 @@ def payment(request):
                     if excess_credit > 0:
                         from portal.models import VoucherCredit
                         from datetime import timedelta
+                        import random, string as str_mod
                         
-                        if pending_credit_code:
-                            # Reuse existing voucher code — add excess to balance
-                            try:
-                                vc = VoucherCredit.objects.get(code=pending_credit_code)
-                                vc.remaining_balance = float(vc.remaining_balance) + excess_credit
-                                vc.is_active = True
-                                vc.save()
-                                credit_info = {
-                                    'code': vc.code,
-                                    'balance': float(vc.remaining_balance),
-                                    'expires_at': vc.expires_at.strftime('%B %d, %Y'),
-                                }
-                            except VoucherCredit.DoesNotExist:
-                                # Code was from a deleted/expired voucher — create new
-                                pending_credit_code = None
-                        
-                        if not pending_credit_code:
-                            # Use the KLCiS voucher code as the credit code
-                            # (uppercased to match VoucherCredit format)
-                            new_code = voucher_code.upper() if voucher_code else ''.join(
-                                random.choices(str_mod.ascii_uppercase + str_mod.digits, k=8)
-                            )
-                            from datetime import timedelta
-                            vc = VoucherCredit.objects.create(
-                                code=new_code,
-                                original_amount=excess_credit,
-                                remaining_balance=excess_credit,
-                                expires_at=timezone.now() + timedelta(days=VOUCHER_CREDIT_EXPIRY_DAYS),
-                            )
-                            credit_info = {
-                                'code': vc.code,
-                                'balance': float(vc.remaining_balance),
-                                'expires_at': vc.expires_at.strftime('%B %d, %Y'),
-                            }
+                        # Always use the KLCiS voucher code as the new credit code
+                        # (uppercased to match VoucherCredit format).
+                        # If student redeemed an old credit code, the old voucher
+                        # was already depleted — the new KLCiS voucher code becomes
+                        # the new credit code with the excess balance.
+                        new_code = voucher_code.upper() if voucher_code else ''.join(
+                            random.choices(str_mod.ascii_uppercase + str_mod.digits, k=8)
+                        )
+                        vc = VoucherCredit.objects.create(
+                            code=new_code,
+                            original_amount=excess_credit,
+                            remaining_balance=excess_credit,
+                            expires_at=timezone.now() + timedelta(days=VOUCHER_CREDIT_EXPIRY_DAYS),
+                        )
+                        credit_info = {
+                            'code': vc.code,
+                            'balance': float(vc.remaining_balance),
+                            'expires_at': vc.expires_at.strftime('%B %d, %Y'),
+                        }
                     
                     # Store credit info in session for confirmation page display
                     if credit_info:
@@ -2220,16 +2215,15 @@ def picked_up_document(request):
         doc.status_updated_at = timezone.now()
         doc.save()
 
-        # Delete the file from storage (same logic as Finish Transaction)
+        # Delete the file from storage — direct path lookup (fast)
         if doc.stored_name:
-            uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
-            for root, dirs, files in os.walk(uploads_dir):
-                if doc.stored_name in files:
-                    file_path = os.path.join(root, doc.stored_name)
-                    if os.path.isfile(file_path):
-                        os.remove(file_path)
-                        print(f"[PICKED UP] Deleted file {file_path} for document {doc_id}")
-                        break
+            customer_dir = os.path.join(
+                settings.MEDIA_ROOT, 'uploads', doc.customer_id
+            )
+            file_path = os.path.join(customer_dir, doc.stored_name)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+                print(f"[PICKED UP] Deleted file {file_path} for document {doc_id}")
 
         # Delete associated Payment records then the Document record
         Payment.objects.filter(doc=doc).delete()
@@ -2286,15 +2280,13 @@ def finish_transaction(request):
         uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
 
         for doc in docs_to_process:
-            # Delete the file from storage
+            # Delete the file from storage — direct path lookup (fast)
             if doc.stored_name:
-                for root, dirs, files in os.walk(uploads_dir):
-                    if doc.stored_name in files:
-                        file_path = os.path.join(root, doc.stored_name)
-                        if os.path.isfile(file_path):
-                            os.remove(file_path)
-                            print(f"[FINISH TXN] Deleted file {file_path} for document {doc.doc_id}")
-                            break
+                customer_dir = os.path.join(uploads_dir, customer_id)
+                file_path = os.path.join(customer_dir, doc.stored_name)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    print(f"[FINISH TXN] Deleted file {file_path} for document {doc.doc_id}")
 
             # Delete associated Payment records
             Payment.objects.filter(doc=doc).delete()
