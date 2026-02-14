@@ -102,8 +102,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const openTicketButtons = document.querySelectorAll('[data-open-ticket-modal]');
     const closeTicketTargets = document.querySelectorAll('[data-close-ticket-modal]');
 
-    const openTicketModal = () => {
+    const openTicketModal = (button) => {
         if (!ticketModal) return;
+
+        // Populate modal fields from data attributes on the clicked button
+        if (button) {
+            document.getElementById('modal-customer-id').textContent = '#' + (button.getAttribute('data-customer-id') || '');
+            document.getElementById('modal-doc-id').textContent = button.getAttribute('data-doc-id') || '—';
+            document.getElementById('modal-customer-name').textContent = button.getAttribute('data-customer-name') || '';
+            document.getElementById('modal-doc-name').textContent = button.getAttribute('data-doc-name') || '';
+            document.getElementById('modal-email').textContent = button.getAttribute('data-email') || '';
+            document.getElementById('modal-phone').textContent = button.getAttribute('data-phone') || '—';
+            document.getElementById('modal-issue').textContent = button.getAttribute('data-issue') || '';
+            document.getElementById('modal-problem-type').textContent = button.getAttribute('data-problem-type') || '';
+            document.getElementById('modal-reprinted').textContent = button.getAttribute('data-was-reprinted') === 'True' ? 'Yes' : 'No';
+            document.getElementById('ticket-modal-title').textContent = 'Ticket ' + (button.getAttribute('data-ticket-number') || '');
+        }
+
         ticketModal.classList.add('is-open');
         ticketModal.setAttribute('aria-hidden', 'false');
         document.body.style.overflow = 'hidden';
@@ -117,8 +132,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     if (ticketModal) {
-        openTicketButtons.forEach((button) => {
-            button.addEventListener('click', openTicketModal);
+        // Use event delegation so dynamically added buttons also work
+        document.addEventListener('click', (event) => {
+            const btn = event.target.closest('[data-open-ticket-modal]');
+            if (btn) openTicketModal(btn);
         });
 
         closeTicketTargets.forEach((target) => {
@@ -138,18 +155,48 @@ document.addEventListener('DOMContentLoaded', () => {
     const buildResolvedRow = (data) => {
         const row = document.createElement('div');
         row.className = 'document-item resolved-row';
+        const priceText = data.payment_amount ? '₱' + Number(data.payment_amount).toFixed(2) : (data.price || '—');
+        const ticketNumber = data.ticket_number || data.ticketNumber || '';
+        const customerName = data.customer_name || data.customerName || '';
+        const email = data.email || '';
+        const verifiedBy = data.resolved_by || data.verifiedBy || '—';
+        const status = data.status || '';
+        const ticketId = data.ticket_id || '';
+        const customerId = data.customer_id || '';
+        const phone = data.phone || '';
+        const docId = data.doc_id || '';
+        const docName = data.doc_name || '';
+        const issue = data.description || '';
+        const problemType = data.problem_type || '';
+        const wasReprinted = data.was_reprinted ? 'True' : 'False';
+
         row.innerHTML = `
             <div class="ticket-cell">
                 <img src="/static/assets/ticket-icon.png" alt="Ticket" class="ticket-icon">
                 <div class="ticket-meta">
-                    <h6>${data.ticketNumber}</h6>
-                    <span>${data.price}</span>
+                    <h6>${ticketNumber}</h6>
+                    <span>${priceText}</span>
                 </div>
             </div>
-            <div class="resolved-customer">${data.customerName}</div>
-            <div class="resolved-email">${data.email}</div>
-            <div class="resolved-verifier">${data.verifiedBy}</div>
-            <div class="resolved-status">${data.status}</div>
+            <div class="resolved-customer">${customerName}</div>
+            <div class="resolved-email">${email}</div>
+            <div class="resolved-verifier">${verifiedBy}</div>
+            <div class="resolved-status">${status}</div>
+            <div class="resolved-details">
+                <button class="approve-btn view-details-btn" type="button" data-open-ticket-modal
+                    data-ticket-id="${ticketId}"
+                    data-ticket-number="${ticketNumber}"
+                    data-customer-id="${customerId}"
+                    data-customer-name="${customerName}"
+                    data-email="${email}"
+                    data-phone="${phone}"
+                    data-doc-id="${docId}"
+                    data-doc-name="${docName}"
+                    data-issue="${issue}"
+                    data-problem-type="${problemType}"
+                    data-was-reprinted="${wasReprinted}"
+                >View Details</button>
+            </div>
         `;
         return row;
     };
@@ -258,27 +305,98 @@ document.addEventListener('DOMContentLoaded', () => {
         updateTicketCounts();
     };
 
+    // Void / Refund button handlers (same pattern as 'Picked Up' on completed page)
     if (activeResults) {
         updateActiveEmptyState();
-        updateTicketCounts();
-        activeResults.addEventListener('click', (event) => {
-            const target = event.target;
-            if (!(target instanceof HTMLElement)) return;
 
-            if (target.classList.contains('deny-btn')) {
-                const row = target.closest('.document-item');
-                moveToResolved(row, 'Voided');
-            }
+        // Void buttons
+        activeResults.querySelectorAll('.deny-btn[data-action="void"]').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const row = btn.closest('.document-item');
+                const ticketId = btn.getAttribute('data-ticket-id');
+                if (!ticketId) return;
 
-            if (target.classList.contains('refund-btn')) {
-                const row = target.closest('.document-item');
-                moveToResolved(row, 'Refunded');
-            }
+                fetch('/api/void-ticket/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ ticket_id: ticketId })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        if (row) row.remove();
+
+                        // Build and add resolved row
+                        if (resolvedResults) {
+                            const emptyRow = resolvedResults.querySelector('.empty-row');
+                            if (emptyRow) emptyRow.remove();
+                            const newRow = buildResolvedRow(data);
+                            resolvedResults.appendChild(newRow);
+                        }
+
+                        updateActiveEmptyState();
+                        updateResolvedEmptyState();
+                        updateTicketCounts();
+
+                        if (typeof createAlert === 'function') {
+                            createAlert('Success', 'Voided', 'Ticket has been voided.', 'success', true, true, 'pageMessages');
+                        }
+                    } else {
+                        alert('Error: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(err => alert('Request failed: ' + err.message));
+            });
+        });
+
+        // Refund buttons
+        activeResults.querySelectorAll('.refund-btn[data-action="refund"]').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const row = btn.closest('.document-item');
+                const ticketId = btn.getAttribute('data-ticket-id');
+                if (!ticketId) return;
+
+                fetch('/api/refund-ticket/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ ticket_id: ticketId })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        if (row) row.remove();
+
+                        // Build and add resolved row
+                        if (resolvedResults) {
+                            const emptyRow = resolvedResults.querySelector('.empty-row');
+                            if (emptyRow) emptyRow.remove();
+                            const newRow = buildResolvedRow(data);
+                            resolvedResults.appendChild(newRow);
+                        }
+
+                        updateActiveEmptyState();
+                        updateResolvedEmptyState();
+                        updateTicketCounts();
+
+                        if (typeof createAlert === 'function') {
+                            createAlert('Success', 'Refunded', 'Ticket has been refunded.', 'success', true, true, 'pageMessages');
+                        }
+                    } else {
+                        alert('Error: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(err => alert('Request failed: ' + err.message));
+            });
         });
     }
 
     updateResolvedEmptyState();
-    updateTicketCounts();
 
     //Customer ID Enter key Functionality
     const customerIdInput = document.getElementById('customer-id-input');
@@ -2028,15 +2146,15 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (completedElem && stats.hasOwnProperty('completed_jobs_count')) {
                         completedElem.textContent = String(stats.completed_jobs_count);
                     }
-                    // Update Printer Errors
-                    const errorElem = document.querySelector('.stat-card.red p');
-                    if (errorElem && stats.hasOwnProperty('printer_errors_count')) {
-                        errorElem.textContent = String(stats.printer_errors_count);
+                    // Update Printer Errors / Active Tickets
+                    const errorElem = document.getElementById('active-tickets-count');
+                    if (errorElem && stats.hasOwnProperty('active_tickets_count')) {
+                        errorElem.textContent = String(stats.active_tickets_count);
                     }
-                    // Update Pending Customers
-                    const pendingElem = document.querySelector('.stat-card.yellow p');
-                    if (pendingElem && stats.hasOwnProperty('pending_customers_count')) {
-                        pendingElem.textContent = String(stats.pending_customers_count);
+                    // Update Pending Customers / Resolved Tickets
+                    const pendingElem = document.getElementById('resolved-tickets-count');
+                    if (pendingElem && stats.hasOwnProperty('resolved_tickets_count')) {
+                        pendingElem.textContent = String(stats.resolved_tickets_count);
                     }
 
                     // Update Completed Jobs List (dashboard-right)

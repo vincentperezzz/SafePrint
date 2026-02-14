@@ -38,13 +38,13 @@ def dashboard(request):
     completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
     
     # Ticket queries
-    active_tickets = SupportTicket.objects.filter(
+    active_tickets = list(SupportTicket.objects.filter(
         status__in=['open', 'in-progress']
-    ).select_related('document').order_by('-created_at')
+    ).select_related('document').order_by('-created_at'))
     
-    resolved_tickets = SupportTicket.objects.filter(
+    resolved_tickets = list(SupportTicket.objects.filter(
         status__in=['resolved', 'closed', 'voided', 'refunded']
-    ).select_related('document').order_by('-resolved_at', '-updated_at')
+    ).select_related('document').order_by('-resolved_at', '-updated_at'))
     
     # Attach payment amount to each ticket via its document
     for ticket in active_tickets:
@@ -61,8 +61,8 @@ def dashboard(request):
             if payment:
                 ticket.payment_amount = payment.price
     
-    active_tickets_count = active_tickets.count()
-    resolved_tickets_count = resolved_tickets.count()
+    active_tickets_count = len(active_tickets)
+    resolved_tickets_count = len(resolved_tickets)
     
     # Get recent completed documents with payment info and printed_at timestamp
     completed_documents = Document.objects.filter(
@@ -1307,6 +1307,8 @@ def dashboard_status_event_stream():
         completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
         printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
         pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
+        active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
+        resolved_tickets_count = SupportTicket.objects.filter(status__in=['resolved', 'closed', 'voided', 'refunded']).count()
         # Get recent completed documents (limit 5, order by -printed_at)
         completed_documents = list(
             Document.objects.filter(doc_status='Finished')
@@ -1324,6 +1326,8 @@ def dashboard_status_event_stream():
             'completed_jobs_count': completed_jobs_count,
             'printer_errors_count': printer_errors_count,
             'pending_customers_count': pending_customers_count,
+            'active_tickets_count': active_tickets_count,
+            'resolved_tickets_count': resolved_tickets_count,
             'completed_documents': completed_docs_data,
         }
         json_data = json.dumps(data)
@@ -2180,10 +2184,29 @@ def void_ticket(request):
         ticket.admin_notes = (ticket.admin_notes + '\nVoided by ' + admin_name).strip()
         ticket.save()
 
+        # Get payment amount
+        payment_amount = None
+        if ticket.document:
+            payment = Payment.objects.filter(doc=ticket.document).first()
+            if payment:
+                payment_amount = float(payment.price)
+
         return JsonResponse({
             'success': True,
+            'ticket_id': ticket.id,
             'ticket_number': ticket.ticket_number,
             'status': 'Voided',
+            'customer_name': ticket.customer_name,
+            'customer_id': ticket.customer_id,
+            'email': ticket.email,
+            'phone': ticket.phone_number,
+            'doc_id': ticket.document.doc_id if ticket.document else '',
+            'doc_name': ticket.document_name,
+            'description': ticket.description,
+            'problem_type': ticket.get_problem_type_display(),
+            'was_reprinted': ticket.was_reprinted,
+            'resolved_by': admin_name,
+            'payment_amount': payment_amount,
         })
 
     except SupportTicket.DoesNotExist:
@@ -2230,10 +2253,29 @@ def refund_ticket(request):
         ticket.admin_notes = (ticket.admin_notes + '\nRefunded by ' + admin_name).strip()
         ticket.save()
 
+        # Get payment amount
+        payment_amount = None
+        if ticket.document:
+            payment = Payment.objects.filter(doc=ticket.document).first()
+            if payment:
+                payment_amount = float(payment.price)
+
         return JsonResponse({
             'success': True,
+            'ticket_id': ticket.id,
             'ticket_number': ticket.ticket_number,
             'status': 'Refunded',
+            'customer_name': ticket.customer_name,
+            'customer_id': ticket.customer_id,
+            'email': ticket.email,
+            'phone': ticket.phone_number,
+            'doc_id': ticket.document.doc_id if ticket.document else '',
+            'doc_name': ticket.document_name,
+            'description': ticket.description,
+            'problem_type': ticket.get_problem_type_display(),
+            'was_reprinted': ticket.was_reprinted,
+            'resolved_by': admin_name,
+            'payment_amount': payment_amount,
         })
 
     except SupportTicket.DoesNotExist:
