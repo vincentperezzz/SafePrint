@@ -568,7 +568,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 .then(data => {
                     if (data.success) {
                         const cid = sessionStorage.getItem('customer_id');
-                        window.location.href = '/confirmation/' + cid + '/';
+                        const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
+                        // Build doc_ids query parameters for payment page
+                        const docIdParams = docs.map(d => 'doc_ids=' + encodeURIComponent(d.doc_id)).join('&');
+                        // Redirect to payment page with CID and doc_ids
+                        window.location.href = '/payment/?customer_id=' + encodeURIComponent(cid) + '&' + docIdParams;
                     } else {
                         if (overlay) overlay.style.display = 'none';
                         alert('Failed to update settings: ' + (data.error || 'Unknown error'));
@@ -894,29 +898,31 @@ function createAlert(title, summary, details, severity, dismissible, autoDismiss
 }
 
 
-// Warn user about losing uploads on reload/close
-window.addEventListener('beforeunload', function (e) {
-    if (
-        typeof uploadedFiles !== 'undefined' &&
-        uploadedFiles.length > 0 &&
-        !hasProceeded
-    ) {
-        // Send a request to delete all uploaded files for this session
-        navigator.sendBeacon('/api/delete-all-uploads/');
-        e.preventDefault();
-        e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
-    }
+// Warn user about losing uploads on reload/close (only on pages with upload functionality)
+if (document.querySelector('.uploaded') || document.querySelector('.drag-area')) {
+    window.addEventListener('beforeunload', function (e) {
+        if (
+            typeof uploadedFiles !== 'undefined' &&
+            uploadedFiles.length > 0 &&
+            !hasProceeded
+        ) {
+            // Send a request to delete all uploaded files for this session
+            navigator.sendBeacon('/api/delete-all-uploads/');
+            e.preventDefault();
+            e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
+        }
 
-    if (docs.length > 0 && !hasProceeded) {
-        e.preventDefault();
-        e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
-        // Prepare data for deletion
-        const payload = JSON.stringify({
-            doc_id: docs.map(doc => doc.doc_id),
-            session_key: window.sessionKey
-        });
-    }
-});
+        if (docs.length > 0 && !hasProceeded) {
+            e.preventDefault();
+            e.returnValue = 'You have uploaded documents that are not yet submitted. If you reload or close this page, your uploaded documents will be lost. Are you sure you want to leave?';
+            // Prepare data for deletion
+            const payload = JSON.stringify({
+                doc_id: docs.map(doc => doc.doc_id),
+                session_key: window.sessionKey
+            });
+        }
+    });
+}
 
 function renderUploadedDocumentsPreview() {
     const uploadedFilesDiv = document.querySelector('.uploaded-files');
@@ -1157,6 +1163,114 @@ window.addEventListener('DOMContentLoaded', function () {
 window.customerDocuments = [];
 let customerSSE = null;
 
+// --- Print completion sound & tab title flash ---
+const confirmationBaseTitle = document.title;
+let confirmationTitleFlashInterval = null;
+let previousDocStatuses = {}; // Track previous statuses by doc_id
+const printCompleteAudio = new Audio('/static/sounds/chime.mp3');
+const rerouteAlertAudio = new Audio('/static/sounds/rerouted.mp3');
+
+function playPrintCompleteSound() {
+    printCompleteAudio.currentTime = 0;
+    printCompleteAudio.volume = 1.0;
+    printCompleteAudio.play().catch(e => console.warn('Could not play completion sound:', e));
+}
+
+function playRerouteSound() {
+    rerouteAlertAudio.currentTime = 0;
+    rerouteAlertAudio.volume = 1.0;
+    rerouteAlertAudio.play().catch(e => console.warn('Could not play reroute sound:', e));
+}
+
+function startConfirmationTitleFlash(count) {
+    if (confirmationTitleFlashInterval) {
+        clearInterval(confirmationTitleFlashInterval);
+    }
+    let showAlert = true;
+    confirmationTitleFlashInterval = setInterval(() => {
+        document.title = showAlert
+            ? `(${count}) Document${count > 1 ? 's' : ''} Ready!`
+            : confirmationBaseTitle;
+        showAlert = !showAlert;
+    }, 1000);
+}
+
+function stopConfirmationTitleFlash() {
+    if (confirmationTitleFlashInterval) {
+        clearInterval(confirmationTitleFlashInterval);
+        confirmationTitleFlashInterval = null;
+    }
+    document.title = confirmationBaseTitle;
+}
+
+function checkForNewCompletions(documents) {
+    if (!documents || documents.length === 0) return;
+
+    let newlyFinished = 0;
+    let newlyRerouted = 0;
+
+    documents.forEach(doc => {
+        const prev = previousDocStatuses[doc.doc_id];
+        if (prev) {
+            // Detect newly finished
+            if (doc.doc_status === 'Finished' && prev !== 'Finished') {
+                newlyFinished++;
+            }
+            // Detect reroute: was Printing, now Queued (rerouted to another printer)
+            if (prev === 'Printing' && doc.doc_status === 'Queued') {
+                newlyRerouted++;
+            }
+        }
+    });
+
+    // Update previous statuses
+    documents.forEach(doc => {
+        previousDocStatuses[doc.doc_id] = doc.doc_status;
+    });
+
+    // Play appropriate sounds (finished takes priority)
+    if (newlyFinished > 0) {
+        playPrintCompleteSound();
+        showPrintCompleteToast();
+    } else if (newlyRerouted > 0) {
+        playRerouteSound();
+    }
+
+    // Count total finished (not picked up) for title flash
+    const finishedCount = documents.filter(d => d.doc_status === 'Finished').length;
+    if (finishedCount > 0) {
+        startConfirmationTitleFlash(finishedCount);
+    } else {
+        stopConfirmationTitleFlash();
+    }
+}
+// --- End print completion sound & tab title flash ---
+
+// --- Toast notification ---
+let toastAutoDismissTimer = null;
+
+function showPrintCompleteToast() {
+    const toast = document.getElementById('printCompleteToast');
+    if (!toast) return;
+    toast.classList.remove('toast-hiding');
+    toast.style.display = 'flex';
+    // Auto-dismiss after 10 seconds
+    if (toastAutoDismissTimer) clearTimeout(toastAutoDismissTimer);
+    toastAutoDismissTimer = setTimeout(dismissToast, 10000);
+}
+
+function dismissToast() {
+    const toast = document.getElementById('printCompleteToast');
+    if (!toast) return;
+    if (toastAutoDismissTimer) {
+        clearTimeout(toastAutoDismissTimer);
+        toastAutoDismissTimer = null;
+    }
+    toast.classList.add('toast-hiding');
+    setTimeout(() => { toast.style.display = 'none'; }, 300);
+}
+// --- End toast notification ---
+
 function initConfirmationSSE() {
     const customerIdEl = document.getElementById('customer-id-data');
     if (!customerIdEl) return;
@@ -1182,6 +1296,7 @@ function initConfirmationSSE() {
         try {
             const data = JSON.parse(event.data);
             window.customerDocuments = data.documents || [];
+            checkForNewCompletions(data.documents || []);
             renderDocumentRows(data.documents);
             updateConfirmationUI(data);
         } catch (e) {
@@ -2055,6 +2170,8 @@ function submitTicketForm() {
     const customerName = document.getElementById('ticket-customer-name').value.trim();
     const email = document.getElementById('ticket-email').value.trim();
     const phoneNumber = document.getElementById('ticket-phone').value.trim();
+    const receiptCode = document.getElementById('ticket-receipt-code').value.trim();
+    const receiptFile = document.getElementById('ticket-receipt-screenshot').files[0];
     const description = document.getElementById('ticket-description').value.trim();
 
     if (!customerName) {
@@ -2083,6 +2200,18 @@ function submitTicketForm() {
         return;
     }
 
+    if (!receiptCode) {
+        alert('Please enter the receipt code from your payment receipt.');
+        document.getElementById('ticket-receipt-code').focus();
+        return;
+    }
+
+    if (!receiptFile) {
+        alert('Please upload a screenshot of your payment receipt.');
+        document.getElementById('ticket-receipt-screenshot').focus();
+        return;
+    }
+
     if (!description) {
         alert('Please describe the issue.');
         document.getElementById('ticket-description').focus();
@@ -2094,24 +2223,25 @@ function submitTicketForm() {
         ? state.selectedDocs[state.currentDocIndex]
         : state.selectedDocs[0];
 
-    // Prepare ticket data
-    const ticketData = {
-        customer_id: document.getElementById('ticket-customer-id').value,
-        document_id: currentDoc.doc_id,
-        document_name: currentDoc.doc_name,
-        customer_name: customerName,
-        email: email,
-        phone_number: phoneNumber,
-        problem_type: state.problemType,
-        description: description,
-        page_range: state.pageRange,
-        specific_pages: state.specificPages,
-        reprinted: state.hasReprinted
-    };
+    // Use FormData for file upload
+    var formData = new FormData();
+    formData.append('customer_id', document.getElementById('ticket-customer-id').value);
+    formData.append('document_id', currentDoc.doc_id);
+    formData.append('document_name', currentDoc.doc_name);
+    formData.append('customer_name', customerName);
+    formData.append('email', email);
+    formData.append('phone_number', phoneNumber);
+    formData.append('problem_type', state.problemType);
+    formData.append('description', description);
+    formData.append('page_range', state.pageRange);
+    formData.append('specific_pages', state.specificPages || '');
+    formData.append('reprinted', state.hasReprinted ? 'true' : 'false');
+    formData.append('receipt_code', receiptCode);
+    formData.append('receipt_screenshot', receiptFile);
 
     // For multiple docs in same-issue mode
     if (!state.isIndividualMode && state.selectedDocs.length > 1) {
-        ticketData.documents = state.selectedDocs;
+        formData.append('documents', JSON.stringify(state.selectedDocs));
     }
 
     showLoadingScreen('Submitting ticket...');
@@ -2119,10 +2249,9 @@ function submitTicketForm() {
     fetch('/api/submit-ticket/', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
             'X-CSRFToken': getCsrfToken()
         },
-        body: JSON.stringify(ticketData)
+        body: formData
     })
         .then(response => response.json())
         .then(data => {
@@ -2203,6 +2332,38 @@ function reportPrintError() {
 }
 
 function confirmAllGood() {
+    // Check if any documents are NOT finished printing yet
+    var docs = window.customerDocuments || [];
+    var unfinishedDocs = docs.filter(function(d) {
+        return d.doc_status !== 'Finished' && d.doc_status !== 'Picked Up';
+    });
+
+    var forcePickup = false;
+
+    if (unfinishedDocs.length > 0) {
+        // Build warning message listing unfinished documents
+        var docList = unfinishedDocs.map(function(d) {
+            var statusText = d.doc_status || 'Unknown';
+            if (statusText === 'Queued') statusText = 'Waiting';
+            if (statusText === 'Printing') statusText = 'Printing...';
+            if (statusText === 'Cancelled') statusText = 'Cancelled';
+            return '• ' + (d.filename || d.doc_id) + ' — ' + statusText;
+        }).join('\n');
+
+        var confirmed = confirm(
+            '⚠️ Some documents are not yet finished printing:\n\n' +
+            docList + '\n\n' +
+            'If you proceed, ALL documents will be marked as picked up and their files will be permanently deleted from the server. ' +
+            'Unfinished documents will NOT be printed.\n\n' +
+            'Are you sure you want to proceed?'
+        );
+
+        if (!confirmed) {
+            return;  // User cancelled — don't proceed
+        }
+        forcePickup = true;
+    }
+
     hasProceeded = true;
     hidePrintQualityOverlay();
 
@@ -2227,7 +2388,7 @@ function confirmAllGood() {
             'Content-Type': 'application/json',
             'X-CSRFToken': getCsrfToken()
         },
-        body: JSON.stringify({ customer_id: customerId })
+        body: JSON.stringify({ customer_id: customerId, force: forcePickup })
     })
         .then(response => response.json())
         .then(data => {
@@ -2398,7 +2559,16 @@ function submitFeedbackForm() {
         .then(res => res.json())
         .then(data => {
             if (data.valid) {
-                window.location.href = '/confirmation/' + encodeURIComponent(cid) + '/';
+                if (data.redirect === 'payment' && data.doc_ids && data.doc_ids.length > 0) {
+                    // Unpaid documents — redirect to payment page
+                    var docParams = data.doc_ids.map(function(id) {
+                        return 'doc_ids=' + encodeURIComponent(id);
+                    }).join('&');
+                    window.location.href = '/payment/?customer_id=' + encodeURIComponent(data.customer_id || cid) + '&' + docParams;
+                } else {
+                    // All paid — redirect to confirmation
+                    window.location.href = '/confirmation/' + encodeURIComponent(cid) + '/';
+                }
             } else {
                 errorDiv.style.display = 'block';
                 btn.disabled = false;
@@ -2411,4 +2581,236 @@ function submitFeedbackForm() {
             btn.textContent = 'Track Status';
         });
     });
+})();
+
+// Receipt screenshot file input: show selected file name
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'ticket-receipt-screenshot') {
+        const label = document.getElementById('receipt-file-name');
+        if (label) {
+            label.textContent = e.target.files.length > 0 ? e.target.files[0].name : 'No file chosen';
+        }
+    }
+});
+
+// =========================================================================
+// PAYMENT PAGE LOGIC
+// =========================================================================
+(function () {
+    // Only run on payment page
+    if (!window.PAYMENT_DATA) return;
+
+    const PAYMENT = window.PAYMENT_DATA;
+    let pollInterval = null;
+    let pollAttempts = 0;
+    const MAX_POLL_ATTEMPTS = 60; // 5 minutes at 5-second intervals
+    let checkoutUrl = null;
+
+    /** Show full-screen loading overlay */
+    function showOverlay() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) overlay.style.display = 'flex';
+    }
+
+    /** Hide full-screen loading overlay */
+    function hideOverlay() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    /**
+     * STEP 1: Initiate payment
+     * Sends phone number + CID to Django → KLCiS voucher → opens GCash checkout
+     */
+    window.initiatePayment = async function () {
+        const phoneInput = document.getElementById('phone-number');
+        const btn = document.getElementById('pay-now-btn');
+        const phone = phoneInput.value.replace(/\s/g, '').trim();
+
+        // Validate Philippine phone number
+        const phoneRegex = /^(\+?63|0)(9\d{9})$/;
+        if (!phoneRegex.test(phone)) {
+            alert('Please enter a valid Philippine phone number (e.g., 09171234567).');
+            phoneInput.focus();
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+        showOverlay();
+
+        try {
+            const response = await fetch('/payment/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({
+                    action: 'initiate',
+                    customer_id: PAYMENT.customerId,
+                    doc_ids: PAYMENT.docIds,
+                    phone_number: phone,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Switch to step 2
+                document.getElementById('payment-step-1').style.display = 'none';
+                document.getElementById('payment-step-2').style.display = 'flex';
+                startAutoPolling();
+
+                if (data.checkout_url) {
+                    checkoutUrl = data.checkout_url;
+                    // Try to open checkout in new tab
+                    const popup = window.open(data.checkout_url, '_blank');
+                    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+                        // Popup was blocked (common on iOS Safari)
+                        // Show redirect button immediately
+                        const redirectBtn = document.getElementById('redirect-payment-btn');
+                        if (redirectBtn) redirectBtn.style.display = '';
+                    }
+                }
+            } else {
+                alert(data.error || 'Payment setup failed. Please try again.');
+                btn.disabled = false;
+                btn.textContent = 'Pay \u20B1' + Math.round(PAYMENT.totalPrice) + ' Now';
+            }
+        } catch (err) {
+            alert('Network error. Please check your connection and try again.');
+            btn.disabled = false;
+            btn.textContent = 'Pay \u20B1' + Math.round(PAYMENT.totalPrice) + ' Now';
+        } finally {
+            hideOverlay();
+        }
+    };
+
+    /**
+     * STEP 2: Verify payment
+     * Polls Django → KLCiS sold_vouchers → if paid, redirects to confirmation
+     */
+    window.verifyPayment = async function () {
+        const btn = document.getElementById('verify-btn');
+
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+        showOverlay();
+
+        try {
+            const response = await fetch('/payment/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({
+                    action: 'verify',
+                    customer_id: PAYMENT.customerId,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                stopAutoPolling();
+                alert(data.message || 'Payment verified! Redirecting to print queue...');
+                window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
+            } else {
+                if (data.status === 'pending') {
+                    alert('Payment not yet detected. If you already paid, please wait a moment and try again.');
+                } else {
+                    alert(data.error || 'Verification failed.');
+                }
+                btn.disabled = false;
+                btn.textContent = 'I Have Paid \u2713';
+            }
+        } catch (err) {
+            alert('Network error. Please check your connection and try again.');
+            btn.disabled = false;
+            btn.textContent = 'I Have Paid \u2713';
+        } finally {
+            hideOverlay();
+        }
+    };
+
+    /**
+     * Auto-poll every 5 seconds to check if payment has been confirmed.
+     */
+    function startAutoPolling() {
+        pollAttempts = 0;
+        pollInterval = setInterval(async () => {
+            pollAttempts++;
+            if (pollAttempts > MAX_POLL_ATTEMPTS) {
+                stopAutoPolling();
+                return;
+            }
+            try {
+                const response = await fetch('/payment/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    },
+                    body: JSON.stringify({
+                        action: 'verify',
+                        customer_id: PAYMENT.customerId,
+                    }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    stopAutoPolling();
+                    alert(data.message || 'Payment verified! Redirecting to print queue...');
+                    window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
+                }
+            } catch (e) {
+                // Silently continue polling on network errors
+            }
+        }, 5000);
+    }
+
+    function stopAutoPolling() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    }
+
+    /**
+     * Cancel payment - confirms with user, deletes print job, redirects home
+     */
+    window.cancelPayment = function () {
+        if (!confirm('Are you sure you want to cancel this payment? Your print job will be deleted and you will need to start over.')) {
+            return;
+        }
+        stopAutoPolling();
+        fetch('/payment/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
+            },
+            body: JSON.stringify({
+                action: 'cancel',
+                customer_id: PAYMENT.customerId,
+            }),
+        }).finally(() => {
+            window.location.href = '/';
+        });
+    };
+
+    /**
+     * Redirect to Payment - re-opens the checkout URL in a new tab
+     */
+    window.redirectToPayment = function () {
+        if (checkoutUrl) {
+            window.open(checkoutUrl, '_blank');
+        } else {
+            alert('Payment link is not available. Please try paying again.');
+        }
+    };
+
+    // Clean up polling on page unload
+    window.addEventListener('beforeunload', stopAutoPolling);
 })();

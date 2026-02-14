@@ -238,6 +238,10 @@ class Payment(models.Model):
     doc = models.ForeignKey(Document, to_field='doc_id', on_delete=models.CASCADE)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     payment_status = models.CharField(max_length=50)
+    voucher_code = models.CharField(max_length=50, null=True, blank=True, unique=True)
+    payment_method = models.CharField(max_length=50, null=True, blank=True)  # 'klcis', 'gcash', etc.
+    phone_number = models.CharField(max_length=20, null=True, blank=True)  # Student phone for GCash verification
+    klcis_transaction_id = models.CharField(max_length=64, null=True, blank=True, unique=True)  # KLCiS Transaction ID for dedup
     approved_by = models.CharField(max_length=255, null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
 
@@ -246,6 +250,26 @@ class Payment(models.Model):
     
     class Meta:
         db_table = 'payments'
+
+
+class UsedKLCiSTransaction(models.Model):
+    """
+    Persistent record of KLCiS Transaction IDs that have been matched
+    to payments. Survives payment/document deletion (pickup) so old
+    transactions are never re-matched to new payments.
+    """
+    transaction_id = models.CharField(max_length=64, unique=True)
+    phone_number = models.CharField(max_length=20, blank=True, default='')
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    used_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.transaction_id} (₱{self.amount})"
+
+    class Meta:
+        db_table = 'used_klcis_transactions'
+        verbose_name = 'Used KLCiS Transaction'
+        verbose_name_plural = 'Used KLCiS Transactions'
 
 class Feedback(models.Model):
     CATEGORY_CHOICES = [
@@ -267,6 +291,16 @@ class Feedback(models.Model):
     
     class Meta:
         db_table = 'feedback'
+
+
+def receipt_upload_path(instance, filename):
+    """Name the receipt screenshot after the ticket number."""
+    import os
+    ext = os.path.splitext(filename)[1]
+    if instance.ticket_number:
+        clean_ticket = instance.ticket_number.replace('#', '')
+        return f"receipt_screenshots/{clean_ticket}{ext}"
+    return f"receipt_screenshots/{filename}"
 
 
 class SupportTicket(models.Model):
@@ -313,6 +347,10 @@ class SupportTicket(models.Model):
     # Reprint tracking
     was_reprinted = models.BooleanField(default=False)
     
+    # Payment receipt proof
+    receipt_code = models.CharField(max_length=100, blank=True, default="")
+    receipt_screenshot = models.ImageField(upload_to=receipt_upload_path, null=True, blank=True)
+    
     # Status tracking
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='open')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -332,7 +370,30 @@ class SupportTicket(models.Model):
             date_prefix = timezone.now().strftime('%y%m%d')
             random_suffix = ''.join(random.choices(string.digits, k=4))
             self.ticket_number = f"#TKT-{date_prefix}-{random_suffix}"
+        
+        # Delete old screenshot if being replaced
+        if self.pk:
+            try:
+                old = SupportTicket.objects.get(pk=self.pk)
+                if old.receipt_screenshot and old.receipt_screenshot != self.receipt_screenshot:
+                    import os
+                    if os.path.isfile(old.receipt_screenshot.path):
+                        os.remove(old.receipt_screenshot.path)
+            except SupportTicket.DoesNotExist:
+                pass
+        
         super().save(*args, **kwargs)
+    
+    def delete(self, *args, **kwargs):
+        # Delete the receipt screenshot file from disk
+        if self.receipt_screenshot:
+            import os
+            try:
+                if os.path.isfile(self.receipt_screenshot.path):
+                    os.remove(self.receipt_screenshot.path)
+            except Exception:
+                pass
+        super().delete(*args, **kwargs)
     
     def __str__(self):
         return f"{self.ticket_number} - {self.customer_name}"

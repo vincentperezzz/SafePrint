@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import logging
 import threading
 import subprocess
 from django.db.models import Q
@@ -19,6 +20,7 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.decorators import login_required
 
+logger = logging.getLogger(__name__)
 
 now = timezone.now()
 
@@ -120,9 +122,12 @@ def search_customer(request):
 
 def payment(request):
     """
-    Handle payment gateway for documents.
-    GET: Display payment form with documents and total price
-    POST: Process payment submission
+    Handle payment gateway for documents via KLCiS integration.
+    
+    Flow:
+    1. GET: Display payment form with documents and total price
+    2. POST (action=initiate): Generate voucher code, upload to KLCiS, return payment URL
+    3. POST (action=verify): Verify voucher code entered by customer, approve documents
     """
     # Default context to prevent auto-close
     default_context = {
@@ -131,7 +136,8 @@ def payment(request):
         'total_price': 0,
         'stars': range(1, 6),
         'debug': False,
-        'error': None
+        'error': None,
+        'klcis_base_url': settings.KLCIS_BASE_URL,
     }
     
     if request.method == 'GET':
@@ -185,6 +191,7 @@ def payment(request):
             
             documents_data = []
             total_price = 0.0
+            doc_ids_list = []
             
             for doc in documents:
                 try:
@@ -199,6 +206,7 @@ def payment(request):
                     'price': price,
                     'status': doc.doc_status
                 })
+                doc_ids_list.append(doc.doc_id)
                 total_price += price
             
             # Generate star ratings (for feedback)
@@ -209,6 +217,7 @@ def payment(request):
                 'customer_id': customer_id,
                 'documents': documents_data,
                 'total_price': round(total_price, 2),
+                'doc_ids_json': json.dumps(doc_ids_list),
                 'stars': stars,
             })
             
@@ -222,58 +231,301 @@ def payment(request):
     elif request.method == 'POST':
         try:
             data = json.loads(request.body)
+            action = data.get('action', '')
             customer_id = data.get('customer_id', '').strip()
             documents_ids = data.get('doc_ids', [])
-            payment_method = data.get('payment_method', '')  # 'card' or 'paypal'
-            amount = data.get('amount', 0)
-            rating = data.get('rating', 0)
             
-            if not customer_id or not documents_ids or not payment_method:
+            if not customer_id:
                 return JsonResponse({
                     'success': False,
-                    'error': 'Missing required payment information'
+                    'error': 'Customer ID is required'
                 })
-            
-            # Validate payment method
-            if payment_method not in ['card', 'paypal']:
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Invalid payment method'
-                })
-            
-            # Update documents to mark as paid (you'll integrate actual payment gateway here)
-            # For now, this is a draft structure for the payment flow
-            documents = Document.objects.filter(doc_id__in=documents_ids)
-            
-            for doc in documents:
-                # Mark documents as approved/ready to print after payment
-                doc.doc_status = 'Approved'
-                doc.save()
+
+            # ─────────────────────────────────────────────
+            # ACTION: INITIATE — Create voucher, return direct checkout URL
+            # ─────────────────────────────────────────────
+            if action == 'initiate':
+                phone_number = data.get('phone_number', '').strip()
+
+                if not documents_ids:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'No documents specified'
+                    })
+
+                if not phone_number:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Phone number is required for SMS receipt'
+                    })
                 
-                # Create or update payment record
-                Payment.objects.update_or_create(
-                    doc=doc,
-                    defaults={
-                        'payment_method': payment_method,
-                        'amount_paid': amount,
-                        'payment_status': 'Completed',
-                        'payment_date': timezone.now()
-                    }
+                # Calculate total price from Payment records
+                total_price = 0.0
+                for doc_id in documents_ids:
+                    try:
+                        payment_obj = Payment.objects.get(doc__doc_id=doc_id)
+                        total_price += float(payment_obj.price)
+                    except Payment.DoesNotExist:
+                        pass
+                
+                if total_price <= 0:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Invalid payment amount'
+                    })
+                
+                # Generate a unique voucher code
+                import random, string
+                voucher_code = ''.join(random.choices(
+                    string.ascii_lowercase + string.digits, k=8
+                ))
+                
+                # Upload voucher to KLCiS dashboard
+                from portal.services.klcis import create_and_upload_voucher, get_checkout_url, snapshot_existing_transactions
+                result = create_and_upload_voucher(voucher_code, total_price)
+                
+                if not result['success']:
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'Payment setup failed: {result["message"]}'
+                    })
+                
+                # Snapshot existing PAID transactions for this phone+amount
+                # so they can be excluded during verification (prevents false positives
+                # from old transactions with the same phone/amount)
+                baseline_txn_ids = snapshot_existing_transactions(phone_number, total_price)
+                request.session['baseline_txn_ids'] = baseline_txn_ids
+                
+                # Store the voucher code in all Payment records for this transaction
+                for doc_id in documents_ids:
+                    try:
+                        payment_obj = Payment.objects.get(doc__doc_id=doc_id)
+                        payment_obj.voucher_code = voucher_code
+                        payment_obj.payment_method = 'klcis'
+                        payment_obj.phone_number = phone_number
+                        payment_obj.save()
+                    except Payment.DoesNotExist:
+                        pass
+                
+                # Build direct checkout URL (bypasses KLCiS shop, goes straight to Xendit/GCash)
+                checkout_url = get_checkout_url(total_price, phone_number)
+                
+                # Store pending payment info in session so the homepage can
+                # redirect back if the student lands there after KLCiS redirect
+                request.session['pending_payment_cid'] = customer_id
+                request.session['pending_payment_doc_ids'] = documents_ids
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Payment link created',
+                    'checkout_url': checkout_url,
+                    'voucher_code': voucher_code,
+                    'amount': int(round(total_price)),
+                })
+
+            # ─────────────────────────────────────────────
+            # ACTION: VERIFY — Poll KLCiS to check if payment is complete
+            # ─────────────────────────────────────────────
+            elif action == 'verify':
+                # Find pending payments for this customer that have a voucher code
+                payments = Payment.objects.filter(
+                    doc__customer_id=customer_id,
+                    payment_status='Unpaid',
+                    voucher_code__isnull=False,
+                ).exclude(voucher_code='')
+                
+                if not payments.exists():
+                    # Check if payments are already Paid (user re-visiting page)
+                    already_paid = Payment.objects.filter(
+                        doc__customer_id=customer_id,
+                        payment_status='Paid',
+                    ).exists()
+                    
+                    if already_paid:
+                        return JsonResponse({
+                            'success': True,
+                            'message': 'Payment already verified! Your documents are queued for printing.',
+                            'redirect_url': f'/confirmation/{customer_id}/'
+                        })
+                    
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'No pending payment found for this customer.'
+                    })
+                
+                # Get phone number and total amount for transaction verification
+                first_payment = payments.first()
+                phone_number = first_payment.phone_number
+                voucher_code = first_payment.voucher_code
+                total_amount = sum(float(p.price) for p in payments)
+                
+                if not phone_number:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'No phone number on record for this payment.'
+                    })
+                
+                # ── Layer 4: Voucher existence check ──
+                # If the voucher no longer exists on KLCiS, this payment was
+                # already verified or cancelled — don't match any transactions.
+                if voucher_code:
+                    from portal.services.klcis import voucher_exists
+                    if not voucher_exists(voucher_code):
+                        logger.info(
+                            f'Voucher {voucher_code} no longer on KLCiS — '
+                            f'payment already resolved for {customer_id}'
+                        )
+                        # Check if it was verified (not cancelled)
+                        already_paid = Payment.objects.filter(
+                            doc__customer_id=customer_id,
+                            payment_status='Paid',
+                        ).exists()
+                        if already_paid:
+                            return JsonResponse({
+                                'success': True,
+                                'message': 'Payment already verified! Your documents are queued for printing.',
+                                'redirect_url': f'/confirmation/{customer_id}/'
+                            })
+                        return JsonResponse({
+                            'success': False,
+                            'error': 'Payment session expired. Please start a new payment.',
+                            'status': 'expired'
+                        })
+                
+                # Collect Transaction IDs already used by previous payments (dedup)
+                # From active Payment records
+                used_txn_ids = set(
+                    Payment.objects.filter(
+                        klcis_transaction_id__isnull=False,
+                    ).exclude(
+                        klcis_transaction_id=''
+                    ).values_list('klcis_transaction_id', flat=True)
                 )
-            
-            # Save feedback if rating provided
-            if rating > 0:
-                Feedback.objects.create(
-                    customer_id=customer_id,
-                    rating=rating,
-                    feedback_type='payment_experience'
+                # From persistent used-transaction table (survives Payment deletion)
+                from portal.models import UsedKLCiSTransaction
+                used_txn_ids |= set(
+                    UsedKLCiSTransaction.objects.values_list('transaction_id', flat=True)
                 )
-            
-            return JsonResponse({
-                'success': True,
-                'message': 'Payment processed successfully',
-                'redirect_url': '/thank-you/'
-            })
+                
+                # Merge baseline snapshot IDs (transactions that existed BEFORE
+                # this payment was initiated — prevents matching old transactions)
+                baseline_ids = set(request.session.get('baseline_txn_ids', []))
+                exclude_ids = used_txn_ids | baseline_ids
+                
+                # Check the KLCiS Transaction Logs page for a PAID entry
+                # matching this phone number + amount, excluding old + used txn IDs
+                from portal.services.klcis import verify_transaction_payment
+                result = verify_transaction_payment(phone_number, total_amount, exclude_ids)
+                
+                if result['success']:
+                    txn_id = result.get('transaction_id')
+                    
+                    # Persist the transaction ID so it survives Payment deletion
+                    if txn_id:
+                        from portal.models import UsedKLCiSTransaction
+                        UsedKLCiSTransaction.objects.get_or_create(
+                            transaction_id=txn_id,
+                            defaults={
+                                'phone_number': phone_number or '',
+                                'amount': total_amount,
+                            }
+                        )
+                    
+                    # Payment confirmed! Mark all documents as Queued
+                    with transaction.atomic():
+                        for i, payment_obj in enumerate(payments):
+                            payment_obj.payment_status = 'Paid'
+                            payment_obj.approved_at = timezone.now()
+                            payment_obj.approved_by = 'KLCiS-Auto'
+                            # Store txn_id on first payment only (unique constraint)
+                            if i == 0 and txn_id:
+                                payment_obj.klcis_transaction_id = txn_id
+                            payment_obj.save()
+                            
+                            # Update document status to Queued (triggers WRR print)
+                            doc = payment_obj.doc
+                            doc.doc_status = 'Queued'
+                            doc.save()
+                    
+                    # ── Layer 4 cleanup: Delete voucher from KLCiS ──
+                    # Voucher served its purpose as an "active payment" flag.
+                    # Deleting it ensures future payments with the same
+                    # phone+amount won't be confused with this one.
+                    if voucher_code:
+                        from portal.services.klcis import cleanup_voucher
+                        cleanup_voucher(voucher_code)
+                    
+                    # Clear pending payment session flags
+                    request.session.pop('pending_payment_cid', None)
+                    request.session.pop('pending_payment_doc_ids', None)
+                    request.session.pop('baseline_txn_ids', None)
+                    
+                    return JsonResponse({
+                        'success': True,
+                        'message': 'Payment verified! Your documents are now queued for printing.',
+                        'redirect_url': f'/confirmation/{customer_id}/'
+                    })
+                else:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Payment not yet confirmed. Please complete the payment and try again.',
+                        'status': 'pending'
+                    })
+
+            elif action == 'cancel':
+                # Cancel payment - delete unpaid payments and associated documents
+                customer_id = data.get('customer_id')
+                if not customer_id:
+                    return JsonResponse({'success': False, 'error': 'Missing customer_id'})
+                
+                # Delete unpaid payments and their documents
+                unpaid_payments = Payment.objects.filter(
+                    doc__customer_id=customer_id,
+                    payment_status='Unpaid'
+                )
+                
+                # ── Layer 4 cleanup: Delete voucher from KLCiS on cancel ──
+                # Don't leave orphaned vouchers sitting on the KLCiS dashboard
+                voucher_codes_to_delete = set(
+                    unpaid_payments.exclude(
+                        voucher_code__isnull=True
+                    ).exclude(
+                        voucher_code=''
+                    ).values_list('voucher_code', flat=True)
+                )
+                if voucher_codes_to_delete:
+                    from portal.services.klcis import cleanup_voucher
+                    for vc in voucher_codes_to_delete:
+                        cleanup_voucher(vc)
+                
+                for payment_obj in unpaid_payments:
+                    doc = payment_obj.doc
+                    # Delete the uploaded file
+                    if doc and doc.stored_name:
+                        file_path = os.path.join(settings.MEDIA_ROOT, 'uploads', customer_id, doc.stored_name)
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                    # Delete payment and document
+                    payment_obj.delete()
+                    if doc:
+                        doc.delete()
+                
+                # Clean up empty customer upload folder
+                customer_folder = os.path.join(settings.MEDIA_ROOT, 'uploads', customer_id)
+                if os.path.exists(customer_folder) and not os.listdir(customer_folder):
+                    os.rmdir(customer_folder)
+                
+                # Clear session flags
+                request.session.pop('pending_payment_cid', None)
+                request.session.pop('pending_payment_doc_ids', None)
+                
+                return JsonResponse({'success': True, 'message': 'Payment cancelled successfully.'})
+
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid action'
+                })
             
         except json.JSONDecodeError:
             return JsonResponse({
@@ -1778,6 +2030,10 @@ def picked_up_document(request):
                         print(f"[PICKED UP] Deleted file {file_path} for document {doc_id}")
                         break
 
+        # Delete associated Payment records then the Document record
+        Payment.objects.filter(doc=doc).delete()
+        doc.delete()
+
         # Trigger folder cleanup
         subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
 
@@ -1792,8 +2048,12 @@ def picked_up_document(request):
 @csrf_exempt
 def finish_transaction(request):
     """
-    Mark all finished documents for a customer as 'Picked Up' and delete their files.
+    Mark all documents for a customer as 'Picked Up' and delete their files.
     This is the 'Picked Up All Printed Documents' action.
+    
+    If force=True (user confirmed disclaimer), ALL documents are processed
+    regardless of status — including Queued, Printing, and Cancelled docs.
+    Otherwise, only 'Finished' documents are processed.
     """
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
@@ -1801,28 +2061,30 @@ def finish_transaction(request):
     try:
         data = json.loads(request.body)
         customer_id = data.get('customer_id')
+        force = data.get('force', False)
 
         if not customer_id:
             return JsonResponse({'success': False, 'error': 'customer_id is required'})
 
-        # Get all finished documents for this customer
-        finished_docs = Document.objects.filter(
-            customer_id=customer_id,
-            doc_status='Finished'
-        )
+        if force:
+            # Force mode: process ALL non-picked-up documents (user confirmed disclaimer)
+            docs_to_process = Document.objects.filter(
+                customer_id=customer_id
+            ).exclude(doc_status='Picked Up')
+        else:
+            # Normal mode: only process finished documents
+            docs_to_process = Document.objects.filter(
+                customer_id=customer_id,
+                doc_status='Finished'
+            )
 
-        if not finished_docs.exists():
-            return JsonResponse({'success': False, 'error': 'No finished documents found'})
+        if not docs_to_process.exists():
+            return JsonResponse({'success': False, 'error': 'No documents found to process'})
 
         picked_up_count = 0
         uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
 
-        for doc in finished_docs:
-            # Mark as Picked Up
-            doc.doc_status = 'Picked Up'
-            doc.status_updated_at = timezone.now()
-            doc.save()
-
+        for doc in docs_to_process:
             # Delete the file from storage
             if doc.stored_name:
                 for root, dirs, files in os.walk(uploads_dir):
@@ -1832,6 +2094,12 @@ def finish_transaction(request):
                             os.remove(file_path)
                             print(f"[FINISH TXN] Deleted file {file_path} for document {doc.doc_id}")
                             break
+
+            # Delete associated Payment records
+            Payment.objects.filter(doc=doc).delete()
+
+            # Delete the Document record itself
+            doc.delete()
 
             picked_up_count += 1
 

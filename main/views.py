@@ -14,15 +14,52 @@ import os, uuid, math, time, random, string, json, PyPDF2, subprocess
 
 
 def index_view(request):
+    # If student has a pending payment, redirect back to the payment page
+    # (handles KLCiS redirect after GCash payment)
+    pending_cid = request.session.get('pending_payment_cid')
+    pending_doc_ids = request.session.get('pending_payment_doc_ids')
+    if pending_cid and pending_doc_ids:
+        from urllib.parse import urlencode
+        params = urlencode({'customer_id': pending_cid}, doseq=False)
+        doc_params = '&'.join(f'doc_ids={did}' for did in pending_doc_ids)
+        return redirect(f'/payment/?{params}&{doc_params}')
+
     active_cid = request.session.get('customer_id')
+    active_cid_redirect = None  # 'payment' or 'confirmation'
+    active_cid_doc_ids = []
     # Only pass CID if there are actually active (non-completed) documents
     if active_cid:
-        has_active = Document.objects.filter(
+        active_docs = Document.objects.filter(
             customer_id=active_cid
-        ).exclude(doc_status__in=['Printed', 'Picked Up']).exists()
-        if not has_active:
+        ).exclude(doc_status__in=['Printed', 'Picked Up'])
+        if not active_docs.exists():
             active_cid = None
-    return render(request, 'index.html', {'active_cid': active_cid})
+        else:
+            # Check if there are unpaid documents
+            for doc in active_docs:
+                try:
+                    p = Payment.objects.get(doc=doc)
+                    if p.payment_status == 'Unpaid':
+                        active_cid_doc_ids.append(doc.doc_id)
+                except Payment.DoesNotExist:
+                    pass
+            active_cid_redirect = 'payment' if active_cid_doc_ids else 'confirmation'
+
+    # Build the banner return URL
+    if active_cid and active_cid_redirect == 'payment' and active_cid_doc_ids:
+        from urllib.parse import urlencode
+        doc_params = '&'.join(f'doc_ids={did}' for did in active_cid_doc_ids)
+        active_cid_url = f'/payment/?customer_id={active_cid}&{doc_params}'
+    elif active_cid:
+        active_cid_url = f'/confirmation/{active_cid}/'
+    else:
+        active_cid_url = '/'
+
+    return render(request, 'index.html', {
+        'active_cid': active_cid,
+        'active_cid_redirect': active_cid_redirect,
+        'active_cid_url': active_cid_url,
+    })
 
 
 def upload_view(request):
@@ -39,7 +76,7 @@ def track_status_view(request):
 
 @csrf_exempt
 def validate_cid(request):
-    """Check if a customer ID exists and bind it to session if found."""
+    """Check if a customer ID exists, determine payment status, and bind it to session."""
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -51,12 +88,37 @@ def validate_cid(request):
             return JsonResponse({'valid': False})
 
         # Check if documents exist for this CID
-        exists = Document.objects.filter(customer_id=cid).exists()
-        if exists:
-            # Bind the CID to the session so the confirmation page can verify
-            request.session['customer_id'] = cid
-            return JsonResponse({'valid': True})
-        return JsonResponse({'valid': False})
+        docs = Document.objects.filter(customer_id=cid)
+        if not docs.exists():
+            return JsonResponse({'valid': False})
+
+        # Bind the CID to the session
+        request.session['customer_id'] = cid
+
+        # Check payment status — are there any unpaid documents?
+        unpaid_doc_ids = []
+        for doc in docs.exclude(doc_status__in=['Printed', 'Picked Up']):
+            try:
+                payment_obj = Payment.objects.get(doc=doc)
+                if payment_obj.payment_status == 'Unpaid':
+                    unpaid_doc_ids.append(doc.doc_id)
+            except Payment.DoesNotExist:
+                pass
+
+        if unpaid_doc_ids:
+            # Has unpaid documents → redirect to payment page
+            return JsonResponse({
+                'valid': True,
+                'redirect': 'payment',
+                'customer_id': cid,
+                'doc_ids': unpaid_doc_ids,
+            })
+        else:
+            # All paid → redirect to confirmation
+            return JsonResponse({
+                'valid': True,
+                'redirect': 'confirmation',
+            })
     return JsonResponse({'valid': False})
 
 
@@ -69,6 +131,44 @@ def confirmation(request, customer_id):
         customer_id = request.GET.get('test_customer')
         request.session['customer_id'] = customer_id
         session_customer_id = customer_id
+
+    # Debug mode: bypass session + create dummy docs for UI testing
+    if django_settings.DEBUG and request.GET.get('debug') == 'true':
+        request.session['customer_id'] = customer_id
+
+        # Create temporary test documents if they don't exist
+        from django.utils import timezone as tz
+        test_docs = [
+            ('DOC-TEST1', 'Test Document.pdf', 'Finished'),
+            ('DOC-TEST2', 'Essay.pdf', 'Printing'),
+        ]
+        for doc_id, filename, status in test_docs:
+            doc, created = Document.objects.get_or_create(
+                doc_id=doc_id,
+                defaults={
+                    'customer_id': customer_id,
+                    'filename': filename,
+                    'original_name': filename,
+                    'stored_name': f'{doc_id}.pdf',
+                    'file_name': filename,
+                    'file_type': 'pdf',
+                    'file_size': 1024,
+                    'pages_num': '1-3',
+                    'num_copies': 1,
+                    'doc_status': status,
+                    'time_submitted': tz.now(),
+                    'paper_size': 'Letter',
+                    'paper_quality': '80',
+                    'orientation': 'Portrait',
+                    'color_mode': 'Black and White',
+                }
+            )
+            if not created:
+                doc.customer_id = customer_id
+                doc.doc_status = status
+                doc.save()
+
+        # Fall through to normal rendering (SSE will pick up the test docs)
 
     # Verify the session owns this customer_id
     if not session_customer_id or session_customer_id != customer_id:
