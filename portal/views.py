@@ -747,9 +747,33 @@ def update_printer_field(request):
         value = request.POST.get('value')
         try:
             printer = Printer.objects.get(id=printer_id)
+            # Handle tray_capacity as integer
+            if field == 'tray_capacity':
+                value = int(value)
             setattr(printer, field, value)
             printer.save()
             return JsonResponse({'success': True})
+        except Printer.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Printer not found'})
+        except ValueError:
+            return JsonResponse({'success': False, 'error': 'Invalid value'})
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+
+def mark_printer_refilled(request):
+    """Mark a printer as refilled - sets tray_level to Full and updates last_refill_time"""
+    if request.method == "POST":
+        printer_id = request.POST.get('printer_id')
+        try:
+            printer = Printer.objects.get(id=printer_id)
+            printer.tray_level = 'Full'
+            printer.last_refill_time = timezone.now()
+            printer.save()
+            return JsonResponse({
+                'success': True,
+                'tray_level': printer.tray_level,
+                'last_refill_time': printer.last_refill_time.isoformat()
+            })
         except Printer.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Printer not found'})
     return JsonResponse({'success': False, 'error': 'Invalid request'})

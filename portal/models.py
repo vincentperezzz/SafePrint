@@ -83,6 +83,9 @@ class Printer(models.Model):
     last_checked = models.DateTimeField()
     ip_address = models.CharField(max_length=255)
     node_name = models.CharField(max_length=255, null=True, blank=True)
+    tray_capacity = models.IntegerField(default=250)
+    tray_level = models.CharField(max_length=20, default='Full')  # Full, Low, Needs Refill
+    last_refill_time = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return self.printer_name
