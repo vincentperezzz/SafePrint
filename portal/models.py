@@ -271,6 +271,57 @@ class UsedKLCiSTransaction(models.Model):
         verbose_name = 'Used KLCiS Transaction'
         verbose_name_plural = 'Used KLCiS Transactions'
 
+
+class VoucherCredit(models.Model):
+    """
+    Stores redeemable credit vouchers for students.
+    
+    Created when:
+    - A print job costs less than the ₱5 Xendit minimum and the student is 
+      charged ₱5, with the excess saved as credit.
+    - A voucher is applied to a job and the ₱5 minimum kicks in on the 
+      remaining balance, creating new excess credit on the same code.
+    
+    Transferable: anyone with the code can use it (no phone/account lock).
+    One voucher per transaction (no stacking).
+    Expires after 120 days.
+    """
+    code = models.CharField(max_length=20, unique=True, db_index=True)
+    original_amount = models.DecimalField(max_digits=10, decimal_places=2,
+                                          help_text='Initial credit when created')
+    remaining_balance = models.DecimalField(max_digits=10, decimal_places=2,
+                                            help_text='Current available balance')
+    is_active = models.BooleanField(default=True,
+                                    help_text='False when fully used or expired')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(help_text='120 days from creation')
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        status = 'Active' if self.is_active else 'Inactive'
+        return f"{self.code} — ₱{self.remaining_balance} ({status})"
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        return timezone.now() > self.expires_at
+
+    @property
+    def is_usable(self):
+        """Check if voucher can be used (active, not expired, has balance)."""
+        return (
+            self.is_active
+            and not self.is_expired
+            and self.remaining_balance > 0
+        )
+
+    class Meta:
+        db_table = 'voucher_credits'
+        verbose_name = 'Voucher Credit'
+        verbose_name_plural = 'Voucher Credits'
+        ordering = ['-created_at']
+
+
 class Feedback(models.Model):
     CATEGORY_CHOICES = [
         ('Comment', 'Comment'),

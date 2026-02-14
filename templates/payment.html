@@ -40,28 +40,82 @@ SafePrint - Payment
 
     <div class="right">
         <div class="amount">
-            <h3>₱{{ total_price|floatformat:2 }}</h3>
-            <span>Amount to Pay</span>
+            <h3 id="display-amount">₱{{ total_price|floatformat:2 }}</h3>
+            <span id="amount-label">Amount to Pay</span>
+        </div>
+
+        <!-- VOUCHER CREDIT SECTION (Collapsible) -->
+        <div id="voucher-section" class="card-payment-details voucher-credit-section">
+            <div class="voucher-header" onclick="toggleVoucherSection()">
+                <h3>Have a Voucher?</h3>
+                <span id="voucher-chevron" class="voucher-chevron">▼</span>
+            </div>
+            <div id="voucher-body" class="voucher-body" style="display: none;">
+                <div class="voucher-input-row">
+                    <input
+                        id="voucher-code-input"
+                        type="text"
+                        placeholder="Enter code"
+                        class="card-input voucher-input"
+                        maxlength="20"
+                        autocomplete="off"
+                        style="text-transform: uppercase;"
+                    />
+                </div>
+                <button type="button" id="apply-voucher-btn" class="card-pay-btn voucher-apply-btn" onclick="applyVoucher()">
+                    Apply
+                </button>
+                <div id="voucher-status" class="voucher-status" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- DISCOUNT SUMMARY (shown when credit applied) -->
+        <div id="discount-summary" class="discount-summary" style="display: none;">
+            <div class="discount-row">
+                <span>Original Total</span>
+                <span id="original-total-display">₱{{ total_price|floatformat:2 }}</span>
+            </div>
+            <div class="discount-row credit-row">
+                <span>Voucher Credit</span>
+                <span id="credit-applied-display">-₱0.00</span>
+            </div>
+            <div class="discount-row minimum-row" id="minimum-charge-row" style="display: none;">
+                <span>Min. charge adjustment</span>
+                <span id="minimum-adj-display">+₱0.00</span>
+            </div>
+            <hr />
+            <div class="discount-row total-row">
+                <span>You Pay</span>
+                <span id="final-charge-display">₱{{ total_price|floatformat:2 }}</span>
+            </div>
+        </div>
+
+        <!-- MINIMUM CHARGE DISCLAIMER -->
+        <div id="minimum-disclaimer" class="minimum-disclaimer" style="display: none;">
+            <p>⚠️ Our payment partner requires a minimum of <strong>₱5.00</strong> per transaction. 
+            The excess will be saved as credit for your next print!</p>
         </div>
 
         <!-- STEP 1: Phone number + Pay Now -->
         <div id="payment-step-1" class="card-payment-details">
-            <h3>Pay with E-Wallet</h3>
-            <p class="payment-hint">
+            <h3 id="step1-title">Pay with E-Wallet</h3>
+            <p class="payment-hint" id="step1-hint">
                 Provide the phone number registered with your preferred e-wallet (GCash, Maya, etc.).
             </p>
             <form class="card-payment-form" autocomplete="off" onsubmit="event.preventDefault(); initiatePayment();">
-                <label class="card-label" for="phone-number">Phone Number</label>
-                <input
-                    id="phone-number"
-                    name="phone_number"
-                    type="tel"
-                    inputmode="numeric"
-                    placeholder="09XX XXX XXXX"
-                    class="card-input phone-input"
-                    maxlength="13"
-                    required
-                />
+                <div id="phone-section">
+                    <label class="card-label" for="phone-number">Phone Number</label>
+                    <input
+                        id="phone-number"
+                        name="phone_number"
+                        type="tel"
+                        inputmode="numeric"
+                        placeholder="09XX XXX XXXX"
+                        class="card-input phone-input"
+                        maxlength="13"
+                        required
+                    />
+                </div>
                 <button type="submit" id="pay-now-btn" class="card-pay-btn">
                     Pay ₱{{ total_price|floatformat:0 }} Now
                 </button>

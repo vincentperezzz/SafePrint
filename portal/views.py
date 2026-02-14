@@ -120,6 +120,65 @@ def search_customer(request):
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 
+# ─────────────────────────────────────────────
+# Minimum payment and credit constants
+# ─────────────────────────────────────────────
+XENDIT_MIN_AMOUNT = 5  # ₱5 minimum for Xendit transactions
+VOUCHER_CREDIT_EXPIRY_DAYS = 120  # Credits expire after 120 days
+
+
+@csrf_exempt
+def check_voucher_api(request):
+    """
+    AJAX endpoint to validate a voucher code and return its balance.
+    Called from the payment page when a student enters a voucher code.
+    
+    POST /api/check-voucher/
+    Body: {"code": "ABC123"}
+    
+    Returns:
+        - success: True if valid voucher with balance
+        - balance: remaining balance (float)
+        - expires_at: expiry date string
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST required'})
+    
+    try:
+        data = json.loads(request.body)
+        code = data.get('code', '').strip().upper()
+        
+        if not code:
+            return JsonResponse({'success': False, 'error': 'Please enter a voucher code.'})
+        
+        from portal.models import VoucherCredit
+        try:
+            voucher = VoucherCredit.objects.get(code=code)
+        except VoucherCredit.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Voucher code not found.'})
+        
+        if not voucher.is_active:
+            return JsonResponse({'success': False, 'error': 'This voucher has been deactivated.'})
+        
+        if voucher.is_expired:
+            return JsonResponse({'success': False, 'error': 'This voucher has expired.'})
+        
+        if voucher.remaining_balance <= 0:
+            return JsonResponse({'success': False, 'error': 'This voucher has no remaining balance.'})
+        
+        return JsonResponse({
+            'success': True,
+            'balance': float(voucher.remaining_balance),
+            'code': voucher.code,
+            'expires_at': voucher.expires_at.strftime('%B %d, %Y'),
+        })
+    
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid request format.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
 def payment(request):
     """
     Handle payment gateway for documents via KLCiS integration.
@@ -242,21 +301,16 @@ def payment(request):
                 })
 
             # ─────────────────────────────────────────────
-            # ACTION: INITIATE — Create voucher, return direct checkout URL
+            # ACTION: INITIATE — Calculate charges, apply credit, create payment
             # ─────────────────────────────────────────────
             if action == 'initiate':
                 phone_number = data.get('phone_number', '').strip()
+                voucher_credit_code = data.get('voucher_credit_code', '').strip().upper()
 
                 if not documents_ids:
                     return JsonResponse({
                         'success': False,
                         'error': 'No documents specified'
-                    })
-
-                if not phone_number:
-                    return JsonResponse({
-                        'success': False,
-                        'error': 'Phone number is required for SMS receipt'
                     })
                 
                 # Calculate total price from Payment records
@@ -274,15 +328,97 @@ def payment(request):
                         'error': 'Invalid payment amount'
                     })
                 
-                # Generate a unique voucher code
+                # ─── Apply voucher credit if provided ───
+                credit_applied = 0.0
+                credit_voucher = None
+                
+                if voucher_credit_code:
+                    from portal.models import VoucherCredit
+                    try:
+                        credit_voucher = VoucherCredit.objects.get(code=voucher_credit_code)
+                    except VoucherCredit.DoesNotExist:
+                        return JsonResponse({
+                            'success': False,
+                            'error': 'Voucher code not found.'
+                        })
+                    
+                    if not credit_voucher.is_usable:
+                        return JsonResponse({
+                            'success': False,
+                            'error': 'This voucher is expired or has no remaining balance.'
+                        })
+                    
+                    # Apply up to the voucher balance
+                    credit_applied = min(
+                        float(credit_voucher.remaining_balance),
+                        total_price
+                    )
+                
+                balance_due = total_price - credit_applied
+                
+                # ─── Case 1: Fully covered by credit (₱0 charge) ───
+                if balance_due <= 0:
+                    # Skip KLCiS entirely — approve documents directly
+                    with transaction.atomic():
+                        # Deduct credit from voucher
+                        credit_voucher.remaining_balance = float(credit_voucher.remaining_balance) - credit_applied
+                        if credit_voucher.remaining_balance <= 0:
+                            credit_voucher.remaining_balance = 0
+                            credit_voucher.is_active = False
+                        credit_voucher.last_used_at = timezone.now()
+                        credit_voucher.save()
+                        
+                        # Update all Payment records — mark as Paid
+                        for doc_id in documents_ids:
+                            try:
+                                payment_obj = Payment.objects.get(doc__doc_id=doc_id)
+                                payment_obj.payment_status = 'Paid'
+                                payment_obj.payment_method = 'voucher_credit'
+                                payment_obj.approved_at = timezone.now()
+                                payment_obj.approved_by = f'Credit:{voucher_credit_code}'
+                                payment_obj.save()
+                                
+                                # Queue document for printing
+                                doc = payment_obj.doc
+                                doc.doc_status = 'Queued'
+                                doc.save()
+                            except Payment.DoesNotExist:
+                                pass
+                    
+                    remaining = float(credit_voucher.remaining_balance)
+                    return JsonResponse({
+                        'success': True,
+                        'mode': 'credit_only',
+                        'message': f'Paid using voucher credit! ₱{credit_applied:.2f} applied.',
+                        'redirect_url': f'/confirmation/{customer_id}/',
+                        'credit_remaining': remaining,
+                        'credit_code': voucher_credit_code if remaining > 0 else None,
+                    })
+                
+                # ─── Phone number is required from here (KLCiS payment needed) ───
+                if not phone_number:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Phone number is required for payment.'
+                    })
+                
+                # ─── Case 2: Balance < ₱5 minimum — bump to ₱5 ───
+                charge_amount = balance_due
+                excess_credit = 0.0
+                
+                if charge_amount < XENDIT_MIN_AMOUNT:
+                    excess_credit = XENDIT_MIN_AMOUNT - charge_amount
+                    charge_amount = XENDIT_MIN_AMOUNT
+                
+                # Generate a unique voucher code for KLCiS
                 import random, string
-                voucher_code = ''.join(random.choices(
+                klcis_voucher_code = ''.join(random.choices(
                     string.ascii_lowercase + string.digits, k=8
                 ))
                 
                 # Upload voucher to KLCiS dashboard
                 from portal.services.klcis import create_and_upload_voucher, get_checkout_url, snapshot_existing_transactions
-                result = create_and_upload_voucher(voucher_code, total_price)
+                result = create_and_upload_voucher(klcis_voucher_code, charge_amount)
                 
                 if not result['success']:
                     return JsonResponse({
@@ -290,37 +426,50 @@ def payment(request):
                         'error': f'Payment setup failed: {result["message"]}'
                     })
                 
-                # Snapshot existing PAID transactions for this phone+amount
-                # so they can be excluded during verification (prevents false positives
-                # from old transactions with the same phone/amount)
-                baseline_txn_ids = snapshot_existing_transactions(phone_number, total_price)
+                # Snapshot existing PAID transactions for dedup
+                baseline_txn_ids = snapshot_existing_transactions(phone_number, charge_amount)
                 request.session['baseline_txn_ids'] = baseline_txn_ids
                 
-                # Store the voucher code in all Payment records for this transaction
+                # Deduct credit from voucher NOW (optimistic — refund if cancelled)
+                if credit_voucher and credit_applied > 0:
+                    credit_voucher.remaining_balance = float(credit_voucher.remaining_balance) - credit_applied
+                    if credit_voucher.remaining_balance <= 0:
+                        credit_voucher.remaining_balance = 0
+                        credit_voucher.is_active = False
+                    credit_voucher.last_used_at = timezone.now()
+                    credit_voucher.save()
+                
+                # Store metadata in all Payment records
                 for doc_id in documents_ids:
                     try:
                         payment_obj = Payment.objects.get(doc__doc_id=doc_id)
-                        payment_obj.voucher_code = voucher_code
+                        payment_obj.voucher_code = klcis_voucher_code
                         payment_obj.payment_method = 'klcis'
                         payment_obj.phone_number = phone_number
                         payment_obj.save()
                     except Payment.DoesNotExist:
                         pass
                 
-                # Build direct checkout URL (bypasses KLCiS shop, goes straight to Xendit/GCash)
-                checkout_url = get_checkout_url(total_price, phone_number)
+                # Build direct checkout URL
+                checkout_url = get_checkout_url(charge_amount, phone_number)
                 
-                # Store pending payment info in session so the homepage can
-                # redirect back if the student lands there after KLCiS redirect
+                # Store session metadata for redirect handling & credit tracking
                 request.session['pending_payment_cid'] = customer_id
                 request.session['pending_payment_doc_ids'] = documents_ids
+                request.session['pending_excess_credit'] = excess_credit
+                request.session['pending_credit_code'] = voucher_credit_code if voucher_credit_code else None
+                request.session['pending_credit_applied'] = credit_applied
                 
                 return JsonResponse({
                     'success': True,
+                    'mode': 'payment',
                     'message': 'Payment link created',
                     'checkout_url': checkout_url,
-                    'voucher_code': voucher_code,
-                    'amount': int(round(total_price)),
+                    'voucher_code': klcis_voucher_code,
+                    'amount': int(round(charge_amount)),
+                    'original_total': round(total_price, 2),
+                    'credit_applied': round(credit_applied, 2),
+                    'excess_credit': round(excess_credit, 2),
                 })
 
             # ─────────────────────────────────────────────
@@ -448,22 +597,71 @@ def payment(request):
                             doc.save()
                     
                     # ── Layer 4 cleanup: Delete voucher from KLCiS ──
-                    # Voucher served its purpose as an "active payment" flag.
-                    # Deleting it ensures future payments with the same
-                    # phone+amount won't be confused with this one.
                     if voucher_code:
                         from portal.services.klcis import cleanup_voucher
                         cleanup_voucher(voucher_code)
+                    
+                    # ── Handle excess credit from ₱5 minimum ──
+                    excess_credit = request.session.get('pending_excess_credit', 0)
+                    pending_credit_code = request.session.get('pending_credit_code', None)
+                    credit_info = None
+                    
+                    if excess_credit > 0:
+                        from portal.models import VoucherCredit
+                        from datetime import timedelta
+                        
+                        if pending_credit_code:
+                            # Reuse existing voucher code — add excess to balance
+                            try:
+                                vc = VoucherCredit.objects.get(code=pending_credit_code)
+                                vc.remaining_balance = float(vc.remaining_balance) + excess_credit
+                                vc.is_active = True
+                                vc.save()
+                                credit_info = {
+                                    'code': vc.code,
+                                    'balance': float(vc.remaining_balance),
+                                    'expires_at': vc.expires_at.strftime('%B %d, %Y'),
+                                }
+                            except VoucherCredit.DoesNotExist:
+                                # Code was from a deleted/expired voucher — create new
+                                pending_credit_code = None
+                        
+                        if not pending_credit_code:
+                            # Create a new voucher credit code
+                            import random, string as str_mod
+                            new_code = ''.join(random.choices(
+                                str_mod.ascii_uppercase + str_mod.digits, k=8
+                            ))
+                            from datetime import timedelta
+                            vc = VoucherCredit.objects.create(
+                                code=new_code,
+                                original_amount=excess_credit,
+                                remaining_balance=excess_credit,
+                                expires_at=timezone.now() + timedelta(days=VOUCHER_CREDIT_EXPIRY_DAYS),
+                            )
+                            credit_info = {
+                                'code': vc.code,
+                                'balance': float(vc.remaining_balance),
+                                'expires_at': vc.expires_at.strftime('%B %d, %Y'),
+                            }
+                    
+                    # Store credit info in session for confirmation page display
+                    if credit_info:
+                        request.session['credit_info'] = credit_info
                     
                     # Clear pending payment session flags
                     request.session.pop('pending_payment_cid', None)
                     request.session.pop('pending_payment_doc_ids', None)
                     request.session.pop('baseline_txn_ids', None)
+                    request.session.pop('pending_excess_credit', None)
+                    request.session.pop('pending_credit_code', None)
+                    request.session.pop('pending_credit_applied', None)
                     
                     return JsonResponse({
                         'success': True,
                         'message': 'Payment verified! Your documents are now queued for printing.',
-                        'redirect_url': f'/confirmation/{customer_id}/'
+                        'redirect_url': f'/confirmation/{customer_id}/',
+                        'credit_info': credit_info,
                     })
                 else:
                     return JsonResponse({
@@ -515,9 +713,29 @@ def payment(request):
                 if os.path.exists(customer_folder) and not os.listdir(customer_folder):
                     os.rmdir(customer_folder)
                 
+                # ── Refund optimistically deducted credit ──
+                pending_credit_code = request.session.get('pending_credit_code')
+                pending_credit_applied = request.session.get('pending_credit_applied', 0)
+                if pending_credit_code and pending_credit_applied > 0:
+                    from portal.models import VoucherCredit
+                    try:
+                        vc = VoucherCredit.objects.get(code=pending_credit_code)
+                        vc.remaining_balance = float(vc.remaining_balance) + pending_credit_applied
+                        vc.is_active = True
+                        vc.save()
+                        logger.info(
+                            f'Refunded ₱{pending_credit_applied} credit to '
+                            f'voucher {pending_credit_code} on cancel'
+                        )
+                    except VoucherCredit.DoesNotExist:
+                        pass
+                
                 # Clear session flags
                 request.session.pop('pending_payment_cid', None)
                 request.session.pop('pending_payment_doc_ids', None)
+                request.session.pop('pending_excess_credit', None)
+                request.session.pop('pending_credit_code', None)
+                request.session.pop('pending_credit_applied', None)
                 
                 return JsonResponse({'success': True, 'message': 'Payment cancelled successfully.'})
 

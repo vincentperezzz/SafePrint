@@ -2605,6 +2605,9 @@ document.addEventListener('change', function(e) {
     let pollAttempts = 0;
     const MAX_POLL_ATTEMPTS = 60; // 5 minutes at 5-second intervals
     let checkoutUrl = null;
+    let appliedVoucherCode = null;
+    let appliedCreditAmount = 0;
+    const XENDIT_MIN = 5;
 
     /** Show full-screen loading overlay */
     function showOverlay() {
@@ -2618,6 +2621,163 @@ document.addEventListener('change', function(e) {
         if (overlay) overlay.style.display = 'none';
     }
 
+    /** Update the displayed charge amount and button text based on credit */
+    function updatePriceDisplay(creditAmount, creditCode) {
+        const total = PAYMENT.totalPrice;
+        const balanceDue = Math.max(0, total - creditAmount);
+        let chargeAmount = balanceDue;
+        let excessCredit = 0;
+
+        if (balanceDue > 0 && balanceDue < XENDIT_MIN) {
+            excessCredit = XENDIT_MIN - balanceDue;
+            chargeAmount = XENDIT_MIN;
+        }
+
+        // Update amount display
+        const amountEl = document.getElementById('display-amount');
+        const labelEl = document.getElementById('amount-label');
+        const btn = document.getElementById('pay-now-btn');
+        const phoneSection = document.getElementById('phone-section');
+        const step1Title = document.getElementById('step1-title');
+        const step1Hint = document.getElementById('step1-hint');
+        const discountSummary = document.getElementById('discount-summary');
+        const minDisclaimer = document.getElementById('minimum-disclaimer');
+        const minRow = document.getElementById('minimum-charge-row');
+
+        if (creditAmount > 0) {
+            // Show discount breakdown
+            discountSummary.style.display = 'block';
+            document.getElementById('original-total-display').textContent = '\u20B1' + total.toFixed(2);
+            document.getElementById('credit-applied-display').textContent = '-\u20B1' + creditAmount.toFixed(2);
+
+            if (excessCredit > 0) {
+                minRow.style.display = 'flex';
+                document.getElementById('minimum-adj-display').textContent = '+\u20B1' + excessCredit.toFixed(2);
+                minDisclaimer.style.display = 'block';
+            } else {
+                minRow.style.display = 'none';
+                minDisclaimer.style.display = 'none';
+            }
+
+            document.getElementById('final-charge-display').textContent = '\u20B1' + chargeAmount.toFixed(2);
+        } else {
+            discountSummary.style.display = 'none';
+            minDisclaimer.style.display = 'none';
+        }
+
+        if (balanceDue <= 0) {
+            // Fully covered by credit — no payment needed
+            amountEl.textContent = '\u20B10.00';
+            labelEl.textContent = 'Covered by Credit';
+            btn.textContent = 'Print Now (Using Credit)';
+            btn.type = 'button';
+            btn.onclick = function () { initiatePayment(); };
+            if (phoneSection) phoneSection.style.display = 'none';
+            if (step1Title) step1Title.textContent = 'Ready to Print!';
+            if (step1Hint) step1Hint.textContent = 'Your voucher credit fully covers this print job.';
+        } else {
+            amountEl.textContent = '\u20B1' + chargeAmount.toFixed(2);
+            labelEl.textContent = creditAmount > 0 ? 'Balance Due' : 'Amount to Pay';
+            btn.textContent = 'Pay \u20B1' + Math.round(chargeAmount) + ' Now';
+            btn.type = 'submit';
+            btn.onclick = null;
+            if (phoneSection) phoneSection.style.display = '';
+            if (step1Title) step1Title.textContent = 'Pay with E-Wallet';
+            if (step1Hint) step1Hint.textContent = 'Provide the phone number registered with your preferred e-wallet (GCash, Maya, etc.).';
+            // Show min disclaimer if applicable even without credit
+            if (chargeAmount < XENDIT_MIN && total < XENDIT_MIN && creditAmount === 0) {
+                minDisclaimer.style.display = 'block';
+            }
+        }
+    }
+
+    /**
+     * Toggle voucher section dropdown
+     */
+    window.toggleVoucherSection = function () {
+        const body = document.getElementById('voucher-body');
+        const chevron = document.getElementById('voucher-chevron');
+        if (body.style.display === 'none') {
+            body.style.display = 'block';
+            chevron.classList.add('open');
+        } else {
+            body.style.display = 'none';
+            chevron.classList.remove('open');
+        }
+    };
+
+    /**
+     * Apply voucher credit code
+     */
+    window.applyVoucher = async function () {
+        const input = document.getElementById('voucher-code-input');
+        const statusEl = document.getElementById('voucher-status');
+        const btn = document.getElementById('apply-voucher-btn');
+        const code = input.value.trim().toUpperCase();
+
+        if (!code) {
+            alert('Please enter a voucher code.');
+            input.focus();
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+
+        try {
+            const response = await fetch('/api/check-voucher/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({ code: code }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                appliedVoucherCode = data.code;
+                appliedCreditAmount = Math.min(data.balance, PAYMENT.totalPrice);
+
+                statusEl.innerHTML =
+                    '<span class="voucher-valid">\u2705 ₱' + data.balance.toFixed(2) +
+                    ' credit available (expires ' + data.expires_at + ')</span>' +
+                    '<button type="button" class="voucher-remove-btn" onclick="removeVoucher()">Remove</button>';
+                statusEl.style.display = 'flex';
+                input.disabled = true;
+                btn.style.display = 'none';
+
+                updatePriceDisplay(appliedCreditAmount, appliedVoucherCode);
+            } else {
+                alert(data.error);
+                appliedVoucherCode = null;
+                appliedCreditAmount = 0;
+            }
+        } catch (err) {
+            alert('Network error checking voucher. Please try again.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Apply';
+        }
+    };
+
+    /**
+     * Remove applied voucher credit
+     */
+    window.removeVoucher = function () {
+        appliedVoucherCode = null;
+        appliedCreditAmount = 0;
+        const input = document.getElementById('voucher-code-input');
+        const statusEl = document.getElementById('voucher-status');
+        const btn = document.getElementById('apply-voucher-btn');
+        input.disabled = false;
+        input.value = '';
+        statusEl.style.display = 'none';
+        btn.style.display = '';
+        updatePriceDisplay(0, null);
+    };
+
     /**
      * STEP 1: Initiate payment
      * Sends phone number + CID to Django → KLCiS voucher → opens GCash checkout
@@ -2625,14 +2785,17 @@ document.addEventListener('change', function(e) {
     window.initiatePayment = async function () {
         const phoneInput = document.getElementById('phone-number');
         const btn = document.getElementById('pay-now-btn');
-        const phone = phoneInput.value.replace(/\s/g, '').trim();
+        const balanceDue = PAYMENT.totalPrice - appliedCreditAmount;
 
-        // Validate Philippine phone number
-        const phoneRegex = /^(\+?63|0)(9\d{9})$/;
-        if (!phoneRegex.test(phone)) {
-            alert('Please enter a valid Philippine phone number (e.g., 09171234567).');
-            phoneInput.focus();
-            return;
+        // If NOT fully covered by credit, validate phone number
+        if (balanceDue > 0) {
+            const phone = phoneInput.value.replace(/\s/g, '').trim();
+            const phoneRegex = /^(\+?63|0)(9\d{9})$/;
+            if (!phoneRegex.test(phone)) {
+                alert('Please enter a valid Philippine phone number (e.g., 09171234567).');
+                phoneInput.focus();
+                return;
+            }
         }
 
         btn.disabled = true;
@@ -2640,38 +2803,56 @@ document.addEventListener('change', function(e) {
         showOverlay();
 
         try {
+            const payload = {
+                action: 'initiate',
+                customer_id: PAYMENT.customerId,
+                doc_ids: PAYMENT.docIds,
+                phone_number: balanceDue > 0 ? phoneInput.value.replace(/\s/g, '').trim() : '',
+            };
+
+            if (appliedVoucherCode) {
+                payload.voucher_credit_code = appliedVoucherCode;
+            }
+
             const response = await fetch('/payment/', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': getCsrfToken(),
                 },
-                body: JSON.stringify({
-                    action: 'initiate',
-                    customer_id: PAYMENT.customerId,
-                    doc_ids: PAYMENT.docIds,
-                    phone_number: phone,
-                }),
+                body: JSON.stringify(payload),
             });
 
             const data = await response.json();
 
             if (data.success) {
-                // Switch to step 2
+                if (data.mode === 'credit_only') {
+                    // Fully covered by credit — skip payment, redirect to confirmation
+                    sessionStorage.clear();
+                    let msg = data.message;
+                    if (data.credit_remaining > 0 && data.credit_code) {
+                        msg += '\\n\\nRemaining credit: ₱' + data.credit_remaining.toFixed(2) +
+                               ' on voucher ' + data.credit_code;
+                    }
+                    alert(msg);
+                    window.location.href = data.redirect_url;
+                    return;
+                }
+
+                // Normal payment flow — switch to step 2
                 document.getElementById('payment-step-1').style.display = 'none';
+                document.getElementById('voucher-section').style.display = 'none';
+                document.getElementById('discount-summary').style.display = 'none';
+                document.getElementById('minimum-disclaimer').style.display = 'none';
                 document.getElementById('payment-step-2').style.display = 'flex';
                 startAutoPolling();
 
                 if (data.checkout_url) {
                     checkoutUrl = data.checkout_url;
-                    // Try to open checkout in new tab
-                    const popup = window.open(data.checkout_url, '_blank');
-                    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-                        // Popup was blocked (common on iOS Safari)
-                        // Show redirect button immediately
-                        const redirectBtn = document.getElementById('redirect-payment-btn');
-                        if (redirectBtn) redirectBtn.style.display = '';
-                    }
+                    window.open(data.checkout_url, '_blank');
+                    // Always show redirect button (popup blockers may prevent opening)
+                    const redirectBtn = document.getElementById('redirect-payment-btn');
+                    if (redirectBtn) redirectBtn.style.display = '';
                 }
             } else {
                 alert(data.error || 'Payment setup failed. Please try again.');
@@ -2818,4 +2999,9 @@ document.addEventListener('change', function(e) {
 
     // Clean up polling on page unload
     window.addEventListener('beforeunload', stopAutoPolling);
+
+    // ── Initialize: show ₱5 minimum disclaimer if applicable ──
+    if (PAYMENT.totalPrice < XENDIT_MIN) {
+        updatePriceDisplay(0, null);
+    }
 })();
