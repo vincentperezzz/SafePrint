@@ -230,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 emptyRow.innerHTML = `
                     <div class="ticket-cell">
                         <div class="ticket-meta">
-                            <h6>No resolved tickets.</h6>
+                            <p>No resolved tickets.</p>
                         </div>
                     </div>
                     <div class="resolved-customer"></div>
@@ -2071,8 +2071,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Find new document IDs that we haven't seen before
                 const newDocIds = currentDocIds.filter(id => !seenDocIds.includes(id));
 
-                // If there are any new document IDs, play the notification
-                if (newDocIds.length > 0) {
+                // Get active tickets count
+                const activeCount = parseInt(String(stats.active_tickets_count || 0), 10) || 0;
+
+                // If there are any new document IDs AND there are active tickets, play the notification
+                if (newDocIds.length > 0 && activeCount > 0) {
                     console.log("New completed jobs detected:", newDocIds.length);
                     playNotificationSound();
 
@@ -2088,8 +2091,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     sessionStorage.setItem('seenDocIds', JSON.stringify(currentDocIds));
                 }
 
+                // Always update seen IDs (even when no sound plays)
+                if (newDocIds.length > 0) {
+                    sessionStorage.setItem('seenDocIds', JSON.stringify(currentDocIds));
+                }
+
                 // Use active tickets for title flashing instead of completed jobs
-                const activeCount = parseInt(String(stats.active_tickets_count || 0), 10) || 0;
                 if (activeCount > 0) {
                     startTitleFlash(activeCount);
                 } else {
@@ -2511,7 +2518,7 @@ if (addPrinterForm) {
             if (!container.querySelector('.empty-row')) {
                 const empty = document.createElement('div');
                 empty.className = 'document-item empty-row';
-                empty.innerHTML = `<p style="text-align:center; width:100%; padding:1em; color:#888;">No active tickets</p>`;
+                empty.innerHTML = `<p style="margin:0;">No active tickets.</p>`;
                 container.appendChild(empty);
             }
         } else {
@@ -2547,8 +2554,8 @@ if (addPrinterForm) {
                         <p></p>
                     </div>
                 </div>
-                <div class="document-item resolved-row empty-row">
-                    <p style="text-align:center; width:100%; padding:1em; color:#888;">No resolved tickets</p>
+                <div class="document-item empty-row">
+                    <p style="margin:0;">No resolved tickets.</p>
                 </div>
             `;
         } else {
@@ -2832,56 +2839,5 @@ if (addPrinterForm) {
             if (!panel) return;
             panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
         });
-    }
-
-    // Small unobtrusive enable-sound prompt if audio not unlocked
-    if (!localStorage.getItem('sound_opt_in')) {
-        const banner = document.createElement('div');
-        banner.id = 'enable-sound-banner';
-        banner.style.position = 'fixed';
-        banner.style.bottom = '20px';
-        banner.style.right = '20px';
-        banner.style.background = '#fff';
-        banner.style.border = '1px solid #ddd';
-        banner.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
-        banner.style.padding = '8px 12px';
-        banner.style.zIndex = '2000';
-        banner.style.borderRadius = '6px';
-        banner.innerHTML = '<span style="margin-right:8px;">Enable sound notifications?</span>';
-        const btn = document.createElement('button');
-        btn.textContent = 'Enable';
-        btn.style.marginLeft = '6px';
-        btn.className = 'btn btn-primary';
-        btn.addEventListener('click', function(){
-            // trigger a user gesture to unlock audio
-            try {
-                const audio = window._sp_fallback_audio || new Audio();
-                const slug = localStorage.getItem('sound_slug') || 'chime';
-                audio.src = `/static/sounds/${slug}.mp3`;
-                audio.muted = true;
-                const p = audio.play();
-                if (p && typeof p.then === 'function') {
-                    p.then(()=>{
-                        audio.pause(); audio.muted = false;
-                        localStorage.setItem('sound_opt_in', 'true');
-                        document.body.removeChild(banner);
-                        // play audible test
-                        audio.play().catch(()=>{});
-                    }).catch(()=>{
-                        localStorage.setItem('sound_opt_in', 'true');
-                        try { document.body.removeChild(banner); } catch(e){}
-                    });
-                } else {
-                    localStorage.setItem('sound_opt_in', 'true');
-                    try { document.body.removeChild(banner); } catch(e){}
-                }
-                window._sp_fallback_audio = audio;
-            } catch (e) {
-                localStorage.setItem('sound_opt_in', 'true');
-                try { document.body.removeChild(banner); } catch(e){}
-            }
-        });
-        banner.appendChild(btn);
-        document.body.appendChild(banner);
     }
 })();
