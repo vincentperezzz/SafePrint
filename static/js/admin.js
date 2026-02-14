@@ -316,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ticketId = btn.getAttribute('data-ticket-id');
                 if (!ticketId) return;
 
-                fetch('/api/void-ticket/', {
+                fetch('/portal/api/void-ticket/', {
                     method: 'POST',
                     headers: {
                         'X-CSRFToken': csrfToken,
@@ -359,7 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ticketId = btn.getAttribute('data-ticket-id');
                 if (!ticketId) return;
 
-                fetch('/api/refund-ticket/', {
+                fetch('/portal/api/refund-ticket/', {
                     method: 'POST',
                     headers: {
                         'X-CSRFToken': csrfToken,
@@ -2048,10 +2048,10 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        function startTitleFlash(completedCount) {
+        function startTitleFlash(activeCount) {
             // Coerce and guard: if 0 or invalid, stop flashing
-            completedCount = parseInt(String(completedCount), 10) || 0;
-            if (completedCount <= 0) {
+            activeCount = parseInt(String(activeCount), 10) || 0;
+            if (activeCount <= 0) {
                 stopTitleFlash();
                 return;
             }
@@ -2060,10 +2060,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 clearInterval(titleFlashInterval);
                 titleFlashInterval = null;
             }
-            let showCompleted = true;
+            let showActive = true;
             titleFlashInterval = setInterval(() => {
-                document.title = showCompleted ? `(${completedCount}) Print Jobs Completed` : baseTitle;
-                showCompleted = !showCompleted;
+                document.title = showActive ? `(${activeCount}) Active Tickets` : baseTitle;
+                showActive = !showActive;
             }, 1000);
         }
 
@@ -2129,12 +2129,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     sessionStorage.setItem('seenDocIds', JSON.stringify(currentDocIds));
                 }
 
-                // Update previous completed count
-                previousCompletedCount = completedCount;
-
-                // Update UI elements for tab title flashing based on current count
-                if (completedCount > 0) {
-                    startTitleFlash(completedCount);
+                // Use active tickets for title flashing instead of completed jobs
+                const activeCount = parseInt(String(stats.active_tickets_count || 0), 10) || 0;
+                if (activeCount > 0) {
+                    startTitleFlash(activeCount);
                 } else {
                     stopTitleFlash();
                 }
@@ -2403,3 +2401,374 @@ if (addPrinterForm) {
         closeAddPrinterPopup();
     };
 }
+// ==================== Real-time Dashboard Ticket Updates ====================
+(function() {
+    // Only run on dashboard page
+    if (!document.getElementById('document-results')) {
+        return;
+    }
+
+    let lastActiveCount = null;
+    let lastResolvedCount = null;
+
+    function renderActiveTicketRow(ticket) {
+        const paymentDisplay = ticket.payment_amount ? `₱${ticket.payment_amount.toFixed(2)}` : '—';
+        let actionButtons = `
+            <button class="deny-btn" type="button" data-action="void" data-ticket-id="${ticket.id}">Void</button>
+            <button class="approve-btn" type="button" data-open-ticket-modal
+                data-ticket-id="${ticket.id}"
+                data-ticket-number="${ticket.ticket_number}"
+                data-customer-id="${ticket.customer_id}"
+                data-customer-name="${ticket.customer_name}"
+                data-email="${ticket.email}"
+                data-phone="${ticket.phone_number}"
+                data-doc-id="${ticket.doc_id || ''}"
+                data-doc-name="${ticket.document_name}"
+                data-issue="${ticket.description.replace(/"/g, '&quot;')}"
+                data-problem-type="${ticket.problem_type}"
+                data-was-reprinted="${ticket.was_reprinted}">Verify</button>
+            <button class="refund-btn" type="button" data-action="refund" data-ticket-id="${ticket.id}">Refund</button>
+        `;
+
+        return `
+            <div class="document-item" data-ticket-number="${ticket.ticket_number}" data-ticket-id="${ticket.id}">
+                <div class="ticket-cell">
+                    <img src="/static/assets/ticket-icon.png" alt="Ticket" class="ticket-icon">
+                    <div class="ticket-meta">
+                        <h6>${ticket.ticket_number}</h6>
+                        <span>${paymentDisplay}</span>
+                    </div>
+                </div>
+                <div class="ticket-issue">${ticket.problem_type}</div>
+                <div class="ticket-date">${ticket.created_at}</div>
+                <div class="ticket-customer">#${ticket.customer_id}</div>
+                <div class="actions">
+                    ${actionButtons}
+                </div>
+            </div>
+        `;
+    }
+
+    function renderResolvedTicketRow(ticket) {
+        const paymentDisplay = ticket.payment_amount ? `₱${ticket.payment_amount.toFixed(2)}` : '—';
+        return `
+            <div class="document-item resolved-row">
+                <div class="ticket-cell">
+                    <img src="/static/assets/ticket-icon.png" alt="Ticket" class="ticket-icon">
+                    <div class="ticket-meta">
+                        <h6>${ticket.ticket_number}</h6>
+                        <span>${paymentDisplay}</span>
+                    </div>
+                </div>
+                <div class="resolved-customer">${ticket.customer_name}</div>
+                <div class="resolved-email">${ticket.email}</div>
+                <div class="resolved-verifier">${ticket.resolved_by || '—'}</div>
+                <div class="resolved-status">${ticket.status}</div>
+                <div class="resolved-details">
+                    <button class="approve-btn view-details-btn" type="button" data-open-ticket-modal
+                        data-ticket-id="${ticket.id}"
+                        data-ticket-number="${ticket.ticket_number}"
+                        data-customer-id="${ticket.customer_id}"
+                        data-customer-name="${ticket.customer_name}"
+                        data-email="${ticket.email}"
+                        data-phone="${ticket.phone_number}"
+                        data-doc-id="${ticket.doc_id || ''}"
+                        data-doc-name="${ticket.document_name}"
+                        data-issue="${ticket.description.replace(/"/g, '&quot;')}"
+                        data-problem-type="${ticket.problem_type}"
+                        data-was-reprinted="${ticket.was_reprinted}">View Details</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function updateActiveTickets(tickets) {
+        // Merge new tickets into the current DOM instead of replacing all HTML.
+        const container = document.getElementById('document-results');
+        if (!container) return;
+
+        console.log('[tickets] updateActiveTickets called —', tickets.length, 'tickets');
+
+        // Ensure the header/search exists (don't stomp other scripts)
+        let header = container.querySelector('.list-header');
+        if (!header) {
+            header = document.createElement('div');
+            header.className = 'list-header';
+            header.innerHTML = `
+                <div class="search-bar">
+                    <input type="text" id="dashboard-search" placeholder="Search by Ticket Number">
+                    <span class="search-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span>
+                </div>
+                <div class="document-item-title">
+                    <span>Ticket Number</span>
+                    <p>Issue</p>
+                    <p>Date Submitted</p>
+                    <p>Customer ID</p>
+                    <span class="action-title"></span>
+                </div>
+            `;
+            // Insert header at top
+            container.insertAdjacentElement('afterbegin', header);
+        }
+
+        // Build a set of incoming ticket IDs
+        const incomingIds = new Set(tickets.map(t => String(t.id)));
+
+        // Remove DOM items that are no longer active
+        Array.from(container.querySelectorAll('.document-item[data-ticket-id]')).forEach(el => {
+            const id = el.getAttribute('data-ticket-id');
+            if (!incomingIds.has(id)) {
+                el.remove();
+            }
+        });
+
+        // For each incoming ticket, append if not present
+        tickets.forEach(ticket => {
+            const exists = container.querySelector('.document-item[data-ticket-id="' + ticket.id + '"]');
+            if (!exists) {
+                console.log('[tickets] adding ticket', ticket.id, ticket.ticket_number);
+                // Insert new ticket right after the header
+                const temp = document.createElement('div');
+                temp.innerHTML = renderActiveTicketRow(ticket);
+                const node = temp.firstElementChild;
+                if (header.nextSibling) {
+                    container.insertBefore(node, header.nextSibling);
+                } else {
+                    container.appendChild(node);
+                }
+            } else {
+                // existing
+                // console.log('[tickets] already present', ticket.id);
+            }
+        });
+
+        // If there are no tickets, ensure an empty-row message exists
+        if (tickets.length === 0) {
+            if (!container.querySelector('.empty-row')) {
+                const empty = document.createElement('div');
+                empty.className = 'document-item empty-row';
+                empty.innerHTML = `<p style="text-align:center; width:100%; padding:1em; color:#888;">No active tickets</p>`;
+                container.appendChild(empty);
+            }
+        } else {
+            // Remove any empty-row placeholder
+            Array.from(container.querySelectorAll('.empty-row')).forEach(el => el.remove());
+        }
+
+        attachTicketEventListeners();
+    }
+
+    function updateResolvedTickets(tickets) {
+        const container = document.querySelector('.resolved-list-container .document-results');
+        if (!container) return;
+
+        if (tickets.length === 0) {
+            container.innerHTML = `
+                <div class="list-header">
+                    <div class="search-bar">
+                        <input type="text" placeholder="Search by Ticket Number">
+                        <span class="search-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                    </div>
+                    <div class="document-item-title resolved-header">
+                        <span>Ticket Number</span>
+                        <p>Customer Name</p>
+                        <p>Email</p>
+                        <p>Verified by</p>
+                        <p>Status</p>
+                        <p></p>
+                    </div>
+                </div>
+                <div class="document-item resolved-row empty-row">
+                    <p style="text-align:center; width:100%; padding:1em; color:#888;">No resolved tickets</p>
+                </div>
+            `;
+        } else {
+            let html = `
+                <div class="list-header">
+                    <div class="search-bar">
+                        <input type="text" placeholder="Search by Ticket Number">
+                        <span class="search-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                    </div>
+                    <div class="document-item-title resolved-header">
+                        <span>Ticket Number</span>
+                        <p>Customer Name</p>
+                        <p>Email</p>
+                        <p>Verified by</p>
+                        <p>Status</p>
+                        <p></p>
+                    </div>
+                </div>
+            `;
+            tickets.forEach(ticket => {
+                html += renderResolvedTicketRow(ticket);
+            });
+            container.innerHTML = html;
+        }
+
+        attachTicketEventListeners();
+    }
+
+    function attachTicketEventListeners() {
+        // Re-attach modal opener listeners to dynamically added elements
+        document.querySelectorAll('[data-open-ticket-modal]').forEach(button => {
+            button.onclick = function(e) {
+                e.preventDefault();
+                const ticketId = this.getAttribute('data-ticket-id');
+                const ticketNumber = this.getAttribute('data-ticket-number');
+                const customerId = this.getAttribute('data-customer-id');
+                const customerName = this.getAttribute('data-customer-name');
+                const email = this.getAttribute('data-email');
+                const phone = this.getAttribute('data-phone');
+                const docId = this.getAttribute('data-doc-id');
+                const docName = this.getAttribute('data-doc-name');
+                const issue = this.getAttribute('data-issue');
+                const problemType = this.getAttribute('data-problem-type');
+                const wasReprinted = this.getAttribute('data-was-reprinted');
+
+                document.getElementById('modal-customer-id').textContent = customerId;
+                document.getElementById('modal-doc-id').textContent = docId;
+                document.getElementById('modal-customer-name').textContent = customerName;
+                document.getElementById('modal-doc-name').textContent = docName;
+                document.getElementById('modal-email').textContent = email;
+                document.getElementById('modal-problem-type').textContent = problemType;
+                document.getElementById('modal-phone').textContent = phone;
+                document.getElementById('modal-reprinted').textContent = wasReprinted ? 'Yes' : 'No';
+                document.getElementById('modal-issue').textContent = issue;
+
+                document.getElementById('ticket-modal').setAttribute('aria-hidden', 'false');
+            };
+        });
+
+        // Re-attach action listeners
+        document.querySelectorAll('[data-action="void"]').forEach(button => {
+            button.onclick = handleVoidTicket;
+        });
+
+        document.querySelectorAll('[data-action="refund"]').forEach(button => {
+            button.onclick = handleRefundTicket;
+        });
+
+        // Re-attach modal close listeners
+        document.querySelectorAll('[data-close-ticket-modal]').forEach(el => {
+            el.onclick = function() {
+                document.getElementById('ticket-modal').setAttribute('aria-hidden', 'true');
+            };
+        });
+    }
+
+    function handleVoidTicket(e) {
+        e.preventDefault();
+        const ticketId = this.getAttribute('data-ticket-id');
+        if (confirm('Are you sure you want to void this ticket?')) {
+            fetch('/api/void-ticket/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ ticket_id: ticketId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    createAlert('Success', 'Ticket Voided', 'The ticket has been successfully voided.', 'success', true, true, 'pageMessages');
+                    refreshTickets();
+                } else {
+                    createAlert('Error', 'Void Failed', data.error || 'Failed to void the ticket.', 'danger', true, true, 'pageMessages');
+                }
+            })
+            .catch(error => {
+                console.error('Error voiding ticket:', error);
+                createAlert('Error', 'Void Failed', 'An error occurred while voiding the ticket.', 'danger', true, true, 'pageMessages');
+            });
+        }
+    }
+
+    function handleRefundTicket(e) {
+        e.preventDefault();
+        const ticketId = this.getAttribute('data-ticket-id');
+        if (confirm('Are you sure you want to refund this ticket?')) {
+            fetch('/api/refund-ticket/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ ticket_id: ticketId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    createAlert('Success', 'Ticket Refunded', 'The ticket has been successfully refunded.', 'success', true, true, 'pageMessages');
+                    refreshTickets();
+                } else {
+                    createAlert('Error', 'Refund Failed', data.error || 'Failed to refund the ticket.', 'danger', true, true, 'pageMessages');
+                }
+            })
+            .catch(error => {
+                console.error('Error refunding ticket:', error);
+                createAlert('Error', 'Refund Failed', 'An error occurred while refunding the ticket.', 'danger', true, true, 'pageMessages');
+            });
+        }
+    }
+
+    function refreshTickets() {
+        console.log('[tickets] refreshTickets -> fetching /portal/api/get-active-tickets/');
+        fetch('/portal/api/get-active-tickets/')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const activeCount = data.active_count || 0;
+                    const resolvedCount = data.resolved_count || 0;
+
+                    // Update counts in stat cards
+                    document.getElementById('active-tickets-count').textContent = activeCount;
+                    document.getElementById('resolved-tickets-count').textContent = resolvedCount;
+
+                    // Update ticket lists
+                    updateActiveTickets(data.active_tickets);
+                    updateResolvedTickets(data.resolved_tickets);
+
+                    // Play notification sound if new tickets arrived
+                    if (lastActiveCount !== null && activeCount > lastActiveCount) {
+                        playNotificationSound();
+                    }
+
+                    lastActiveCount = activeCount;
+                    lastResolvedCount = resolvedCount;
+                }
+            })
+            .catch(error => console.error('Error refreshing tickets:', error));
+    }
+
+    function playNotificationSound() {
+        try {
+            const soundElement = document.getElementById('notification-sound');
+            if (soundElement) {
+                soundElement.currentTime = 0;
+                soundElement.play().catch(err => console.log('Audio play error:', err));
+            }
+        } catch (error) {
+            console.log('Could not play notification sound:', error);
+        }
+    }
+
+    // Initial fetch and setup polling
+    refreshTickets();
+    setInterval(refreshTickets, 5000); // Poll every 5 seconds
+})();

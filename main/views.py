@@ -135,6 +135,7 @@ def confirmation(request, customer_id):
     # Debug mode: bypass session + create dummy docs for UI testing
     if django_settings.DEBUG and request.GET.get('debug') == 'true':
         request.session['customer_id'] = customer_id
+        session_customer_id = customer_id  # Update the variable after setting session
 
         # Create temporary test documents if they don't exist
         from django.utils import timezone as tz
