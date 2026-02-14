@@ -2614,86 +2614,117 @@ input:focus::placeholder {
     margin: 0;
 }
 
-/* Credit Voucher Banner - Confirmation Page */
-.credit-voucher-banner {
+/* Coupon/Ticket Banner - Confirmation Page */
+.coupon-banner {
     display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-    border: 1.5px solid #86efac;
+    align-items: stretch;
+    border: 1.5px solid #bbb;
     border-radius: 14px;
-    padding: 18px 20px;
-    margin-bottom: 20px;
+    margin-bottom: 5px;
     font-family: 'Space Grotesk', sans-serif;
-    box-shadow: 0 2px 8px rgba(34, 197, 94, 0.08);
+    overflow: hidden;
+    background: #fff;
+    position: relative;
+    min-height: 80px;
 }
 
-.credit-voucher-icon {
-    font-size: 32px;
-    line-height: 1;
+.coupon-tab {
+    background: linear-gradient(180deg, #a3e635 0%, #84cc16 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    min-width: 44px;
+    flex-shrink: 0;
+    border-right: 2px dashed #999;
+}
+
+.coupon-tab-text {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+    font-weight: 900;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #1a2e05;
+    text-transform: uppercase;
+}
+
+.coupon-hole {
+    position: absolute;
+    left: 33px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    background: #fff;
+    border: 1.5px solid #bbb;
+    border-radius: 50%;
+    z-index: 2;
+}
+
+.coupon-body {
+    flex: 1;
+    padding: 14px 18px 14px 22px;
+    display: flex;
+    align-items: center;
+}
+
+.coupon-top-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+}
+
+.coupon-info {
     flex-shrink: 0;
 }
 
-.credit-voucher-details {
-    flex: 1;
-    min-width: 0;
-}
-
-.credit-voucher-title {
+.coupon-flat {
+    font-size: 13px;
     font-weight: 700;
-    font-size: 16px;
-    color: #166534;
-    margin-bottom: 4px;
-}
-
-.credit-voucher-code {
-    font-family: 'Space Mono', 'Courier New', monospace;
-    font-size: 20px;
-    font-weight: 700;
-    color: #15803d;
-    letter-spacing: 2px;
-    background: rgba(255, 255, 255, 0.6);
-    padding: 4px 12px;
-    border-radius: 6px;
-    display: inline-block;
-    margin-bottom: 6px;
-    user-select: all;
-}
-
-.credit-voucher-balance {
-    font-size: 14px;
-    font-weight: 600;
-    color: #166534;
+    color: #222;
     margin-bottom: 2px;
 }
 
-.credit-voucher-expiry {
-    font-size: 12px;
-    color: #4ade80;
-    margin-bottom: 0;
+.coupon-code {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 22px;
+    font-weight: 900;
+    color: #111;
+    letter-spacing: 1px;
+    user-select: all;
 }
 
-.credit-voucher-hint {
-    font-size: 12px;
-    color: #16a34a;
-    align-self: center;
-    text-align: right;
-    flex-shrink: 0;
-    max-width: 140px;
-    line-height: 1.4;
+.coupon-right {
+    margin-left: auto;
 }
 
-@media (max-width: 500px) {
-    .credit-voucher-banner {
+.coupon-hint {
+    font-size: 12px;
+    color: #555;
+    margin-bottom: 2px;
+    line-height: 1.3;
+}
+
+.coupon-expiry {
+    font-size: 12px;
+    color: #e74c3c;
+    font-weight: 500;
+}
+
+@media (max-width: 480px) {
+    .coupon-top-row {
         flex-direction: column;
-        align-items: center;
-        text-align: center;
-        gap: 8px;
-        padding: 14px;
+        align-items: flex-start;
+        gap: 6px;
     }
-    .credit-voucher-hint {
-        text-align: center;
-        max-width: none;
+    .coupon-right {
+        margin-left: 0;
+    }
+    .coupon-body {
+        padding: 12px 14px 12px 20px;
     }
 }
 
