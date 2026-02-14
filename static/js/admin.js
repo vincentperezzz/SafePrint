@@ -795,14 +795,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Feedback Comments Modal
-    if (feedbackBtn) {
-        feedbackBtn.onclick = function (e) {
-            e.preventDefault();
-            document.getElementById('feedbackModal').style.display = 'block';
-        };
-    }
-
+    // Close Feedback Modal
     var closeFeedbackBtn = document.getElementById('closeFeedbackModal');
     if (closeFeedbackBtn) {
         closeFeedbackBtn.onclick = function () {
@@ -810,14 +803,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Problem Reports Modal
-    if (problemBtn) {
-        problemBtn.onclick = function (e) {
-            e.preventDefault();
-            document.getElementById('problemModal').style.display = 'block';
-        };
-    }
-
+    // Close Problem Reports Modal
     var closeProblemBtn = document.getElementById('closeProblemModal');
     if (closeProblemBtn) {
         closeProblemBtn.onclick = function () {
@@ -826,16 +812,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Close modals when clicking outside modal content
-    window.onclick = function (event) {
+    window.addEventListener('click', function (event) {
         var feedbackModal = document.getElementById('feedbackModal');
         var problemModal = document.getElementById('problemModal');
-        if (event.target == feedbackModal) {
+        if (feedbackModal && event.target == feedbackModal) {
             feedbackModal.style.display = 'none';
         }
-        if (event.target == problemModal) {
+        if (problemModal && event.target == problemModal) {
             problemModal.style.display = 'none';
         }
-    }
+    })
 
     // Printer Status Dropdowns Update Database
     const dropdownSelects = document.querySelectorAll('.dropdown-select');
@@ -1815,44 +1801,38 @@ document.addEventListener('DOMContentLoaded', function () {
     // SSE for real-time printer status and ink updates
     if (window.location.pathname.includes('/portal/status/')) {
         console.log('Setting up SSE connection for printer status...');
-        let evtSource = new EventSource('/sse/printer-status/');
 
-        evtSource.onopen = function () {
-            console.log('SSE connection opened successfully');
-        };
+        function setupPrinterSSE() {
+            let evtSource = new EventSource('/sse/printer-status/');
 
-        evtSource.onerror = function (err) {
-            console.error('SSE connection error:', err);
+            evtSource.onopen = function () {
+                console.log('SSE connection opened successfully');
+            };
 
-            // Try to reconnect after a delay
-            setTimeout(() => {
+            evtSource.onerror = function (err) {
+                console.error('SSE connection error:', err);
                 evtSource.close();
-                evtSource = new EventSource('/sse/printer-status/');
-            }, 5000);
-        };
+                // Reconnect after a delay (re-attaches all handlers)
+                setTimeout(setupPrinterSSE, 5000);
+            };
 
-        evtSource.onmessage = function (event) {
-            console.log('SSE message received:', event.data);
-            try {
-                const data = JSON.parse(event.data);
-                // Flexibly handle different data formats
-                const printers = Array.isArray(data) ? data : (data.printers || []);
+            evtSource.onmessage = function (event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    // Flexibly handle different data formats
+                    const printers = Array.isArray(data) ? data : (data.printers || []);
 
-                // Update each printer in the UI
-                printers.forEach(printer => {
-                    console.log('Updating printer:', printer.printer_name);
-                    console.log('  IP Address:', printer.ip_address);
-                    console.log('  Node Name:', printer.node_name);
-                    console.log('  Status:', printer.printer_status);
-                    console.log('  Ink Status:', printer.ink_status);
-                    update_printer(printer);
-                });
+                    // Update each printer in the UI
+                    printers.forEach(printer => {
+                        update_printer(printer);
+                    });
+                } catch (e) {
+                    console.error('SSE parse error:', e, event.data);
+                }
+            };
+        }
 
-                // Last update timestamp has been removed
-            } catch (e) {
-                console.error('SSE parse error:', e, event.data);
-            }
-        };
+        setupPrinterSSE();
     }
 
     // Global SSE for dashboard stats across all portal pages (for tab title flashing).
@@ -1977,23 +1957,21 @@ document.addEventListener('DOMContentLoaded', function () {
             document.title = baseTitle;
         }
 
-        let evtSourceDash = new EventSource('/sse/dashboard-status/');
+        function setupDashboardSSE() {
+            let evtSourceDash = new EventSource('/sse/dashboard-status/');
 
-        evtSourceDash.onopen = function () {
-            console.log('Dashboard SSE connection established');
-        };
+            evtSourceDash.onopen = function () {
+                console.log('Dashboard SSE connection established');
+            };
 
-        evtSourceDash.onerror = function (err) {
-            console.error('Dashboard SSE connection error:', err);
-
-            // Try to reconnect after a delay
-            setTimeout(() => {
+            evtSourceDash.onerror = function (err) {
+                console.error('Dashboard SSE connection error:', err);
                 evtSourceDash.close();
-                evtSourceDash = new EventSource('/sse/dashboard-status/');
-            }, 5000);
-        };
+                // Reconnect after a delay (re-attaches all handlers)
+                setTimeout(setupDashboardSSE, 5000);
+            };
 
-        evtSourceDash.onmessage = function (event) {
+            evtSourceDash.onmessage = function (event) {
             try {
                 const stats = JSON.parse(event.data);
                 // Use the "Print Jobs Completed" value directly for the flashing count
@@ -2126,6 +2104,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 console.error('Dashboard SSE parse error:', e);
             }
         };
+    }
+
+        setupDashboardSSE();
     }
 
 });

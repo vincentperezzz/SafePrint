@@ -237,36 +237,25 @@ def submit_ticket(request):
     
     POST /api/submit-ticket/
     
-    Request:
-        {
-            "customer_id": "string",
-            "document_id": "string",
-            "document_name": "string",
-            "documents": [{"doc_id": "string", "doc_name": "string"}] (optional),
-            "customer_name": "string",
-            "email": "string",
-            "phone_number": "string",
-            "problem_type": "quality" | "missing-pages" | "no-print" | "other",
-            "description": "string",
-            "page_range": "all" | "specific",
-            "specific_pages": "string",
-            "reprinted": true | false
-        }
+    Accepts both JSON and multipart/form-data (for file uploads).
     
-    Response (Success):
-        {
-            "success": true,
-            "ticket_number": "#TKT-YYMMDD-XXXX"
-        }
-    
-    Response (Error):
-        {
-            "success": false,
-            "error": "Error message"
-        }
+    Fields:
+        customer_id, document_id, document_name, customer_name,
+        email, phone_number, problem_type, description,
+        page_range, specific_pages, reprinted,
+        receipt_code, receipt_screenshot (file)
     """
     try:
-        data = json.loads(request.body)
+        content_type = request.content_type or ''
+        
+        if 'multipart/form-data' in content_type:
+            # Multipart form data (has file upload)
+            data = request.POST
+            receipt_screenshot = request.FILES.get('receipt_screenshot')
+        else:
+            # JSON body (legacy, no file)
+            data = json.loads(request.body)
+            receipt_screenshot = None
         
         # Required fields
         customer_id = data.get('customer_id', '')
@@ -282,6 +271,18 @@ def submit_ticket(request):
         page_range = data.get('page_range', 'all')
         specific_pages = data.get('specific_pages', '')
         was_reprinted = data.get('reprinted', False)
+        if isinstance(was_reprinted, str):
+            was_reprinted = was_reprinted.lower() in ('true', '1', 'yes')
+        receipt_code = data.get('receipt_code', '').strip()
+        
+        # Handle documents list (for multi-doc mode)
+        documents_list = data.get('documents')
+        if documents_list and isinstance(documents_list, str):
+            import json as json_module
+            try:
+                documents_list = json_module.loads(documents_list)
+            except (json_module.JSONDecodeError, TypeError):
+                documents_list = None
         
         # Validation
         if not customer_name:
@@ -322,7 +323,9 @@ def submit_ticket(request):
             description=description,
             page_range=page_range,
             specific_pages=specific_pages,
-            was_reprinted=was_reprinted
+            was_reprinted=was_reprinted,
+            receipt_code=receipt_code,
+            receipt_screenshot=receipt_screenshot,
         )
         
         logger.info(f"Support ticket created: {ticket.ticket_number} for customer {customer_name}")

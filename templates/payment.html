@@ -2,14 +2,14 @@
 {% load static %}
 
 {% block title %}
-SafePrint
+SafePrint - Payment
 {% endblock %}
 
 {% block content %}
 <div class="confirmation">
     <div class="confirmation-wrapper">
-        <div class="confirmation-title">Please complete your Payment below via Card or Paypal</div>
-        <div class="confirmation-subtitle">TIP: No card? Use your Maya card linked to your School ID!</div>
+        <div class="confirmation-title">Complete your Payment!</div>
+        <div class="confirmation-subtitle">Pro Tip: Disable pop-up blockers for SafePrint to view the payment gateway.</div>
     </div>
 
     <div class="customer-id">
@@ -30,10 +30,10 @@ SafePrint
                 <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
                 <div class="document-info">
                     <h6 title="{{ doc.name }}">{{ doc.name }}</h6>
-                    <span>₱{{ doc.price|floatformat:2 }}</span>
+                    <span>#{{ doc.doc_id }}</span>
                 </div>
             </div>
-            <div class="document-id">#{{ doc.doc_id }}</div>
+            <div class="document-id">₱{{ doc.price|floatformat:2 }}</div>
         </div>
         {% endfor %}
     </div>
@@ -43,62 +43,58 @@ SafePrint
             <h3>₱{{ total_price|floatformat:2 }}</h3>
             <span>Amount to Pay</span>
         </div>
-            <div class="card-payment-details">
-                <h3>Card Payment</h3>
-                <form class="card-payment-form" autocomplete="off">
-                    <label class="card-label" for="card-number">Card Number</label>
-                    <input
-                        id="card-number"
-                        name="card_number"
-                        type="text"
-                        inputmode="numeric"
-                        placeholder="1234 5678 9012 3456"
-                        class="card-input"
-                    />
 
-                    <label class="card-label" for="cardholder-name">Cardholder Name</label>
-                    <input
-                        id="cardholder-name"
-                        name="cardholder_name"
-                        type="text"
-                        placeholder="JUAN DELA CRUZ"
-                        class="card-input"
-                    />
-
-                    <div class="card-row">
-                        <div class="card-field">
-                            <label class="card-label" for="expiry-date">Expiry Date</label>
-                            <input
-                                id="expiry-date"
-                                name="expiry_date"
-                                type="text"
-                                inputmode="numeric"
-                                placeholder="MM/YY"
-                                class="card-input"
-                            />
-                        </div>
-                        <div class="card-field">
-                            <label class="card-label" for="cvv">CVV</label>
-                            <input
-                                id="cvv"
-                                name="cvv"
-                                type="password"
-                                inputmode="numeric"
-                                placeholder="123"
-                                class="card-input"
-                            />
-                        </div>
-                    </div>
-
-                    <button type="button" class="card-pay-btn">Pay using Card</button>
-                    <button type="button" class="paypal-btn">
-                        <img src="{% static 'assets/paypal-logo.svg' %}" alt="PayPal" />
-                    </button>
-                </form>
-            </div>
+        <!-- STEP 1: Phone number + Pay Now -->
+        <div id="payment-step-1" class="card-payment-details">
+            <h3>Pay with E-Wallet</h3>
+            <p class="payment-hint">
+                Provide the phone number registered with your preferred e-wallet (GCash, Maya, etc.).
+            </p>
+            <form class="card-payment-form" autocomplete="off" onsubmit="event.preventDefault(); initiatePayment();">
+                <label class="card-label" for="phone-number">Phone Number</label>
+                <input
+                    id="phone-number"
+                    name="phone_number"
+                    type="tel"
+                    inputmode="numeric"
+                    placeholder="09XX XXX XXXX"
+                    class="card-input phone-input"
+                    maxlength="13"
+                    required
+                />
+                <button type="submit" id="pay-now-btn" class="card-pay-btn">
+                    Pay ₱{{ total_price|floatformat:0 }} Now
+                </button>
+            </form>
+            <button type="button" class="card-cancel-btn" onclick="cancelPayment()">Cancel</button>
         </div>
+
+        <!-- STEP 2: Waiting for payment confirmation -->
+        <div id="payment-step-2" class="card-payment-details" style="display: none;">
+            <h3>Waiting for Payment</h3>
+            <p id="step2-instructions" class="payment-hint">
+                Complete the payment on the GCash page, then click the button below.
+            </p>
+            <button type="button" id="verify-btn" class="card-pay-btn" onclick="verifyPayment()">
+                I Have Paid ✓
+            </button>
+            <button type="button" id="redirect-payment-btn" class="card-redirect-btn" style="display: none;" onclick="redirectToPayment()">
+                Redirect to Payment
+            </button>
+            <button type="button" class="card-cancel-btn" onclick="cancelPayment()">Cancel</button>
+        </div>
+    </div>
     </div>
 
 </div>
+
+<!-- Payment data for scripts.js -->
+<script>
+    window.PAYMENT_DATA = {
+        customerId: '{{ customer_id }}',
+        docIds: {{ doc_ids_json|safe|default:"[]" }},
+        totalPrice: {{ total_price|default:0 }},
+    };
+</script>
 
 {% endblock %}

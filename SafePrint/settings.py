@@ -126,3 +126,8 @@ MEDIA_URL = '/media/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# KLCiS Payment Integration
+KLCIS_BASE_URL = config('KLCIS_BASE_URL', default='https://s2.klinternetservices.com')
+KLCIS_USERNAME = config('KLCIS_USERNAME', default='')
+KLCIS_PASSWORD = config('KLCIS_PASSWORD', default='')
