@@ -45,6 +45,7 @@ exec gunicorn ${DJANGO_WSGI_MODULE}:application \
   --name $NAME \
   --workers $WORKERS \
   --worker-class gevent \
+  --reload \
   \
   --bind=$BIND \
   --log-level=$LOG_LEVEL \
