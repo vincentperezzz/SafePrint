@@ -147,6 +147,86 @@ def search_customer(request):
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 
+@csrf_exempt
+def get_active_tickets_api(request):
+    """
+    API endpoint that returns active and resolved tickets as JSON.
+    Used by dashboard JavaScript for real-time updates without page reload.
+    """
+    try:
+        # Fetch active tickets
+        active_tickets = list(SupportTicket.objects.filter(
+            status__in=['open', 'in-progress']
+        ).select_related('document').order_by('-created_at'))
+        
+        # Fetch resolved tickets
+        resolved_tickets = list(SupportTicket.objects.filter(
+            status__in=['resolved', 'closed', 'voided', 'refunded']
+        ).select_related('document').order_by('-resolved_at', '-updated_at'))
+        
+        # Attach payment amounts and format data
+        active_tickets_data = []
+        for ticket in active_tickets:
+            payment_amount = None
+            if ticket.document:
+                payment = Payment.objects.filter(doc=ticket.document).first()
+                if payment:
+                    payment_amount = float(payment.price)
+            
+            active_tickets_data.append({
+                'id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'customer_id': ticket.customer_id,
+                'customer_name': ticket.customer_name,
+                'email': ticket.email,
+                'phone_number': ticket.phone_number,
+                'document_name': ticket.document_name,
+                'problem_type': ticket.get_problem_type_display(),
+                'description': ticket.description,
+                'created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'payment_amount': payment_amount,
+                'was_reprinted': ticket.was_reprinted,
+                'doc_id': ticket.document.doc_id if ticket.document else '',
+            })
+        
+        resolved_tickets_data = []
+        for ticket in resolved_tickets:
+            payment_amount = None
+            if ticket.document:
+                payment = Payment.objects.filter(doc=ticket.document).first()
+                if payment:
+                    payment_amount = float(payment.price)
+            
+            resolved_tickets_data.append({
+                'id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'customer_id': ticket.customer_id,
+                'customer_name': ticket.customer_name,
+                'email': ticket.email,
+                'phone_number': ticket.phone_number,
+                'document_name': ticket.document_name,
+                'problem_type': ticket.get_problem_type_display(),
+                'description': ticket.description,
+                'created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'payment_amount': payment_amount,
+                'was_reprinted': ticket.was_reprinted,
+                'doc_id': ticket.document.doc_id if ticket.document else '',
+                'status': ticket.get_status_display(),
+                'resolved_by': ticket.resolved_by,
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'active_tickets': active_tickets_data,
+            'resolved_tickets': resolved_tickets_data,
+            'active_count': len(active_tickets_data),
+            'resolved_count': len(resolved_tickets_data),
+        })
+    except Exception as e:
+        logger.error(f"Error fetching active tickets: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
 def payment(request):
     """
     Handle payment gateway for documents via KLCiS integration.

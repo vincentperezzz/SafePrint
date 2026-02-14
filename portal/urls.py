@@ -25,6 +25,7 @@ urlpatterns = [
     path('api/edit_printer/', views.edit_printer, name='edit_printer'),
     path('api/delete_printer/', views.delete_printer, name='delete_printer'),
     path('api/search_customer/', views.search_customer, name='search_customer'),
+    path('api/get-active-tickets/', views.get_active_tickets_api, name='get_active_tickets_api'),
     path('payment/', views.payment, name='payment'),
     path('api/deny-all-documents/', views.deny_all_documents, name='deny_all_documents'),
     path('api/approve-all-documents/', views.approve_all_documents, name='approve_all_documents'),
