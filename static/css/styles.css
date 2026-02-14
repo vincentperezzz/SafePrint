@@ -4975,7 +4975,9 @@ input:focus::placeholder {
     top: 3.2em;
     background: #fff;
     z-index: 2;
-    margin: 0;
+    margin: 0 0 1.5em 0;
+    border: none;
+    border-top: 2px solid #ddd;
 }
 
 .popup-form .popup-bottom-actions {
