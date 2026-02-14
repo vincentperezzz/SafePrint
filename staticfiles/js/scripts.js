@@ -2394,10 +2394,10 @@ function confirmAllGood() {
         .then(data => {
             if (data.success) {
                 console.log(`Finished transaction: ${data.picked_up_count} docs picked up`);
-                // SSE will update the UI and redirect to thank you page
+                // Redirect immediately — documents are deleted so SSE can't detect the change
+                setTimeout(() => { window.location.href = '/'; }, 1500);
             } else {
                 console.warn('Finish transaction warning:', data.error);
-                // Still redirect even if there's an issue
                 window.location.href = '/';
             }
         })
@@ -2828,13 +2828,8 @@ document.addEventListener('change', function(e) {
             if (data.success) {
                 if (data.mode === 'credit_only') {
                     // Fully covered by credit — skip payment, redirect to confirmation
+                    // Remaining credit (if any) is shown as coupon banner on confirmation page
                     sessionStorage.clear();
-                    let msg = data.message;
-                    if (data.credit_remaining > 0 && data.credit_code) {
-                        msg += '\\n\\nRemaining credit: ₱' + data.credit_remaining.toFixed(2) +
-                               ' on voucher ' + data.credit_code;
-                    }
-                    alert(msg);
                     window.location.href = data.redirect_url;
                     return;
                 }
