@@ -23,16 +23,22 @@ SafePrint
     {% csrf_token %}
 
     {% if credit_info %}
-    <div class="credit-voucher-banner">
-        <div class="credit-voucher-icon">🎟️</div>
-        <div class="credit-voucher-details">
-            <div class="credit-voucher-title">You have credit!</div>
-            <div class="credit-voucher-code">{{ credit_info.code }}</div>
-            <div class="credit-voucher-balance">₱{{ credit_info.balance|floatformat:2 }} available</div>
-            <div class="credit-voucher-expiry">Valid until {{ credit_info.expires_at }}</div>
+    <div class="coupon-banner">
+        <div class="coupon-tab">
+            <span class="coupon-tab-text">DISCOUNT</span>
         </div>
-        <div class="credit-voucher-hint">
-            Use this code on your next print job to save!
+        <div class="coupon-hole"></div>
+        <div class="coupon-body">
+            <div class="coupon-top-row">
+                <div class="coupon-info">
+                    <div class="coupon-flat">Flat ₱{{ credit_info.balance|floatformat:2 }} off*</div>
+                    <div class="coupon-code">{{ credit_info.code }}</div>
+                </div>
+                <div class="coupon-right">
+                    <div class="coupon-hint">Use this code on your next print job to save!</div>
+                    <div class="coupon-expiry">Valid until {{ credit_info.expires_at }}</div>
+                </div>
+            </div>
         </div>
     </div>
     {% endif %}

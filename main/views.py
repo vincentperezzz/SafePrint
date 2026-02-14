@@ -200,6 +200,18 @@ def confirmation(request, customer_id):
     # Check for credit voucher info from session (set during payment verification)
     credit_info = request.session.pop('credit_info', None)
 
+    # Debug mode: always show a test voucher banner for design testing
+    from django.conf import settings as django_settings
+    if django_settings.DEBUG and request.GET.get('debug') == 'true' and not credit_info:
+        credit_info = {
+            'code': 'YZRBCQKA',
+            'balance': 3.00,
+            'expires_at': 'June 14, 2026',
+        }
+
+    if credit_info and credit_info.get('code'):
+        credit_info['code_chars'] = list(credit_info['code'])
+
     context = {
         'customer_id': customer_id,
         'documents': docs_list,
