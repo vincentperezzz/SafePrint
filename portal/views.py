@@ -231,9 +231,7 @@ def payment(request):
             return render(request, 'payment.html', context)
         
         if not customer_id or not documents_ids:
-            context = default_context.copy()
-            context['error'] = 'Invalid customer ID or documents'
-            return render(request, 'payment.html', context)
+            return redirect('home')
         
         try:
             # Normalize customer ID
@@ -248,6 +246,10 @@ def payment(request):
                 doc_status='Pending'
             ).order_by('-time_submitted')
             
+            # No pending documents found — redirect home
+            if not documents.exists():
+                return redirect('home')
+
             documents_data = []
             total_price = 0.0
             doc_ids_list = []
