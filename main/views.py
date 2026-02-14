@@ -183,6 +183,10 @@ def confirmation(request, customer_id):
         customer_id=customer_id
     ).select_related('printer_assigned', 'printed_at').order_by('time_submitted')
 
+    # No documents → nothing to show, redirect home
+    if not documents.exists():
+        return redirect('home')
+
     # Get total price from payments
     payments = Payment.objects.filter(doc__customer_id=customer_id)
     total_price = sum(p.price for p in payments)
