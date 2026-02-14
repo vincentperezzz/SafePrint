@@ -387,8 +387,10 @@ def payment(request):
                     
                     remaining = float(credit_voucher.remaining_balance)
                     
-                    # Store remaining credit info in session for confirmation page coupon
+                    # Store remaining credit info in session + DB for confirmation page coupon
                     if remaining > 0:
+                        credit_voucher.last_customer_id = customer_id
+                        credit_voucher.save()
                         request.session['credit_info'] = {
                             'code': voucher_credit_code,
                             'balance': remaining,
@@ -615,6 +617,7 @@ def payment(request):
                             code=new_code,
                             original_amount=excess_credit,
                             remaining_balance=excess_credit,
+                            last_customer_id=customer_id,
                             expires_at=timezone.now() + timedelta(days=VOUCHER_CREDIT_EXPIRY_DAYS),
                         )
                         credit_info = {
@@ -2226,8 +2229,15 @@ def picked_up_document(request):
                 print(f"[PICKED UP] Deleted file {file_path} for document {doc_id}")
 
         # Delete associated Payment records then the Document record
+        cid = doc.customer_id
         Payment.objects.filter(doc=doc).delete()
         doc.delete()
+
+        # If no documents remain for this CID, clear voucher association
+        remaining_docs = Document.objects.filter(customer_id=cid).exists()
+        if not remaining_docs:
+            from portal.models import VoucherCredit
+            VoucherCredit.objects.filter(last_customer_id=cid).update(last_customer_id=None)
 
         # Trigger folder cleanup
         subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
@@ -2295,6 +2305,10 @@ def finish_transaction(request):
             doc.delete()
 
             picked_up_count += 1
+
+        # Clear voucher credit association with this customer
+        from portal.models import VoucherCredit
+        VoucherCredit.objects.filter(last_customer_id=customer_id).update(last_customer_id=None)
 
         # Trigger folder cleanup
         subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])

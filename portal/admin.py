@@ -46,7 +46,7 @@ class UsedKLCiSTransactionAdmin(admin.ModelAdmin):
 
 @admin.register(VoucherCredit)
 class VoucherCreditAdmin(admin.ModelAdmin):
-    list_display = ('code', 'original_amount', 'remaining_balance', 'is_active', 'expires_at', 'last_used_at')
+    list_display = ('code', 'original_amount', 'remaining_balance', 'is_active', 'last_customer_id', 'expires_at', 'last_used_at')
     list_filter = ('is_active',)
-    search_fields = ('code',)
+    search_fields = ('code', 'last_customer_id')
     readonly_fields = ('created_at',)

@@ -293,6 +293,8 @@ class VoucherCredit(models.Model):
                                             help_text='Current available balance')
     is_active = models.BooleanField(default=True,
                                     help_text='False when fully used or expired')
+    last_customer_id = models.CharField(max_length=255, null=True, blank=True, db_index=True,
+                                        help_text='CID of the last transaction that created/updated this credit')
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(help_text='120 days from creation')
     last_used_at = models.DateTimeField(null=True, blank=True)
