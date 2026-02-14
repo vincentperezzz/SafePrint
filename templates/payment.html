@@ -44,6 +44,12 @@ SafePrint - Payment
             <span id="amount-label">Amount to Pay</span>
         </div>
 
+        <!-- MINIMUM CHARGE DISCLAIMER -->
+        <div id="minimum-disclaimer" class="minimum-disclaimer" style="display: none;">
+            <p>⚠️ Our payment partner requires a minimum of <strong>₱5.00</strong> per transaction. 
+            The excess will be saved as credit for your next print!</p>
+        </div>
+
         <!-- VOUCHER CREDIT SECTION (Collapsible) -->
         <div id="voucher-section" class="card-payment-details voucher-credit-section">
             <div class="voucher-header" onclick="toggleVoucherSection()">
@@ -88,12 +94,6 @@ SafePrint - Payment
                 <span>You Pay</span>
                 <span id="final-charge-display">₱{{ total_price|floatformat:2 }}</span>
             </div>
-        </div>
-
-        <!-- MINIMUM CHARGE DISCLAIMER -->
-        <div id="minimum-disclaimer" class="minimum-disclaimer" style="display: none;">
-            <p>⚠️ Our payment partner requires a minimum of <strong>₱5.00</strong> per transaction. 
-            The excess will be saved as credit for your next print!</p>
         </div>
 
         <!-- STEP 1: Phone number + Pay Now -->

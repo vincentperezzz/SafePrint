@@ -459,6 +459,7 @@ def payment(request):
                 request.session['pending_excess_credit'] = excess_credit
                 request.session['pending_credit_code'] = voucher_credit_code if voucher_credit_code else None
                 request.session['pending_credit_applied'] = credit_applied
+                request.session['pending_charge_amount'] = float(charge_amount)
                 
                 return JsonResponse({
                     'success': True,
@@ -508,38 +509,20 @@ def payment(request):
                 voucher_code = first_payment.voucher_code
                 total_amount = sum(float(p.price) for p in payments)
                 
+                # Use the actual charge amount sent to KLCiS (may differ from
+                # total_amount due to Xendit minimum bump or credit deductions)
+                charge_amount = request.session.get('pending_charge_amount')
+                if charge_amount is None:
+                    # Fallback: apply Xendit minimum bump (same logic as initiate)
+                    credit_applied = request.session.get('pending_credit_applied', 0)
+                    balance_due = total_amount - credit_applied
+                    charge_amount = max(balance_due, XENDIT_MIN_AMOUNT)
+                
                 if not phone_number:
                     return JsonResponse({
                         'success': False,
                         'error': 'No phone number on record for this payment.'
                     })
-                
-                # ── Layer 4: Voucher existence check ──
-                # If the voucher no longer exists on KLCiS, this payment was
-                # already verified or cancelled — don't match any transactions.
-                if voucher_code:
-                    from portal.services.klcis import voucher_exists
-                    if not voucher_exists(voucher_code):
-                        logger.info(
-                            f'Voucher {voucher_code} no longer on KLCiS — '
-                            f'payment already resolved for {customer_id}'
-                        )
-                        # Check if it was verified (not cancelled)
-                        already_paid = Payment.objects.filter(
-                            doc__customer_id=customer_id,
-                            payment_status='Paid',
-                        ).exists()
-                        if already_paid:
-                            return JsonResponse({
-                                'success': True,
-                                'message': 'Payment already verified! Your documents are queued for printing.',
-                                'redirect_url': f'/confirmation/{customer_id}/'
-                            })
-                        return JsonResponse({
-                            'success': False,
-                            'error': 'Payment session expired. Please start a new payment.',
-                            'status': 'expired'
-                        })
                 
                 # Collect Transaction IDs already used by previous payments (dedup)
                 # From active Payment records
@@ -562,9 +545,9 @@ def payment(request):
                 exclude_ids = used_txn_ids | baseline_ids
                 
                 # Check the KLCiS Transaction Logs page for a PAID entry
-                # matching this phone number + amount, excluding old + used txn IDs
+                # matching this phone number + charge amount, excluding old + used txn IDs
                 from portal.services.klcis import verify_transaction_payment
-                result = verify_transaction_payment(phone_number, total_amount, exclude_ids)
+                result = verify_transaction_payment(phone_number, charge_amount, exclude_ids)
                 
                 if result['success']:
                     txn_id = result.get('transaction_id')
@@ -576,7 +559,7 @@ def payment(request):
                             transaction_id=txn_id,
                             defaults={
                                 'phone_number': phone_number or '',
-                                'amount': total_amount,
+                                'amount': charge_amount,
                             }
                         )
                     
@@ -596,7 +579,7 @@ def payment(request):
                             doc.doc_status = 'Queued'
                             doc.save()
                     
-                    # ── Layer 4 cleanup: Delete voucher from KLCiS ──
+                    # ── Voucher cleanup: Delete voucher from KLCiS ──
                     if voucher_code:
                         from portal.services.klcis import cleanup_voucher
                         cleanup_voucher(voucher_code)
@@ -627,11 +610,11 @@ def payment(request):
                                 pending_credit_code = None
                         
                         if not pending_credit_code:
-                            # Create a new voucher credit code
-                            import random, string as str_mod
-                            new_code = ''.join(random.choices(
-                                str_mod.ascii_uppercase + str_mod.digits, k=8
-                            ))
+                            # Use the KLCiS voucher code as the credit code
+                            # (uppercased to match VoucherCredit format)
+                            new_code = voucher_code.upper() if voucher_code else ''.join(
+                                random.choices(str_mod.ascii_uppercase + str_mod.digits, k=8)
+                            )
                             from datetime import timedelta
                             vc = VoucherCredit.objects.create(
                                 code=new_code,
@@ -682,7 +665,7 @@ def payment(request):
                     payment_status='Unpaid'
                 )
                 
-                # ── Layer 4 cleanup: Delete voucher from KLCiS on cancel ──
+                # ── Voucher cleanup: Delete voucher from KLCiS on cancel ──
                 # Don't leave orphaned vouchers sitting on the KLCiS dashboard
                 voucher_codes_to_delete = set(
                     unpaid_payments.exclude(

@@ -2684,8 +2684,8 @@ document.addEventListener('change', function(e) {
             if (phoneSection) phoneSection.style.display = '';
             if (step1Title) step1Title.textContent = 'Pay with E-Wallet';
             if (step1Hint) step1Hint.textContent = 'Provide the phone number registered with your preferred e-wallet (GCash, Maya, etc.).';
-            // Show min disclaimer if applicable even without credit
-            if (chargeAmount < XENDIT_MIN && total < XENDIT_MIN && creditAmount === 0) {
+            // Show min disclaimer if total is below ₱5 minimum (even without credit)
+            if (total < XENDIT_MIN && creditAmount === 0) {
                 minDisclaimer.style.display = 'block';
             }
         }
