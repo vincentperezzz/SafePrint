@@ -21,6 +21,7 @@ urlpatterns = [
     path('api/feedback-submit/', views.feedback_submit_api, name='feedback_submit_api'),
     path('api/problem-reports/', views.problem_reports_api, name='problem_reports_api'),
     path('api/update_printer_field/', views.update_printer_field, name='update_printer_field'),
+    path('api/mark_printer_refilled/', views.mark_printer_refilled, name='mark_printer_refilled'),
     path('api/add_printer/', views.add_printer, name='add_printer'),
     path('api/edit_printer/', views.edit_printer, name='edit_printer'),
     path('api/delete_printer/', views.delete_printer, name='delete_printer'),
