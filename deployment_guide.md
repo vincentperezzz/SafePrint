@@ -116,14 +116,36 @@ openssl s_client -connect safeprint.duckdns.org:443 -tls1_2
 ```
 - Look for the `Signature Algorithm` in the certificate details to verify the digital signature is present and valid.
 
+## Quick Deploy (Static + Gunicorn Reload)
+
+Use this one-liner after editing CSS, JS, templates, or Python code to push changes live:
+
+```bash
+# Copy all static assets and gracefully reload Gunicorn (zero-downtime)
+cd /home/safeprint/dev/SafePrint && \
+  cp -r static/css/* staticfiles/css/ && \
+  cp -r static/js/* staticfiles/js/ && \
+  cp -r static/assets/* staticfiles/assets/ && \
+  cp -r static/sounds/* staticfiles/sounds/ && \
+  kill -HUP $(pgrep -f 'gunicorn.*SafePrint' | head -1)
+```
+
+**What it does:**
+- Copies the entire `static/` tree into `staticfiles/` (CSS, JS, assets, sounds)
+- Sends `SIGHUP` to the Gunicorn master process for a graceful worker reload (no downtime)
+- Templates are served directly by Django, so they take effect on the next request after the HUP
+
+> **Tip:** For Python-only changes (views, models, etc.), you only need the `kill -HUP` part.
+> For static-only changes (CSS/JS), you only need the `cp` commands — but the HUP doesn't hurt.
+
 ## Additional Notes
 
 - Make sure file permissions are correct
 - Ensure your Django settings are configured for production
 - Remember to set DEBUG=False in your .env file
-- Run `python manage.py collectstatic` when you update static files
+- Use the Quick Deploy command above instead of `python manage.py collectstatic` for faster iteration
 - Always clear Python bytecode cache after making code changes
-- Use graceful reload (`pkill -HUP gunicorn`) for minimal downtime
+- Use graceful reload (`kill -HUP`) for minimal downtime — avoids dropping in-flight requests
 
 
 ## Enable HTTPS with DuckDNS and Let's Encrypt
