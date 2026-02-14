@@ -197,11 +197,15 @@ def confirmation(request, customer_id):
             'printer_name': doc.printer_assigned.printer_name if doc.printer_assigned else None,
         })
 
+    # Check for credit voucher info from session (set during payment verification)
+    credit_info = request.session.pop('credit_info', None)
+
     context = {
         'customer_id': customer_id,
         'documents': docs_list,
         'total_price': total_price,
         'stars': range(4),
+        'credit_info': credit_info,
     }
     return render(request, 'confirmation.html', context)
 

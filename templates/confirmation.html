@@ -22,6 +22,21 @@ SafePrint
     <input type="hidden" id="customer-id-data" value="{{ customer_id }}">
     {% csrf_token %}
 
+    {% if credit_info %}
+    <div class="credit-voucher-banner">
+        <div class="credit-voucher-icon">🎟️</div>
+        <div class="credit-voucher-details">
+            <div class="credit-voucher-title">You have credit!</div>
+            <div class="credit-voucher-code">{{ credit_info.code }}</div>
+            <div class="credit-voucher-balance">₱{{ credit_info.balance|floatformat:2 }} available</div>
+            <div class="credit-voucher-expiry">Valid until {{ credit_info.expires_at }}</div>
+        </div>
+        <div class="credit-voucher-hint">
+            Use this code on your next print job to save!
+        </div>
+    </div>
+    {% endif %}
+
     <div class="details-section">
         <div class="documents">
             <div class="details-title">

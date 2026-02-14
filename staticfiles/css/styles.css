@@ -2418,6 +2418,12 @@ input:focus::placeholder {
 .card-redirect-btn:hover {
     background: #e5a319;
     border-color: #e5a319;
+    transform: scale(1.02);
+}
+
+.card-redirect-btn:active {
+    transform: scale(0.98);
+    box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.3) inset;
 }
 
 .payment-spinner {
@@ -2440,6 +2446,255 @@ input:focus::placeholder {
 .phone-input {
     letter-spacing: 1px;
     font-size: 16px;
+}
+
+/* ── Voucher Credit Section (Collapsible) ── */
+.voucher-credit-section {
+    padding: 0 !important;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+.voucher-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s ease;
+}
+
+.voucher-header:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.voucher-header:active {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.voucher-credit-section h3 {
+    font-size: 16px;
+    margin: 0;
+}
+
+.voucher-chevron {
+    font-size: 14px;
+    color: #000;
+    transition: transform 0.3s ease;
+}
+
+.voucher-chevron.open {
+    transform: rotate(180deg);
+}
+
+.voucher-body {
+    padding: 0 16px 16px;
+    animation: voucherSlideDown 0.25s ease;
+}
+
+@keyframes voucherSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.voucher-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.voucher-input {
+    flex: 1;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.voucher-apply-btn {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.voucher-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    flex-wrap: wrap;
+}
+
+.voucher-valid {
+    color: #27ae60;
+    font-weight: 600;
+}
+
+.voucher-invalid {
+    color: #e74c3c;
+}
+
+.voucher-remove-btn {
+    background: none;
+    border: 1px solid #e74c3c;
+    color: #e74c3c;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif;
+    transition: all 0.2s;
+}
+
+.voucher-remove-btn:hover {
+    background: #e74c3c;
+    color: white;
+}
+
+/* ── Discount Summary ── */
+.discount-summary {
+    background: #f0f7ff;
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+}
+
+.discount-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+}
+
+.discount-row.credit-row span:last-child {
+    color: #27ae60;
+    font-weight: 600;
+}
+
+.discount-row.minimum-row span:last-child {
+    color: #e67e22;
+    font-weight: 500;
+    font-size: 13px;
+}
+
+.discount-row.total-row {
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.discount-summary hr {
+    border: none;
+    border-top: 1px solid #d0dfef;
+    margin: 6px 0;
+}
+
+/* ── Minimum Charge Disclaimer ── */
+.minimum-disclaimer {
+    background: #fff7e6;
+    border: 1px solid #ffd666;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    color: #7c5e00;
+    line-height: 1.5;
+}
+
+.minimum-disclaimer p {
+    margin: 0;
+}
+
+/* Credit Voucher Banner - Confirmation Page */
+.credit-voucher-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    border: 1.5px solid #86efac;
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    font-family: 'Space Grotesk', sans-serif;
+    box-shadow: 0 2px 8px rgba(34, 197, 94, 0.08);
+}
+
+.credit-voucher-icon {
+    font-size: 32px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.credit-voucher-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.credit-voucher-title {
+    font-weight: 700;
+    font-size: 16px;
+    color: #166534;
+    margin-bottom: 4px;
+}
+
+.credit-voucher-code {
+    font-family: 'Space Mono', 'Courier New', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: #15803d;
+    letter-spacing: 2px;
+    background: rgba(255, 255, 255, 0.6);
+    padding: 4px 12px;
+    border-radius: 6px;
+    display: inline-block;
+    margin-bottom: 6px;
+    user-select: all;
+}
+
+.credit-voucher-balance {
+    font-size: 14px;
+    font-weight: 600;
+    color: #166534;
+    margin-bottom: 2px;
+}
+
+.credit-voucher-expiry {
+    font-size: 12px;
+    color: #4ade80;
+    margin-bottom: 0;
+}
+
+.credit-voucher-hint {
+    font-size: 12px;
+    color: #16a34a;
+    align-self: center;
+    text-align: right;
+    flex-shrink: 0;
+    max-width: 140px;
+    line-height: 1.4;
+}
+
+@media (max-width: 500px) {
+    .credit-voucher-banner {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 8px;
+        padding: 14px;
+    }
+    .credit-voucher-hint {
+        text-align: center;
+        max-width: none;
+    }
 }
 
 .payment-error-msg {

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction
+from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction, VoucherCredit
 import os
 
 admin.site.register(AdminUser)
@@ -42,3 +42,11 @@ class UsedKLCiSTransactionAdmin(admin.ModelAdmin):
     list_display = ('transaction_id', 'phone_number', 'amount', 'used_at')
     search_fields = ('transaction_id', 'phone_number')
     readonly_fields = ('transaction_id', 'phone_number', 'amount', 'used_at')
+
+
+@admin.register(VoucherCredit)
+class VoucherCreditAdmin(admin.ModelAdmin):
+    list_display = ('code', 'original_amount', 'remaining_balance', 'is_active', 'expires_at', 'last_used_at')
+    list_filter = ('is_active',)
+    search_fields = ('code',)
+    readonly_fields = ('created_at',)
