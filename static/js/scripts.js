@@ -2540,46 +2540,83 @@ function submitFeedbackForm() {
 
     trackForm.addEventListener('submit', function(e) {
         e.preventDefault();
-        const cid = document.getElementById('track-cid-input').value.trim();
+        const input = document.getElementById('track-cid-input').value.trim().toUpperCase();
         const errorDiv = document.getElementById('track-status-error');
+        const voucherResult = document.getElementById('track-voucher-result');
         const btn = document.querySelector('.track-status-btn');
 
-        if (!cid) return;
+        if (!input) return;
 
-        // Hide previous error
+        // Hide previous results
         errorDiv.style.display = 'none';
+        if (voucherResult) voucherResult.style.display = 'none';
         btn.disabled = true;
         btn.textContent = 'Checking...';
 
-        fetch('/api/validate-cid/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ customer_id: cid })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.valid) {
-                if (data.redirect === 'payment' && data.doc_ids && data.doc_ids.length > 0) {
-                    // Unpaid documents — redirect to payment page
-                    var docParams = data.doc_ids.map(function(id) {
-                        return 'doc_ids=' + encodeURIComponent(id);
-                    }).join('&');
-                    window.location.href = '/payment/?customer_id=' + encodeURIComponent(data.customer_id || cid) + '&' + docParams;
+        // Detect: CID (starts with CID- or looks like a customer ID) vs Voucher code
+        const isCID = /^CID[-\s]?\d+$/i.test(input) || /^\d{4,}$/.test(input);
+
+        if (isCID) {
+            // CID flow — validate and redirect
+            fetch('/api/validate-cid/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customer_id: input })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.valid) {
+                    if (data.redirect === 'payment' && data.doc_ids && data.doc_ids.length > 0) {
+                        var docParams = data.doc_ids.map(function(id) {
+                            return 'doc_ids=' + encodeURIComponent(id);
+                        }).join('&');
+                        window.location.href = '/payment/?customer_id=' + encodeURIComponent(data.customer_id || input) + '&' + docParams;
+                    } else {
+                        window.location.href = '/confirmation/' + encodeURIComponent(input) + '/';
+                    }
                 } else {
-                    // All paid — redirect to confirmation
-                    window.location.href = '/confirmation/' + encodeURIComponent(cid) + '/';
+                    errorDiv.textContent = 'No printing session found for this Customer ID.';
+                    errorDiv.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = 'Check';
                 }
-            } else {
+            })
+            .catch(() => {
+                errorDiv.textContent = 'Connection error. Please try again.';
                 errorDiv.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = 'Track Status';
-            }
-        })
-        .catch(() => {
-            errorDiv.style.display = 'block';
-            btn.disabled = false;
-            btn.textContent = 'Track Status';
-        });
+                btn.textContent = 'Check';
+            });
+        } else {
+            // Voucher flow — check voucher balance/validity
+            fetch('/api/check-voucher/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: input })
+            })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.textContent = 'Check';
+                if (data.success) {
+                    // Show voucher result card
+                    document.getElementById('voucher-result-balance').textContent = '₱' + parseFloat(data.balance).toFixed(2) + ' available';
+                    document.getElementById('voucher-result-code').textContent = data.code;
+                    document.getElementById('voucher-result-status').textContent = 'Active — use on your next print!';
+                    document.getElementById('voucher-result-expiry').textContent = 'Valid until ' + data.expires_at;
+                    voucherResult.style.display = 'block';
+                } else {
+                    errorDiv.textContent = data.error || 'No voucher found for this code.';
+                    errorDiv.style.display = 'block';
+                }
+            })
+            .catch(() => {
+                errorDiv.textContent = 'Connection error. Please try again.';
+                errorDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Check';
+            });
+        }
     });
 })();
 
