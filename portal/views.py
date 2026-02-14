@@ -36,8 +36,33 @@ def dashboard(request):
     
     # Dashboard Stats
     completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
-    printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
-    pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
+    
+    # Ticket queries
+    active_tickets = SupportTicket.objects.filter(
+        status__in=['open', 'in-progress']
+    ).select_related('document').order_by('-created_at')
+    
+    resolved_tickets = SupportTicket.objects.filter(
+        status__in=['resolved', 'closed', 'voided', 'refunded']
+    ).select_related('document').order_by('-resolved_at', '-updated_at')
+    
+    # Attach payment amount to each ticket via its document
+    for ticket in active_tickets:
+        ticket.payment_amount = None
+        if ticket.document:
+            payment = Payment.objects.filter(doc=ticket.document).first()
+            if payment:
+                ticket.payment_amount = payment.price
+    
+    for ticket in resolved_tickets:
+        ticket.payment_amount = None
+        if ticket.document:
+            payment = Payment.objects.filter(doc=ticket.document).first()
+            if payment:
+                ticket.payment_amount = payment.price
+    
+    active_tickets_count = active_tickets.count()
+    resolved_tickets_count = resolved_tickets.count()
     
     # Get recent completed documents with payment info and printed_at timestamp
     completed_documents = Document.objects.filter(
@@ -52,8 +77,10 @@ def dashboard(request):
     context = {
         'user': user,
         'completed_jobs_count': completed_jobs_count,
-        'printer_errors_count': printer_errors_count,
-        'pending_customers_count': pending_customers_count,
+        'active_tickets': active_tickets,
+        'resolved_tickets': resolved_tickets,
+        'active_tickets_count': active_tickets_count,
+        'resolved_tickets_count': resolved_tickets_count,
         'completed_documents': completed_documents,
         'searched_documents': searched_documents,
         'customer_id_display': customer_id_display,
@@ -2111,5 +2138,105 @@ def finish_transaction(request):
             'picked_up_count': picked_up_count
         })
 
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def void_ticket(request):
+    """
+    Void an active support ticket. Sets status to 'closed' with resolution 'Voided'.
+    Moves ticket from Active to Resolved section on dashboard.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        ticket_id = data.get('ticket_id')
+
+        if not ticket_id:
+            return JsonResponse({'success': False, 'error': 'ticket_id is required'})
+
+        ticket = SupportTicket.objects.get(id=ticket_id)
+
+        if ticket.status in ['resolved', 'closed', 'voided', 'refunded']:
+            return JsonResponse({'success': False, 'error': 'Ticket is already resolved/closed'})
+
+        # Get current admin user name for resolved_by
+        admin_user_id = request.session.get('admin_user_id')
+        admin_name = ''
+        if admin_user_id:
+            try:
+                admin = AdminUser.objects.get(id=admin_user_id)
+                admin_name = admin.name
+            except AdminUser.DoesNotExist:
+                pass
+
+        from django.utils import timezone
+        ticket.status = 'voided'
+        ticket.resolved_by = admin_name
+        ticket.resolved_at = timezone.now()
+        ticket.admin_notes = (ticket.admin_notes + '\nVoided by ' + admin_name).strip()
+        ticket.save()
+
+        return JsonResponse({
+            'success': True,
+            'ticket_number': ticket.ticket_number,
+            'status': 'Voided',
+        })
+
+    except SupportTicket.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Ticket not found'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def refund_ticket(request):
+    """
+    Refund an active support ticket. Sets status to 'resolved' with resolution 'Refunded'.
+    Moves ticket from Active to Resolved section on dashboard.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        ticket_id = data.get('ticket_id')
+
+        if not ticket_id:
+            return JsonResponse({'success': False, 'error': 'ticket_id is required'})
+
+        ticket = SupportTicket.objects.get(id=ticket_id)
+
+        if ticket.status in ['resolved', 'closed', 'voided', 'refunded']:
+            return JsonResponse({'success': False, 'error': 'Ticket is already resolved/closed'})
+
+        # Get current admin user name for resolved_by
+        admin_user_id = request.session.get('admin_user_id')
+        admin_name = ''
+        if admin_user_id:
+            try:
+                admin = AdminUser.objects.get(id=admin_user_id)
+                admin_name = admin.name
+            except AdminUser.DoesNotExist:
+                pass
+
+        from django.utils import timezone
+        ticket.status = 'refunded'
+        ticket.resolved_by = admin_name
+        ticket.resolved_at = timezone.now()
+        ticket.admin_notes = (ticket.admin_notes + '\nRefunded by ' + admin_name).strip()
+        ticket.save()
+
+        return JsonResponse({
+            'success': True,
+            'ticket_number': ticket.ticket_number,
+            'status': 'Refunded',
+        })
+
+    except SupportTicket.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Ticket not found'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})

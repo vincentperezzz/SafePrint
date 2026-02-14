@@ -36,11 +36,11 @@ Dashboard
     </div>
     <div class="stat-card red">
         <h3>Active <br>Tickets</h3>
-        <p id="active-tickets-count">{{ printer_errors_count }}</p>
+        <p id="active-tickets-count">{{ active_tickets_count }}</p>
     </div>
     <div class="stat-card yellow">
         <h3>Resolved <br>Tickets</h3>
-        <p id="resolved-tickets-count">{{ pending_customers_count }}</p>
+        <p id="resolved-tickets-count">{{ resolved_tickets_count }}</p>
     </div>
 </div>
 
@@ -74,57 +74,41 @@ Dashboard
                         </div>
                     </div>
 
-                    <div class="document-item placeholder">
+                    {% for ticket in active_tickets %}
+                    <div class="document-item" data-ticket-number="{{ ticket.ticket_number }}" data-ticket-id="{{ ticket.id }}">
                         <div class="ticket-cell">
                             <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
                             <div class="ticket-meta">
-                                <h6>71101054</h6>
-                                <span>₱45.00</span>
+                                <h6>{{ ticket.ticket_number }}</h6>
+                                <span>{% if ticket.payment_amount %}₱{{ ticket.payment_amount }}{% else %}—{% endif %}</span>
                             </div>
                         </div>
-                        <div class="ticket-issue">Low Quality / Damage</div>
-                        <div class="ticket-date">2025-04-10 08:32:55</div>
-                        <div class="ticket-customer">#CID-4405</div>
+                        <div class="ticket-issue">{{ ticket.get_problem_type_display }}</div>
+                        <div class="ticket-date">{{ ticket.created_at|date:"Y-m-d H:i:s" }}</div>
+                        <div class="ticket-customer">#{{ ticket.customer_id }}</div>
                         <div class="actions">
-                            <button class="deny-btn" type="button">Void</button>
-                            <button class="approve-btn" type="button" data-open-ticket-modal>Verify</button>
-                            <button class="refund-btn" type="button">Refund</button>
+                            <button class="deny-btn" type="button" data-action="void" data-ticket-id="{{ ticket.id }}">Void</button>
+                            <button class="approve-btn" type="button" data-open-ticket-modal
+                                data-ticket-id="{{ ticket.id }}"
+                                data-ticket-number="{{ ticket.ticket_number }}"
+                                data-customer-id="{{ ticket.customer_id }}"
+                                data-customer-name="{{ ticket.customer_name }}"
+                                data-email="{{ ticket.email }}"
+                                data-phone="{{ ticket.phone_number }}"
+                                data-doc-id="{{ ticket.document.doc_id|default:'' }}"
+                                data-doc-name="{{ ticket.document_name }}"
+                                data-issue="{{ ticket.description }}"
+                                data-problem-type="{{ ticket.get_problem_type_display }}"
+                                data-was-reprinted="{{ ticket.was_reprinted }}"
+                            >Verify</button>
+                            <button class="refund-btn" type="button" data-action="refund" data-ticket-id="{{ ticket.id }}">Refund</button>
                         </div>
                     </div>
-                    <div class="document-item placeholder">
-                        <div class="ticket-cell">
-                            <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
-                            <div class="ticket-meta">
-                                <h6>48392617</h6>
-                                <span>₱15.00</span>
-                            </div>
-                        </div>
-                        <div class="ticket-issue">Some Pages Missing / Blank</div>
-                        <div class="ticket-date">2025-04-10 08:33:55</div>
-                        <div class="ticket-customer">#CID-4406</div>
-                        <div class="actions">
-                            <button class="deny-btn" type="button">Void</button>
-                            <button class="approve-btn" type="button" data-open-ticket-modal>Verify</button>
-                            <button class="refund-btn" type="button">Refund</button>
-                        </div>
+                    {% empty %}
+                    <div class="document-item empty-row">
+                        <p style="text-align:center; width:100%; padding:1em; color:#888;">No active tickets</p>
                     </div>
-                    <div class="document-item placeholder">
-                        <div class="ticket-cell">
-                            <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
-                            <div class="ticket-meta">
-                                <h6>90527463</h6>
-                                <span>₱5.00</span>
-                            </div>
-                        </div>
-                        <div class="ticket-issue">Whole Document Did Not Print</div>
-                        <div class="ticket-date">2025-04-10 08:25:11</div>
-                        <div class="ticket-customer">#CID-3298</div>
-                        <div class="actions">
-                            <button class="deny-btn" type="button">Void</button>
-                            <button class="approve-btn" type="button" data-open-ticket-modal>Verify</button>
-                            <button class="refund-btn" type="button">Refund</button>
-                        </div>
-                    </div>
+                    {% endfor %}
                 </div>  
             </div>
         </div>
@@ -152,36 +136,44 @@ Dashboard
                             <p>Email</p>
                             <p>Verified by</p>
                             <p>Status</p>
+                            <p></p>
                         </div>
                     </div>
 
+                    {% for ticket in resolved_tickets %}
                     <div class="document-item resolved-row">
                         <div class="ticket-cell">
                             <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
                             <div class="ticket-meta">
-                                <h6>76249138</h6>
-                                <span>₱30.00</span>
+                                <h6>{{ ticket.ticket_number }}</h6>
+                                <span>{% if ticket.payment_amount %}₱{{ ticket.payment_amount }}{% else %}—{% endif %}</span>
                             </div>
                         </div>
-                        <div class="resolved-customer">John Doe</div>
-                        <div class="resolved-email">example@email.com</div>
-                        <div class="resolved-verifier">Vincent Perez</div>
-                        <div class="resolved-status">Voided</div>
-                    </div>
-
-                    <div class="document-item resolved-row">
-                        <div class="ticket-cell">
-                            <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
-                            <div class="ticket-meta">
-                                <h6>31485720</h6>
-                                <span>₱15.00</span>
-                            </div>
+                        <div class="resolved-customer">{{ ticket.customer_name }}</div>
+                        <div class="resolved-email">{{ ticket.email }}</div>
+                        <div class="resolved-verifier">{{ ticket.resolved_by|default:"—" }}</div>
+                        <div class="resolved-status">{{ ticket.get_status_display }}</div>
+                        <div class="resolved-details">
+                            <button class="approve-btn view-details-btn" type="button" data-open-ticket-modal
+                                data-ticket-id="{{ ticket.id }}"
+                                data-ticket-number="{{ ticket.ticket_number }}"
+                                data-customer-id="{{ ticket.customer_id }}"
+                                data-customer-name="{{ ticket.customer_name }}"
+                                data-email="{{ ticket.email }}"
+                                data-phone="{{ ticket.phone_number }}"
+                                data-doc-id="{{ ticket.document.doc_id|default:'' }}"
+                                data-doc-name="{{ ticket.document_name }}"
+                                data-issue="{{ ticket.description }}"
+                                data-problem-type="{{ ticket.get_problem_type_display }}"
+                                data-was-reprinted="{{ ticket.was_reprinted }}"
+                            >View Details</button>
                         </div>
-                        <div class="resolved-customer">Jane Doe</div>
-                        <div class="resolved-email">example@email.com</div>
-                        <div class="resolved-verifier">Crystaline Datu</div>
-                        <div class="resolved-status">Refunded</div>
                     </div>
+                    {% empty %}
+                    <div class="document-item resolved-row empty-row">
+                        <p style="text-align:center; width:100%; padding:1em; color:#888;">No resolved tickets</p>
+                    </div>
+                    {% endfor %}
                 </div>
             </div>
         </div>
@@ -200,40 +192,40 @@ Dashboard
             <div class="ticket-modal__grid">
                 <div>
                     <p class="ticket-modal__label">Customer ID</p>
-                    <p class="ticket-modal__value">#CID-4405</p>
+                    <p class="ticket-modal__value" id="modal-customer-id"></p>
                 </div>
                 <div>
                     <p class="ticket-modal__label">Document ID</p>
-                    <p class="ticket-modal__value">#DOC-1003<br>#DOC-1004</p>
+                    <p class="ticket-modal__value" id="modal-doc-id"></p>
                 </div>
                 <div>
                     <p class="ticket-modal__label">Customer Name</p>
-                    <p class="ticket-modal__value">Juan Dela Cruz</p>
+                    <p class="ticket-modal__value" id="modal-customer-name"></p>
                 </div>
                 <div>
                     <p class="ticket-modal__label">Document Name</p>
-                    <p class="ticket-modal__value">Abstract (2).pdf<br>School ID (2).pdf</p>
+                    <p class="ticket-modal__value" id="modal-doc-name"></p>
                 </div>
                 <div>
                     <p class="ticket-modal__label">Email</p>
-                    <p class="ticket-modal__value">juandelacruz@email.com</p>
+                    <p class="ticket-modal__value" id="modal-email"></p>
                 </div>
-                <div></div>
+                <div>
+                    <p class="ticket-modal__label">Problem Type</p>
+                    <p class="ticket-modal__value" id="modal-problem-type"></p>
+                </div>
                 <div>
                     <p class="ticket-modal__label">Contact Number</p>
-                    <p class="ticket-modal__value">09912345678</p>
+                    <p class="ticket-modal__value" id="modal-phone"></p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Reprinted</p>
+                    <p class="ticket-modal__value" id="modal-reprinted"></p>
                 </div>
             </div>
             <div class="ticket-modal__issue">
                 <p class="ticket-modal__label">Issue</p>
-                <p class="ticket-modal__value">
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus eget tincidunt nisl.
-                    Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae;
-                    Aliquam erat volutpat. Phasellus nisi metus, viverra eu dignissim ultricies, viverra sit amet orci.
-                    Etiam sagittis hendrerit nibh, vitae molestie lorem facilisis sit amet. Proin semper fringilla purus
-                    vitae elementum. Nam pretium nunc vitae elit ullamcorper, id egestas ligula aliquet. Quisque nec
-                    ultrices erat.
-                </p>
+                <p class="ticket-modal__value" id="modal-issue"></p>
             </div>
         </div>
         <button class="ticket-modal__download" type="button">Download System Logs</button>
@@ -243,51 +235,25 @@ Dashboard
 <script>
     var csrfToken = "{{ csrf_token }}";
 
-    document.addEventListener('DOMContentLoaded', function () {
-        var activeCountEl = document.getElementById('active-tickets-count');
-        var resolvedCountEl = document.getElementById('resolved-tickets-count');
-        var activeResults = document.getElementById('document-results');
-        var resolvedResults = document.querySelector('.resolved-list-container .document-results');
-
-        if (activeCountEl && activeResults) {
-            var activeRows = Array.from(activeResults.querySelectorAll('.document-item'))
-                .filter(function (row) { return !row.classList.contains('empty-row'); });
-            activeCountEl.textContent = String(activeRows.length);
-        }
-
-        if (resolvedCountEl && resolvedResults) {
-            var resolvedRows = Array.from(resolvedResults.querySelectorAll('.document-item.resolved-row'))
-                .filter(function (row) { return !row.classList.contains('empty-row'); });
-            resolvedCountEl.textContent = String(resolvedRows.length);
-        }
-    });
-
-    window.addEventListener('load', function () {
-        var activeCountEl = document.getElementById('active-tickets-count');
-        var resolvedCountEl = document.getElementById('resolved-tickets-count');
-        var activeResults = document.getElementById('document-results');
-        var resolvedResults = document.querySelector('.resolved-list-container .document-results');
-
-        if (activeCountEl && activeResults) {
-            var activeRows = Array.from(activeResults.querySelectorAll('.document-item'))
-                .filter(function (row) { return !row.classList.contains('empty-row'); });
-            activeCountEl.textContent = String(activeRows.length);
-        }
-
-        if (resolvedCountEl && resolvedResults) {
-            var resolvedRows = Array.from(resolvedResults.querySelectorAll('.document-item.resolved-row'))
-                .filter(function (row) { return !row.classList.contains('empty-row'); });
-            resolvedCountEl.textContent = String(resolvedRows.length);
-        }
-    });
-
     (function () {
         var modal = document.getElementById('ticket-modal');
         if (!modal) return;
-        var openButtons = document.querySelectorAll('[data-open-ticket-modal]');
         var closeButtons = document.querySelectorAll('[data-close-ticket-modal]');
 
-        function openModal() {
+        function openModal(button) {
+            // Populate modal fields from data attributes
+            document.getElementById('modal-customer-id').textContent = '#' + (button.getAttribute('data-customer-id') || '');
+            document.getElementById('modal-doc-id').textContent = button.getAttribute('data-doc-id') || '—';
+            document.getElementById('modal-customer-name').textContent = button.getAttribute('data-customer-name') || '';
+            document.getElementById('modal-doc-name').textContent = button.getAttribute('data-doc-name') || '';
+            document.getElementById('modal-email').textContent = button.getAttribute('data-email') || '';
+            document.getElementById('modal-phone').textContent = button.getAttribute('data-phone') || '—';
+            document.getElementById('modal-issue').textContent = button.getAttribute('data-issue') || '';
+            document.getElementById('modal-problem-type').textContent = button.getAttribute('data-problem-type') || '';
+            document.getElementById('modal-reprinted').textContent = button.getAttribute('data-was-reprinted') === 'True' ? 'Yes' : 'No';
+
+            document.getElementById('ticket-modal-title').textContent = 'Ticket ' + (button.getAttribute('data-ticket-number') || '');
+
             modal.classList.add('is-open');
             modal.setAttribute('aria-hidden', 'false');
             document.body.style.overflow = 'hidden';
@@ -299,8 +265,9 @@ Dashboard
             document.body.style.overflow = '';
         }
 
-        openButtons.forEach(function (button) {
-            button.addEventListener('click', openModal);
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-open-ticket-modal]');
+            if (btn) openModal(btn);
         });
 
         closeButtons.forEach(function (button) {
@@ -311,6 +278,60 @@ Dashboard
             if (event.key === 'Escape' && modal.classList.contains('is-open')) {
                 closeModal();
             }
+        });
+    })();
+
+    /* Dashboard search filter for active tickets */
+    (function () {
+        var searchInput = document.getElementById('dashboard-search');
+        if (!searchInput) return;
+        searchInput.addEventListener('input', function () {
+            var query = this.value.toLowerCase();
+            var rows = document.querySelectorAll('#document-results .document-item:not(.empty-row)');
+            rows.forEach(function (row) {
+                var ticketNum = row.getAttribute('data-ticket-number') || '';
+                row.style.display = ticketNum.toLowerCase().indexOf(query) !== -1 ? '' : 'none';
+            });
+        });
+    })();
+
+    /* Void / Refund button handlers */
+    (function () {
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-action]');
+            if (!btn) return;
+
+            var action = btn.getAttribute('data-action');
+            var ticketId = btn.getAttribute('data-ticket-id');
+            if (!ticketId || (action !== 'void' && action !== 'refund')) return;
+
+            var confirmMsg = action === 'void'
+                ? 'Are you sure you want to void this ticket?'
+                : 'Are you sure you want to refund this ticket?';
+            if (!confirm(confirmMsg)) return;
+
+            var url = action === 'void' ? '/api/void-ticket/' : '/api/refund-ticket/';
+
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ ticket_id: ticketId })
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    // Reload page to reflect the change
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(function (err) {
+                alert('Request failed: ' + err.message);
+            });
         });
     })();
 </script>

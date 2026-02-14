@@ -319,6 +319,8 @@ class SupportTicket(models.Model):
         ('in-progress', 'In Progress'),
         ('resolved', 'Resolved'),
         ('closed', 'Closed'),
+        ('voided', 'Voided'),
+        ('refunded', 'Refunded'),
     ]
     
     ticket_number = models.CharField(max_length=20, unique=True, db_index=True)

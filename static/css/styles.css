@@ -2974,12 +2974,12 @@ input:focus::placeholder {
 }
 
 .document-item-title.resolved-header {
-    grid-template-columns: 1.1fr 1fr 1fr 0.8fr 0.8fr;
+    grid-template-columns: 0.6fr 0.55fr 0.6fr 0.4fr 0.4fr 0.17fr;
     background-color: #ffffff;
 }
 
 .document-item.resolved-row {
-    grid-template-columns: 1.1fr 1fr 1fr 0.8fr 0.8fr;
+    grid-template-columns: 0.6fr 0.55fr 0.6fr 0.4fr 0.4fr auto;
 }
 
 .resolved-customer,
@@ -2990,6 +2990,26 @@ input:focus::placeholder {
     font-weight: 500;
     color: #2a2a2a;
     font-family: 'Montserrat', sans-serif;
+}
+
+.resolved-details {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.view-details-btn {
+    width: auto !important;
+    min-width: auto !important;
+    max-width: none !important;
+    flex: none !important;
+    white-space: nowrap;
+    padding: 6px 10px !important;
+    border-radius: 10px !important;
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    line-height: 1.5 !important;
+    box-shadow: 0px 2px 0px 0px #18191F !important;
 }
 
 .search-bar {

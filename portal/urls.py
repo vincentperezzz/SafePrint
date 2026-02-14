@@ -37,4 +37,6 @@ urlpatterns = [
     path('sse/customer-documents/<str:customer_id>/', views.customer_documents_stream, name='customer_documents_stream'),
     path('api/picked-up-document/', views.picked_up_document, name='picked_up_document'),
     path('api/finish-transaction/', views.finish_transaction, name='finish_transaction'),
+    path('api/void-ticket/', views.void_ticket, name='void_ticket'),
+    path('api/refund-ticket/', views.refund_ticket, name='refund_ticket'),
 ]
