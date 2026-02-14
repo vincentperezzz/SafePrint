@@ -8,30 +8,52 @@
     <div class="track-status-card">
         <div class="track-status-header">
             <h2 class="track-status-title">Track Your Print Status</h2>
-            <p class="track-status-subtitle">Enter your Customer ID to check your printing progress.</p>
+            <p class="track-status-subtitle">Enter your Customer ID or Voucher Code to check your status.</p>
         </div>
 
         <form id="track-status-form" class="track-status-form">
             {% csrf_token %}
             <div class="track-status-input-group">
-                <label for="track-cid-input" class="track-status-label">Customer ID</label>
+                <label for="track-cid-input" class="track-status-label">Customer ID or Voucher Code</label>
                 <input 
                     type="text" 
                     id="track-cid-input" 
                     class="track-status-input" 
-                    placeholder="e.g. CID-1234" 
+                    placeholder="e.g. CID-1234 or YZRBCQKA" 
                     autocomplete="off"
                     autocorrect="off"
-                    autocapitalize="off"
+                    autocapitalize="characters"
                     spellcheck="false"
                     required
                 >
             </div>
-            <button type="submit" class="track-status-btn">Track Status</button>
+            <button type="submit" class="track-status-btn">Check</button>
         </form>
 
         <div id="track-status-error" class="track-status-error" style="display: none;">
-            No printing session found for this Customer ID.
+            No printing session or voucher found for this code.
+        </div>
+
+        <!-- Voucher result card (hidden by default) -->
+        <div id="track-voucher-result" class="track-voucher-result" style="display: none;">
+            <div class="coupon-banner">
+                <div class="coupon-tab">
+                    <span class="coupon-tab-text">VOUCHER</span>
+                </div>
+                <div class="coupon-hole"></div>
+                <div class="coupon-body">
+                    <div class="coupon-top-row">
+                        <div class="coupon-info">
+                            <div class="coupon-flat" id="voucher-result-balance"></div>
+                            <div class="coupon-code" id="voucher-result-code"></div>
+                        </div>
+                        <div class="coupon-right">
+                            <div class="coupon-hint" id="voucher-result-status"></div>
+                            <div class="coupon-expiry" id="voucher-result-expiry"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

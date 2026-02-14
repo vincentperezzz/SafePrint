@@ -2035,6 +2035,10 @@ input:focus::placeholder {
     font-weight: 500;
 }
 
+.track-voucher-result {
+    margin-top: 20px;
+}
+
 /* Active CID Alert Banner */
 .active-cid-alert {
     position: fixed;
