@@ -197,8 +197,24 @@ def confirmation(request, customer_id):
             'printer_name': doc.printer_assigned.printer_name if doc.printer_assigned else None,
         })
 
-    # Check for credit voucher info from session (set during payment verification)
-    credit_info = request.session.pop('credit_info', None)
+    # Check for credit voucher info:
+    # 1. Session (set during payment verification — first load)
+    # 2. DB fallback (VoucherCredit tied to this customer_id — persists across reloads)
+    credit_info = request.session.get('credit_info', None)
+
+    if not credit_info:
+        from portal.models import VoucherCredit
+        vc = VoucherCredit.objects.filter(
+            last_customer_id=customer_id,
+            is_active=True,
+            remaining_balance__gt=0,
+        ).first()
+        if vc and not vc.is_expired:
+            credit_info = {
+                'code': vc.code,
+                'balance': float(vc.remaining_balance),
+                'expires_at': vc.expires_at.strftime('%B %d, %Y'),
+            }
 
     # Debug mode: always show a test voucher banner for design testing
     from django.conf import settings as django_settings
