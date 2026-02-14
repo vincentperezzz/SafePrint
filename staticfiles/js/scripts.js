@@ -2715,6 +2715,7 @@ document.addEventListener('change', function(e) {
 
             if (data.success) {
                 stopAutoPolling();
+                sessionStorage.clear();
                 alert(data.message || 'Payment verified! Redirecting to print queue...');
                 window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
             } else {
@@ -2761,6 +2762,7 @@ document.addEventListener('change', function(e) {
                 const data = await response.json();
                 if (data.success) {
                     stopAutoPolling();
+                    sessionStorage.clear();
                     alert(data.message || 'Payment verified! Redirecting to print queue...');
                     window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
                 }
@@ -2796,6 +2798,9 @@ document.addEventListener('change', function(e) {
                 customer_id: PAYMENT.customerId,
             }),
         }).finally(() => {
+            // Clear all browser-side storage to prevent stale redirects
+            sessionStorage.clear();
+            try { localStorage.removeItem('pending_payment'); } catch (e) { /* ignore */ }
             window.location.href = '/';
         });
     };
