@@ -78,16 +78,23 @@ This takes the student **straight to GCash/Xendit** — zero extra steps.
        │     "I Have Paid")    │                        │
        │──────────────────────>│                        │
        │                       │                        │
-       │                       │  7. GET /transactions   │
+       │                       │  7. Layer 4: Check     │
+       │                       │  voucher still exists  │
+       │                       │  on KLCiS import page  │
+       │                       │───────────────────────>│
+       │                       │                        │
+       │                       │  8. GET /transactions   │
        │                       │  → parse PAID rows     │
        │                       │  → match phone+amount  │
        │                       │  → exclude baseline +  │
        │                       │    used txn IDs        │
        │                       │───────────────────────>│
        │                       │                        │
-       │                       │  8. New PAID txn found  │
+       │                       │  9. New PAID txn found  │
        │                       │  → save to persistent  │
        │                       │    UsedKLCiSTransaction │
+       │                       │  → DELETE voucher from │
+       │                       │    KLCiS (cleanup)     │
        │                       │<───────────────────────│
        │                       │                        │
        │  9. Alert: "Payment   │                        │
@@ -175,10 +182,11 @@ At any step, the student can click **Cancel** (red button):
 
 **Backend actions:**
 1. Find unpaid `Payment` records for this customer with a `voucher_code`
-2. Build exclusion set: `used_txn_ids` (from Payment table) + `UsedKLCiSTransaction` table + `baseline_txn_ids` (from session)
-3. Fetch KLCiS `/transactions` page
-4. Parse table rows: match STATUS == "PAID" + phone matches + amount matches + txn_id NOT in exclusion set
-5. If found: save txn_id to `UsedKLCiSTransaction` (persistent), mark payments as `Paid`, set documents to `Queued`, clear session flags
+2. **Layer 4: Check voucher still exists** on KLCiS `/voucher_import` page — if gone, this payment was already verified/cancelled; return appropriate status
+3. Build exclusion set: `used_txn_ids` (from Payment table) + `UsedKLCiSTransaction` table + `baseline_txn_ids` (from session)
+4. Fetch KLCiS `/transactions` page
+5. Parse table rows: match STATUS == "PAID" + phone matches + amount matches + txn_id NOT in exclusion set
+6. If found: save txn_id to `UsedKLCiSTransaction` (persistent), mark payments as `Paid`, set documents to `Queued`, **delete voucher from KLCiS** (cleanup), clear session flags
 
 **Response (success):**
 ```json
@@ -210,10 +218,11 @@ At any step, the student can click **Cancel** (red button):
 
 **Backend actions:**
 1. Find all unpaid Payment records for this customer
-2. Delete uploaded PDF files from `media/uploads/{customer_id}/`
-3. Delete Payment and Document records
-4. Remove empty customer folder
-5. Clear session flags
+2. **Delete voucher(s) from KLCiS** — find by code on `/voucher_import`, extract internal ID, call `/core/delete_voucher_core`
+3. Delete uploaded PDF files from `media/uploads/{customer_id}/`
+4. Delete Payment and Document records
+5. Remove empty customer folder
+6. Clear session flags
 
 ---
 
@@ -227,7 +236,7 @@ All endpoints on `https://s2.klinternetservices.com`:
 | `POST` | `/core/create_voucher_core` | Create voucher (`voucher`, `amount`) → `"success"` |
 | `POST` | `/core/delete_voucher_core` | Delete voucher (`id`) → `"success"` |
 | `GET` | `/voucher_status` | Sold vouchers table (backup check) |
-| `GET` | `/voucher_import` | Voucher management page |
+| `GET` | `/voucher_import` | Voucher management page — **Layer 4 checks voucher existence here** |
 | `GET` | `/transactions` | **Primary verification** — Transaction Logs table |
 | `GET` | `/xendit/payment?token=...&amount=...&number=...` | Direct checkout (public, no login) |
 
@@ -290,7 +299,7 @@ Old PAID transactions on KLCiS with the same phone+amount can cause **false posi
 3. Student uploads new docs, pays again with same phone+amount
 4. Verify immediately matches the **old** PAID transaction → false positive!
 
-### Three-Layer Protection
+### Four-Layer Protection
 
 #### Layer 1: Active Payment Records
 ```python
@@ -316,7 +325,40 @@ baseline_ids = set(request.session.get('baseline_txn_ids', []))
 exclude_ids = used_txn_ids | baseline_ids
 ```
 
-**Result:** Only transactions that appear AFTER initiation AND are not in the persistent table can match.
+#### Layer 4: Voucher Existence on KLCiS (State Flag)
+The voucher on KLCiS acts as an "active payment" flag:
+
+| Voucher on KLCiS? | Meaning |
+|---|---|
+| ✅ Exists | Payment is pending — proceed with transaction matching |
+| ❌ Gone | Payment already verified or cancelled — stop |
+
+```python
+# Before transaction matching:
+from portal.services.klcis import voucher_exists
+if not voucher_exists(voucher_code):
+    # Payment already resolved — don't match any transactions
+    return 'expired' or redirect to confirmation
+
+# After successful verification:
+from portal.services.klcis import cleanup_voucher
+cleanup_voucher(voucher_code)  # Delete voucher from KLCiS
+
+# On cancellation:
+cleanup_voucher(voucher_code)  # Don't leave orphaned vouchers
+```
+
+**How Layer 4 prevents the false positive scenario:**
+1. Student A pays ₱10 → voucher `AAA111` created on KLCiS
+2. Payment verified → voucher `AAA111` deleted → txn_id saved to `UsedKLCiSTransaction`
+3. Student A returns, pays ₱10 again → voucher `BBB222` created
+4. Verify checks: does `BBB222` exist on KLCiS? **Yes** → proceed
+5. Transaction matching excludes old txn_id (Layers 1-3) → only matches new payment
+6. New payment verified → voucher `BBB222` deleted → new txn_id saved
+
+Even if Layers 1-3 somehow failed (session expired, DB cleared), Layer 4 would catch it: the old voucher `AAA111` no longer exists, so if the system somehow tried to verify against it, it would get an "expired" response.
+
+**Result:** Only transactions that appear AFTER initiation, are not in the persistent table, AND have an active voucher on KLCiS can match.
 
 ---
 
@@ -342,8 +384,8 @@ exclude_ids = used_txn_ids | baseline_ids
 | `create_voucher()` | Create voucher via API |
 | `get_direct_checkout_url()` | Build Xendit checkout URL |
 | `check_transaction_paid()` | Find PAID transaction matching phone+amount |
-| `get_paid_transaction_ids()` | Snapshot all matching PAID transactions |
-| `check_voucher_paid()` | Check voucher in sold_vouchers table |
+| `get_paid_transaction_ids()` | Snapshot all matching PAID transactions || `find_voucher_on_dashboard()` | Check if voucher exists on `/voucher_import`, return internal ID |
+| `delete_voucher_by_code()` | Find voucher by code and delete it (two-step: find → delete) || `check_voucher_paid()` | Check voucher in sold_vouchers table |
 | `_normalize_phone()` | Standardize PH phone numbers for comparison |
 | `_find_paid_transaction()` | Parse table HTML for matching PAID row |
 | `_collect_paid_transaction_ids()` | Parse table HTML to collect all matching IDs |
@@ -355,8 +397,8 @@ exclude_ids = used_txn_ids | baseline_ids
 | `create_and_upload_voucher()` | Create voucher (singleton, thread-safe) |
 | `get_checkout_url()` | Get direct checkout URL |
 | `verify_transaction_payment()` | Check transaction page for PAID entry |
-| `snapshot_existing_transactions()` | Get existing PAID txn IDs for baseline |
-| `verify_voucher_payment()` | Check voucher status page (backup) |
+| `snapshot_existing_transactions()` | Get existing PAID txn IDs for baseline || `voucher_exists()` | Layer 4: Check if voucher still on KLCiS |
+| `cleanup_voucher()` | Delete voucher from KLCiS (post-verify/cancel) || `verify_voucher_payment()` | Check voucher status page (backup) |
 
 ---
 
@@ -488,13 +530,16 @@ All messages use native `alert()` dialogs instead of inline text — works relia
 | 2 | `delete_all_uploads_view` | X/close on index.html | Session uploads | No | **No** — only before Proceed |
 | 3 | `delete_document` | X button on uploads.html | Single file | Document only | **No** — pre-payment stage |
 | 4 | `delete_all_documents` | X button on uploads.html | All preview files | Documents only | **No** — pre-payment stage |
-| 5 | Cancel (`payment.html`) | Cancel button | Uploaded PDFs | Payment + Document | **No** — `klcis_transaction_id` is null |
-| 6 | `picked_up_document` | Picked Up button | PDF file | Payment + Document | **Protected** — txn ID in `UsedKLCiSTransaction` |
-| 7 | `finish_transaction` | All Good button | All PDF files | Payment + Document | **Protected** — txn ID in `UsedKLCiSTransaction` |
+| 5 | Cancel (`payment.html`) | Cancel button | Uploaded PDFs | Payment + Document | **No** — voucher deleted from KLCiS, `klcis_transaction_id` is null |
+| 6 | `picked_up_document` | Picked Up button | PDF file | Payment + Document | **Protected** — txn ID in `UsedKLCiSTransaction`, voucher already deleted |
+| 7 | `finish_transaction` | All Good button | All PDF files | Payment + Document | **Protected** — txn ID in `UsedKLCiSTransaction`, voucher already deleted |
 
 ### Key Safeguard
 
-Before Payment records are deleted (pickup/finish), the `klcis_transaction_id` is already persisted in the `UsedKLCiSTransaction` table (saved during verification). This ensures old transactions are never re-matched.
+Two safeguards protect against false positives after record deletion:
+
+1. **`UsedKLCiSTransaction` table** — Before Payment records are deleted, the `klcis_transaction_id` is already persisted in the `UsedKLCiSTransaction` table (saved during verification).
+2. **Voucher deleted from KLCiS** — The voucher is deleted from KLCiS immediately after verification. If someone tries to verify the same payment again, Layer 4 detects the missing voucher and blocks it.
 
 ---
 
@@ -520,7 +565,8 @@ Before Payment records are deleted (pickup/finish), the `klcis_transaction_id` i
 1. An old PAID transaction matched. Check:
    - `baseline_txn_ids` in session — was snapshot taken?
    - `UsedKLCiSTransaction` table — is the old txn ID recorded?
-2. The three-layer dedup should prevent this — if it still happens, check `klcis.py` logs
+   - Was the voucher deleted from KLCiS? If not, Layer 4 didn't run (check logs)
+2. The four-layer dedup should prevent this — if it still happens, check `klcis.py` logs
 
 ### Popup blocked on iPhone
 
