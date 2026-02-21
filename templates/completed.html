@@ -40,6 +40,7 @@ Print Completed
                 <div class="completed-col doc-action"></div>
             </div>
             
+            <div class="completed-rows-scroll">
             {% if printer.documents %}
                 {% for document in printer.documents %}
                 <div class="completed-row" data-doc-id="{{ document.doc_id }}">
@@ -50,7 +51,7 @@ Print Completed
                         </div>
                     </div>
                     <div class="completed-col doc-id">#{{ document.doc_id }}</div>
-                    <div class="completed-col doc-customer">{{ document.customer_id }}</div>
+                    <div class="completed-col doc-customer">#{{ document.customer_id }}</div>
                     <div class="completed-col doc-printer">{{ document.printed_at }}</div>
                     <div class="completed-col doc-action">
                         {% if document.handed_over %}
@@ -67,6 +68,7 @@ Print Completed
                     <div class="completed-empty-text">All jobs picked up!</div>
                 </div>
             {% endif %}
+            </div>
         </div>
         {% empty %}
         <div class="completed-printer-card">

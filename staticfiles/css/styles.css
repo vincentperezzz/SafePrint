@@ -4096,6 +4096,15 @@ input:focus::placeholder {
     width: 100%;
 }
 
+.completed-rows-scroll {
+    max-height: 280px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
 /* PRINTER STATUS */
 
 .dashboard-section-header {
@@ -4311,7 +4320,7 @@ input:focus::placeholder {
 
 .on-queue-row {
     display: grid;
-    grid-template-columns: 1.5fr 1.2fr 1fr 1fr 1fr;
+    grid-template-columns: 1.5fr 1.2fr 1fr 1fr 0.95fr;
     align-items: center;
     width: 100%;
     height: auto;
@@ -4349,6 +4358,23 @@ input:focus::placeholder {
     font-weight: 500;
 }
 
+.on-queue-row .doc-status {
+    display: flex;
+    align-items: center;
+}
+
+.on-queue-empty {
+    justify-content: center;
+}
+
+.queue-empty-text {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    color: #6b7280;
+    text-align: center;
+}
+
 .printer-table .dropdown-select {
     font-size: 13px;
     padding: 4px 24px 4px 8px;
@@ -4380,6 +4406,18 @@ input:focus::placeholder {
 .status-dot.ok { background: #15be15; }
 .status-dot.low { background: #ffa500; }
 .status-dot.danger { background: #d72828; }
+
+/* Document status circles for Print Queue */
+.status-circle {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+.status-circle.status-pending { background: #9ca3af; }
+.status-circle.status-queued { background: #ffa500; }
+.status-circle.status-printing { background: #15be15; }
 
 .ink-bars {
     display: flex;
@@ -4534,10 +4572,6 @@ input:focus::placeholder {
     margin-bottom: 16px;
 }
 
-.completed-printer-card:nth-of-type(3) {
-    height: 330px;
-}
-
 .completed-printer-header {
     font-size: 18px;
     font-weight: 700;
@@ -4555,7 +4589,6 @@ input:focus::placeholder {
     font-family: 'Montserrat', sans-serif;
     font-size: 16px;
     font-weight: 600;
-    margin-bottom: 10px;
 }
 
 .completed-row {
@@ -4576,10 +4609,19 @@ input:focus::placeholder {
     gap: 8px;
 }
 
-.completed-col.doc-name { flex: 2.5; }
-.completed-col.doc-id { flex: 1; }
-.completed-col.doc-printer { flex: 0.8; font-size: 16px; }
-.completed-col.doc-action { flex: 0.7; justify-content: flex-end; }
+/* Header columns */
+.completed-table-header .completed-col.doc-name { flex: 2.5; }
+.completed-table-header .completed-col.doc-id { flex: 1; }
+.completed-table-header .completed-col.doc-customer { flex: 1; }
+.completed-table-header .completed-col.doc-printer { flex: 0.8; }
+.completed-table-header .completed-col.doc-action { flex: 0.8; }
+
+/* Row columns */
+.completed-row .completed-col.doc-name { flex: 2.5; }
+.completed-row .completed-col.doc-id { flex: 1; }
+.completed-row .completed-col.doc-customer { flex: 1; }
+.completed-row .completed-col.doc-printer { flex: 0.8; font-size: 16px; }
+.completed-row .completed-col.doc-action { flex: 0.7; justify-content: flex-end; }
 
 .handed-over-btn {
     border: 2px solid var(--Colors-Black, #18191F);
