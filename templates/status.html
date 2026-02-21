@@ -99,7 +99,7 @@ Printer Status
                 <div class="dropdown">
                     <select class="dropdown-select" data-printer-id="{{ printer.id }}" data-field="paper_assigned">
                         {% for size, label in paper_size_choices %}
-                            <option value="{{ size }}" {% if printer.paper_assigned == size %}selected{% endif %}>{{ label }}</option>
+                            <option value="{{ size }}" {% if printer.paper_assigned|default_if_none:'' == size %}selected{% endif %}>{{ label }}</option>
                         {% endfor %}
                     </select>
                     <span class="dropdown-arrow">
@@ -113,7 +113,7 @@ Printer Status
                 <div class="dropdown">
                     <select class="dropdown-select" data-printer-id="{{ printer.id }}" data-field="paper_quality">
                         {% for gsm, label in gsm_choices %}
-                            <option value="{{ gsm }}" {% if printer.paper_quality == gsm %}selected{% endif %}>{{ label }}</option>
+                            <option value="{{ gsm }}" {% if printer.paper_quality|default_if_none:'' == gsm %}selected{% endif %}>{{ label }}</option>
                         {% endfor %}
                     </select>
                     <span class="dropdown-arrow">
@@ -177,10 +177,10 @@ Printer Status
                     <div class="printer-name">{{ printer.printer_name }}</div>
                     <div class="printer-model">{{ printer.model_name }}</div>
                 </div>
-                <div>{{ printer.paper_assigned }}</div>
+                <div>{% if printer.paper_assigned %}{{ printer.paper_assigned }}{% else %}None{% endif %}</div>
                 <div class="tray-capacity-cell">
-                    <span class="tray-capacity-display" data-printer-id="{{ printer.id }}">{{ printer.tray_capacity }} sheets</span>
-                    <input type="number" class="tray-capacity-input" data-printer-id="{{ printer.id }}" value="{{ printer.tray_capacity }}" style="display:none; width: 80px; text-align: center;">
+                    <span class="tray-capacity-display" data-printer-id="{{ printer.id }}">{% if printer.tray_capacity %}{{ printer.tray_capacity }} sheets{% else %}Not set{% endif %}</span>
+                    <input type="number" class="tray-capacity-input" data-printer-id="{{ printer.id }}" value="{{ printer.tray_capacity|default:'' }}" style="display:none; width: 80px; text-align: center;">
                 </div>
                 <div>
                     <span class="status-dot {% if printer.tray_level == 'Full' %}ok{% elif printer.tray_level == 'Low' %}low{% else %}danger{% endif %}"></span>
