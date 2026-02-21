@@ -653,16 +653,13 @@ def printing_queue(request):
     if not user_id:
         raise Http404("User not found in session")
     
-    # Pending Documents
-    # Use consistent casing for status values
-    pending_documents = Document.objects.filter(doc_status='Pending').order_by('-time_submitted')
-
-    # Queue Documents
-    on_queue_documents = Document.objects.filter(doc_status__in=['Queued', 'Printing']).select_related('printed_at').order_by('-time_submitted')
+    # Queue Documents — Pending, Queued, and Printing (Finished goes to Print Completed)
+    on_queue_documents = Document.objects.filter(
+        doc_status__in=['Pending', 'Queued', 'Printing']
+    ).select_related('printer_assigned', 'printed_at').order_by('-time_submitted')
     
-    # Combine all documents to fetch all related payments
-    all_documents = list(pending_documents) + list(on_queue_documents)
-    payments = {p.doc.doc_id: p for p in Payment.objects.filter(doc__in=all_documents)}
+    # Fetch all related payments
+    payments = {p.doc.doc_id: p for p in Payment.objects.filter(doc__in=on_queue_documents)}
 
     # Reroute histories for on-queue documents
     reroute_histories = {}
@@ -670,7 +667,6 @@ def printing_queue(request):
         reroute_histories[doc.doc_id] = list(doc.reroute_history.select_related('printer').all())
 
     return render(request, 'queue.html', {
-        'pending_documents': pending_documents,
         'on_queue_documents': on_queue_documents,
         'payments': payments,
         'reroute_histories': reroute_histories,
@@ -682,14 +678,18 @@ def print_completed(request):
     if not user_id:
         raise Http404("User not found in session")
     
-    # Get all completed documents grouped by printer - filter by doc_status='finished'
-    completed_documents = Document.objects.filter(doc_status='Finished').select_related('printed_at').order_by('printer_assigned__id', '-time_submitted')
+    # Get completed documents that were actually printed (have a printed_at printer)
+    # Documents with no printer assigned are NOT completed — they belong in the queue
+    completed_documents = Document.objects.filter(
+        doc_status='Finished',
+        printed_at__isnull=False
+    ).select_related('printed_at').order_by('printer_assigned__id', '-time_submitted')
     
     # Group documents by printer
     printers_with_completed = {}
     for doc in completed_documents:
-        printer_id = doc.printed_at.id if doc.printed_at else 'unassigned'
-        printer_name = str(doc.printed_at) if doc.printed_at else 'Unassigned'
+        printer_id = doc.printed_at.id
+        printer_name = str(doc.printed_at)
         if printer_id not in printers_with_completed:
             printers_with_completed[printer_id] = {
                 'printer': doc.printed_at,
