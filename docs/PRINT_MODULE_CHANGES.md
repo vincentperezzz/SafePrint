@@ -1,11 +1,73 @@
-# Printer Status Database Changes
+# Print Module Changes
 
 ## Overview
-This document describes the database schema changes made to support the Paper Refill tracking feature in the Printer Status page.
+This document describes the database schema and view logic changes made to support printing features including Paper Refill tracking and document routing fixes.
 
-## Migration
-- **Migration file**: `portal/migrations/0020_alter_usedklcistransaction_options_and_more.py`
-- **Applied**: February 15, 2026
+---
+
+## Document Routing Fix (February 21, 2026)
+
+### Problem
+Documents uploaded without a printer assigned were appearing in the "Print Completed" tab under "Unassigned Jobs" instead of the "Print Queue" tab.
+
+### Solution
+Modified the view queries to properly route documents based on status and printer assignment.
+
+### Changes to `portal/views.py`
+
+#### `printing_queue()` View
+**Before:**
+```python
+documents = Document.objects.filter(
+    doc_status__in=['Pending', 'Queued', 'Printing', 'Finished']
+)
+```
+
+**After:**
+```python
+documents = Document.objects.filter(
+    doc_status__in=['Pending', 'Queued', 'Printing']
+)
+```
+
+- Removed `'Finished'` from the status filter
+- Queue now only shows documents that are actively being processed
+
+#### `print_completed()` View
+**Before:**
+```python
+completed_documents = Document.objects.filter(doc_status='Finished')
+```
+
+**After:**
+```python
+completed_documents = Document.objects.filter(
+    doc_status='Finished',
+    printed_at__isnull=False
+)
+```
+
+- Added `printed_at__isnull=False` filter
+- Ensures only documents that were actually printed appear in Completed
+- Documents without a `printed_at` timestamp stay in the queue
+
+### Document Status Flow
+| Status | Printer Assigned | Location |
+|--------|-----------------|----------|
+| Pending | No | Print Queue |
+| Pending | Yes | Print Queue |
+| Queued | Yes | Print Queue |
+| Printing | Yes | Print Queue |
+| Finished | Yes (printed_at set) | Print Completed |
+| Finished | No (printed_at null) | Should not occur* |
+| Cancelled | Any | Neither (excluded) |
+| Picked Up | Any | Neither (excluded) |
+
+*Documents should not reach Finished status without being printed.
+
+---
+
+## Paper Refill Tracking (February 15, 2026)
 
 ## New Fields Added to `Printer` Model
 
