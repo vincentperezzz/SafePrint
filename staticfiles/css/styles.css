@@ -4082,10 +4082,18 @@ input:focus::placeholder {
     font-family: 'Montserrat', sans-serif;
 }
 
-.pending-document-list,
-.on-queue-documents-list {
+.pending-document-list {
     max-height: 400px;   
     overflow-y: auto;
+}
+
+.on-queue-rows-scroll {
+    max-height: 400px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
 }
 
 /* PRINTER STATUS */
@@ -4283,6 +4291,8 @@ input:focus::placeholder {
     padding: 10px 20px 20px 20px;
     background: #ffffff; 
     box-shadow: 0px 6px 0px 0px #18191F;
+    max-height: none;
+    overflow: visible;
 }
 
 .on-queue-header {

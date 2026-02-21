@@ -56,6 +56,7 @@ Printing Queue
                     </div>
                 </div>
 
+                <div class="on-queue-rows-scroll">
                 {% for doc in on_queue_documents %}
                     <div class="on-queue-row" id="onqueue-doc-{{ doc.doc_id }}">
                         <div class="queue-col doc-name">
@@ -74,64 +75,31 @@ Printing Queue
                             </div>
                         </div>
                         <div class="queue-col doc-printer">
-                            {% if reroute_histories|get_item:doc.doc_id and reroute_histories|get_item:doc.doc_id|length > 0 %}
-                                {% for rh in reroute_histories|get_item:doc.doc_id %}
-                                    <div>
-                                        <span class="printer-status printer-{{ rh.status|lower }}"></span>
-                                        {% if rh.printer %}
-                                            {{ rh.printer.printer_name }}
-                                        {% else %}
-                                            Unknown Printer
-                                        {% endif %}
-                                        ({{ rh.status }})
-                                    </div>
-                                {% endfor %}
+                            {% if doc.printer_assigned %}
+                                {{ doc.printer_assigned.printer_name }}
+                            {% else %}
+                                No Printer Assigned
                             {% endif %}
-                            <div>
-                                <span class="printer-status printer-{{ doc.doc_status|lower }}"></span>
-                                {% if doc.printer_assigned %}
-                                    {{ doc.printer_assigned.printer_name }}
-                                {% else %}
-                                    No Printer Assigned
-                                {% endif %}
-                                ({{ doc.doc_status }})
-                            </div>
                         </div>
                         <div class="queue-col doc-status">{{ doc.doc_status }}</div>
-                        <div class="queue-col doc-customer">{{ doc.customer_id }}</div>
+                        <div class="queue-col doc-customer">#{{ doc.customer_id }}</div>
+                        <div class="queue-col doc-id">#{{ doc.doc_id }}</div>
                     </div>
                     {% empty %}
                         <div class="on-queue-row" id="no-onqueue-documents-row">
                             <div class="queue-col doc-name">
                                 <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
                                 <div class="doc-info">
-                                    <div class="doc-title">Document 1.pdf</div>
-                                    <div class="doc-price">₱30.00</div>
+                                    <div class="doc-title">No documents in queue</div>
                                 </div>
                             </div>
-                            <div class="queue-col doc-printer">Printer 2</div>
-                            <div class="queue-col doc-status">Printing</div>
-                            <div class="queue-col doc-customer">#CID-1001</div>
-                            <div class="queue-col doc-id">#DOC-1001</div>
-                        </div>
-                        <div class="on-queue-row">
-                            <div class="queue-col doc-name">
-                                <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
-                                <div class="doc-info">
-                                    <div class="doc-title">STS Assignment.pdf</div>
-                                    <div class="doc-price">₱15.00</div>
-                                </div>
-                            </div>
-                            <div class="queue-col doc-printer">
-                                Printer 3<br>Printer 1
-                            </div>
-                            <div class="queue-col doc-status">
-                                Error<br>Printing
-                            </div>
-                            <div class="queue-col doc-customer">#CID-1002</div>
-                            <div class="queue-col doc-id">#DOC-1002</div>
+                            <div class="queue-col doc-printer">-</div>
+                            <div class="queue-col doc-status">-</div>
+                            <div class="queue-col doc-customer">-</div>
+                            <div class="queue-col doc-id">-</div>
                         </div>
                     {% endfor %}
+                </div>
             </div>
         </div>
     </div>
