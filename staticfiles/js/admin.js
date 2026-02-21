@@ -305,8 +305,10 @@ document.addEventListener('DOMContentLoaded', () => {
         updateTicketCounts();
     };
 
-    // Attach event listeners to any existing dynamic elements
-    attachTicketEventListeners();
+    // Attach event listeners to any existing dynamic elements (if on dashboard page)
+    if (typeof attachTicketEventListeners === 'function') {
+        attachTicketEventListeners();
+    }
 
     updateResolvedEmptyState();
 
@@ -862,15 +864,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const field = this.dataset.field;
                 const value = this.value;
                 // Only handle printer status dropdowns that declare both data attributes
-                if (!printerId || !field) return;
+                if (!printerId || !field) {
+                    return;
+                }
 
                 // Form data for the request
                 const formData = new FormData();
                 formData.append('printer_id', printerId);
                 formData.append('field', field);
                 formData.append('value', value);
-
-                fetch('/api/update_printer_field/', {
+                
+                fetch('/portal/api/update_printer_field/', {
                     method: 'POST',
                     headers: {
                         'X-CSRFToken': csrfToken
@@ -887,11 +891,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         return response.json();
                     })
                     .then(data => {
-                        createAlert('Success', 'Status Updated', 'Printer status has been updated successfully.', 'success', true, true, 'pageMessages');
+                        // Show appropriate success message based on field
+                        let fieldLabel = field === 'paper_assigned' ? 'Paper Assigned' : 
+                                         field === 'paper_quality' ? 'GSM' : 'Printer setting';
+                        createAlert('Success', 'Setting Updated', `${fieldLabel} has been updated successfully.`, 'success', true, true, 'pageMessages');
+                        // Reload page after short delay to reflect changes in Paper Refill section
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
                     })
                     .catch(error => {
-                        console.error('Error updating printer status:', error);
-                        createAlert('Error', 'Update Failed', 'Failed to update printer status. Please try again or contact support.', 'danger', true, true, 'pageMessages');
+                        console.error('Error updating printer setting:', error);
+                        createAlert('Error', 'Update Failed', 'Failed to update printer setting. Please try again or contact support.', 'danger', true, true, 'pageMessages');
                     });
             });
         });
