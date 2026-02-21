@@ -740,6 +740,7 @@ def printer_status(request):
     })
 
 
+@csrf_exempt
 def update_printer_field(request):
     if request.method == "POST":
         printer_id = request.POST.get('printer_id')
@@ -749,14 +750,16 @@ def update_printer_field(request):
             printer = Printer.objects.get(id=printer_id)
             # Handle tray_capacity as integer
             if field == 'tray_capacity':
-                value = int(value)
+                value = int(value) if value else None
             setattr(printer, field, value)
             printer.save()
             return JsonResponse({'success': True})
         except Printer.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Printer not found'})
-        except ValueError:
+        except ValueError as e:
             return JsonResponse({'success': False, 'error': 'Invalid value'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
 

@@ -67,29 +67,64 @@ completed_documents = Document.objects.filter(
 
 ---
 
+## Printer Defaults Fix (February 21, 2026)
+
+### Problem
+Newly added printers had incorrect defaults and dropdown selections weren't saving.
+
+### Database Schema Changes
+
+```sql
+ALTER TABLE printers MODIFY printer_status varchar(50) NOT NULL DEFAULT 'Offline';
+ALTER TABLE printers MODIFY paper_assigned varchar(50) NULL DEFAULT NULL;
+ALTER TABLE printers MODIFY paper_quality varchar(50) NULL DEFAULT NULL;
+ALTER TABLE printers MODIFY tray_capacity int NULL DEFAULT NULL;
+ALTER TABLE printers MODIFY tray_level varchar(20) NOT NULL DEFAULT 'Needs Refill';
+```
+
+### Field Defaults Summary
+| Field | Old Default | New Default |
+|-------|-------------|-------------|
+| `printer_status` | (none) | `'Offline'` |
+| `paper_assigned` | Required | `NULL` |
+| `paper_quality` | Required | `NULL` |
+| `tray_capacity` | `250` | `NULL` |
+| `tray_level` | `'Full'` | `'Needs Refill'` |
+
+### Related Code Fixes
+- Added `@csrf_exempt` to `update_printer_field()` view
+- Added "None" option to PAPER_SIZE_CHOICES and GSM_CHOICES
+- Fixed dropdown URL: `/portal/api/update_printer_field/`
+- Page auto-reloads after dropdown change
+
+---
+
 ## Paper Refill Tracking (February 15, 2026)
 
 ## New Fields Added to `Printer` Model
 
 ### `tray_capacity`
 - **Type**: `IntegerField`
-- **Default**: `250`
+- **Default**: `NULL` (was 250, changed Feb 21)
+- **Nullable**: Yes
 - **Description**: Maximum number of sheets the printer tray can hold
+- **Display**: Shows "Not set" when null
 - **Editable**: Yes - click on the capacity value in Paper Refill section to edit
 
 ### `tray_level`
 - **Type**: `CharField(max_length=20)`
-- **Default**: `'Full'`
+- **Default**: `'Needs Refill'` (was 'Full', changed Feb 21)
 - **Allowed Values**: 
-  - `Full` - Tray is full or recently refilled
-  - `Low` - Tray paper is running low
-  - `Needs Refill` - Tray requires immediate refill
+  - `Full` - Tray is full or recently refilled (green dot)
+  - `Low` - Tray paper is running low (yellow dot)
+  - `Needs Refill` - Tray requires immediate refill (red dot)
 - **Description**: Current paper level status of the printer tray
 
 ### `last_refill_time`
 - **Type**: `DateTimeField`
 - **Nullable**: Yes (`null=True, blank=True`)
 - **Description**: Timestamp of when the printer was last marked as refilled
+- **Display**: Shows "Never" when null
 - **Updated by**: "Mark as Refilled" button in Paper Refill section
 
 ## API Endpoints
@@ -136,12 +171,16 @@ completed_documents = Document.objects.filter(
 
 ## Database Table
 - **Table name**: `printers`
-- **Full schema** (relevant fields):
+- **Current schema** (relevant fields):
 
 ```sql
-ALTER TABLE printers ADD COLUMN tray_capacity INTEGER DEFAULT 250;
-ALTER TABLE printers ADD COLUMN tray_level VARCHAR(20) DEFAULT 'Full';
-ALTER TABLE printers ADD COLUMN last_refill_time DATETIME NULL;
+-- Current column definitions (as of Feb 21, 2026)
+printer_status  varchar(50)  NOT NULL DEFAULT 'Offline'
+paper_assigned  varchar(50)  NULL DEFAULT NULL
+paper_quality   varchar(50)  NULL DEFAULT NULL
+tray_capacity   int          NULL DEFAULT NULL
+tray_level      varchar(20)  NOT NULL DEFAULT 'Needs Refill'
+last_refill_time datetime(6) NULL
 ```
 
 ## Model Location
