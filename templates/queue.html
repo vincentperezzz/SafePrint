@@ -81,22 +81,16 @@ Printing Queue
                                 No Printer Assigned
                             {% endif %}
                         </div>
-                        <div class="queue-col doc-status">{{ doc.doc_status }}</div>
+                        <div class="queue-col doc-status">
+                            <span class="status-circle status-{{ doc.doc_status|lower }}"></span>
+                            {{ doc.doc_status }}
+                        </div>
                         <div class="queue-col doc-customer">#{{ doc.customer_id }}</div>
                         <div class="queue-col doc-id">#{{ doc.doc_id }}</div>
                     </div>
                     {% empty %}
-                        <div class="on-queue-row" id="no-onqueue-documents-row">
-                            <div class="queue-col doc-name">
-                                <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
-                                <div class="doc-info">
-                                    <div class="doc-title">No documents in queue</div>
-                                </div>
-                            </div>
-                            <div class="queue-col doc-printer">-</div>
-                            <div class="queue-col doc-status">-</div>
-                            <div class="queue-col doc-customer">-</div>
-                            <div class="queue-col doc-id">-</div>
+                        <div class="on-queue-row on-queue-empty" id="no-onqueue-documents-row">
+                            <div class="queue-empty-text">No documents in queue.</div>
                         </div>
                     {% endfor %}
                 </div>
