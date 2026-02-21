@@ -230,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 emptyRow.innerHTML = `
                     <div class="ticket-cell">
                         <div class="ticket-meta">
-                            <p>No resolved tickets.</p>
+                            <p style="font-family: 'Montserrat', sans-serif;">No resolved tickets.</p>
                         </div>
                     </div>
                     <div class="resolved-customer"></div>
@@ -259,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 emptyRow.innerHTML = `
                     <div class="ticket-cell">
                         <div class="ticket-meta">
-                            <h6>No active tickets.</h6>
+                            <p style="font-family: 'Montserrat', sans-serif;">No active tickets.</p>
                         </div>
                     </div>
                     <div class="ticket-customer"></div>
@@ -945,10 +945,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let noOnqueueMatchRow = document.getElementById('no-onqueue-match-row');
     if (!noOnqueueMatchRow && document.querySelector('.on-queue-documents-list')) {
         noOnqueueMatchRow = document.createElement('div');
-        noOnqueueMatchRow.className = 'on-queue-row';
+        noOnqueueMatchRow.className = 'on-queue-row on-queue-empty';
         noOnqueueMatchRow.id = 'no-onqueue-match-row';
         noOnqueueMatchRow.style.display = 'none';
-        noOnqueueMatchRow.innerHTML = `<div class="queue-col" style="width: 100%; text-align: center;">No match found.</div>`;
+        noOnqueueMatchRow.innerHTML = `<div class="queue-empty-text">No match found.</div>`;
         const onqueueList = document.querySelector('.on-queue-documents-list');
         onqueueList.appendChild(noOnqueueMatchRow);
     }
@@ -2202,10 +2202,10 @@ function updateOnQueueEmptyState() {
         if (remainingOnQueueRows.length === 0) {
             if (!noOnqueueRow) {
                 noOnqueueRow = document.createElement('div');
-                noOnqueueRow.className = 'on-queue-row';
+                noOnqueueRow.className = 'on-queue-row on-queue-empty';
                 noOnqueueRow.id = 'no-onqueue-documents-row';
                 noOnqueueRow.style.display = 'flex';
-                noOnqueueRow.innerHTML = `<div class="queue-col" style="width: 100%; text-align: center;">No documents in queue.</div>`;
+                noOnqueueRow.innerHTML = `<div class="queue-empty-text">No documents in queue.</div>`;
                 onQueueList.appendChild(noOnqueueRow);
             } else {
                 noOnqueueRow.style.display = 'flex';
@@ -2518,7 +2518,7 @@ if (addPrinterForm) {
             if (!container.querySelector('.empty-row')) {
                 const empty = document.createElement('div');
                 empty.className = 'document-item empty-row';
-                empty.innerHTML = `<p style="margin:0;">No active tickets.</p>`;
+                empty.innerHTML = `<p style="margin:0; font-family: 'Montserrat', sans-serif;">No active tickets.</p>`;
                 container.appendChild(empty);
             }
         } else {
@@ -2555,7 +2555,7 @@ if (addPrinterForm) {
                     </div>
                 </div>
                 <div class="document-item empty-row">
-                    <p style="margin:0;">No resolved tickets.</p>
+                    <p style="margin:0; font-family: 'Montserrat', sans-serif;">No resolved tickets.</p>
                 </div>
             `;
         } else {
@@ -2740,7 +2740,7 @@ if (addPrinterForm) {
                                 panelList.appendChild(item);
                             });
                         } else {
-                            panelList.innerHTML = '<div style="padding:8px;color:#666">No active tickets</div>';
+                            panelList.innerHTML = '<div style="padding:8px;color:#666;font-family:Montserrat,sans-serif">No active tickets</div>';
                         }
                     }
 
