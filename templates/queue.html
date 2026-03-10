@@ -11,7 +11,17 @@ Printing Queue
     <div class="header-left">
         <h1>Print Queue</h1>
     </div>
-    <button class="need-assistance-btn">Need Assistance?</button>
+    <div style="position:relative;">
+        <button id="notification-bell" class="notification-bell" aria-label="Notifications" style="background:transparent; border:none; padding:6px; cursor:pointer;">
+            <span style="position:relative; display:inline-block; width:34px; height:34px;">
+                <svg class="bell-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="50" height="50" fill="#000" stroke="none" aria-hidden="true">
+                    <path d="M12 2C10.343 2 9 3.343 9 5v1.07C6.163 7.165 4 9.97 4 13v3l-1 1v1h18v-1l-1-1v-3c0-3.03-2.163-5.835-5-6.93V5c0-1.657-1.343-3-3-3z" />
+                    <path d="M13.73 20a2 2 0 01-3.46 0" fill="#000" />
+                </svg>
+                <span id="notification-count" style="position:absolute; top:-4px; right:-16px; background:#d9534f; color:#fff; border-radius:50%; padding:4px 6px; font-size:0.75rem; min-width:20px; text-align:center; line-height:1; box-shadow:0 1px 0 rgba(0,0,0,0.2);">0</span>
+            </span>
+        </button>
+    </div>
     <div id="pageMessages"></div>
 </div>
 
@@ -20,65 +30,6 @@ Printing Queue
 <div class="dashboard-rows">
     
     <div class="dashboard-left">
-        <div class="pending-document-approvals">
-            <div class="queue-header">
-                <h2>Pending Document Approvals</h2>
-            </div>
-            
-            <div class="pending-document-list" id="pending-list">
-                <div class="list-header">
-                    <div class="queue-search-bar">
-                        <input type="text" id="pending-search" placeholder="Search by Name, Document ID, or Customer ID">
-                        <span class="search-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </span>
-                    </div>
-            
-                    <div class="queue-list-header">
-                        <div class="queue-col doc-name"><b>Document Name</b></div>
-                        <div class="queue-col doc-customer">Customer ID</div>
-                        <div class="queue-col doc-date">Date Submitted</div>
-                        <div class="queue-col doc-id">Document ID</div>
-                        <div class="queue-col doc-actions"></div>
-                    </div>
-                </div>
-
-                {% for doc in pending_documents %}
-                <div class="queue-row" id ="pending-doc-{{ doc.doc_id }}">
-                    <div class="queue-col doc-name">
-                        <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="file-icon">
-                        <div class="doc-info">
-                            <div class="doc-title" title="{{ doc.filename }}">{{ doc.filename }}</div>
-                            <div class="doc-price">
-                                {% with payment=payments|get_item:doc.doc_id %}
-                                    {% if payment %}
-                                        ₱{{ payment.price }}
-                                    {% else %}
-                                        ₱0.00
-                                    {% endif %}
-                                {% endwith %}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="queue-col doc-customer">#{{ doc.customer_id }}</div>
-                    <div class="queue-col doc-date">{{ doc.time_submitted|date:"Y-m-d h:i:s A" }}</div>
-                    <div class="queue-col doc-id">#{{ doc.doc_id }}</div>
-                    <div class="queue-col doc-actions">
-                        <button class="queue-deny-btn">Deny</button>
-                        <button class="queue-approve-btn">Approve</button>
-                    </div>
-                </div>
-                {% empty %}
-                    <div class="queue-row" id="no-pending-documents-row">
-                        <div class="queue-col" colspan="5">No pending documents.</div>
-                    </div>
-                {% endfor %}
-            </div>
-        </div>
-
         <div class="on-queue-documents">
             <div class="queue-header">
                 <h2>On Queue Documents</h2>
@@ -99,13 +50,13 @@ Printing Queue
                     <div class="on-queue-header">
                         <div class="queue-col doc-name"><b>Document Name</b></div>
                         <div class="queue-col doc-printer">Printer Assigned</div>
-                        <div class="queue-col doc-approved">Approved by</div>
-                        <div class="queue-col doc-id">Document ID</div>
+                        <div class="queue-col doc-status">Status</div>
                         <div class="queue-col doc-customer">Customer ID</div>
-                        <div class="queue-col doc-actions"></div>
+                        <div class="queue-col doc-id">Document ID</div>
                     </div>
                 </div>
 
+                <div class="on-queue-rows-scroll">
                 {% for doc in on_queue_documents %}
                     <div class="on-queue-row" id="onqueue-doc-{{ doc.doc_id }}">
                         <div class="queue-col doc-name">
@@ -124,49 +75,25 @@ Printing Queue
                             </div>
                         </div>
                         <div class="queue-col doc-printer">
-                            {% if reroute_histories|get_item:doc.doc_id and reroute_histories|get_item:doc.doc_id|length > 0 %}
-                                {% for rh in reroute_histories|get_item:doc.doc_id %}
-                                    <div>
-                                        <span class="printer-status printer-{{ rh.status|lower }}"></span>
-                                        {% if rh.printer %}
-                                            {{ rh.printer.printer_name }}
-                                        {% else %}
-                                            Unknown Printer
-                                        {% endif %}
-                                        ({{ rh.status }})
-                                    </div>
-                                {% endfor %}
+                            {% if doc.printer_assigned %}
+                                {{ doc.printer_assigned.printer_name }}
+                            {% else %}
+                                No Printer Assigned
                             {% endif %}
-                            <div>
-                                <span class="printer-status printer-{{ doc.doc_status|lower }}"></span>
-                                {% if doc.printer_assigned %}
-                                    {{ doc.printer_assigned.printer_name }}
-                                {% else %}
-                                    No Printer Assigned
-                                {% endif %}
-                                ({{ doc.doc_status }})
-                            </div>
                         </div>
-                        <div class="queue-col doc-approved">
-                            {% with payment=payments|get_item:doc.doc_id %}
-                                {% if payment and payment.approved_by %}
-                                    {{ payment.approved_by }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            {% endwith %}
+                        <div class="queue-col doc-status">
+                            <span class="status-circle status-{{ doc.doc_status|lower }}"></span>
+                            {{ doc.doc_status }}
                         </div>
+                        <div class="queue-col doc-customer">#{{ doc.customer_id }}</div>
                         <div class="queue-col doc-id">#{{ doc.doc_id }}</div>
-                        <div class="queue-col doc-customer">{{ doc.customer_id }}</div>
-                        <div class="queue-col doc-actions">
-                            <button class="queue-cancel-btn">Cancel</button>
-                        </div>
                     </div>
                     {% empty %}
-                        <div class="on-queue-row" id="no-onqueue-documents-row">
-                            <div class="queue-col" colspan="6">No documents in queue.</div>
+                        <div class="on-queue-row on-queue-empty" id="no-onqueue-documents-row">
+                            <div class="queue-empty-text">No documents in queue.</div>
                         </div>
                     {% endfor %}
+                </div>
             </div>
         </div>
     </div>

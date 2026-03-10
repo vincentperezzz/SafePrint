@@ -52,6 +52,7 @@ class NotificationSound(models.Model):
 
 class Printer(models.Model):
     PAPER_SIZE_CHOICES = [
+        ('', 'None'),
         ('Long', 'Long'),
         ('Letter', 'Letter'), 
         ('A4', 'A4'),
@@ -59,6 +60,7 @@ class Printer(models.Model):
     ]
 
     GSM_CHOICES = [
+        ('', 'None'),
         ('70', '70 GSM'),
         ('80', '80 GSM'),
     ]
@@ -76,13 +78,16 @@ class Printer(models.Model):
     id = models.AutoField(primary_key=True)
     printer_name = models.CharField(max_length=255)
     model_name = models.CharField(max_length=255, null=True, blank=True)
-    printer_status = models.CharField(max_length=50)
+    printer_status = models.CharField(max_length=50, default='Offline')
     ink_status = models.CharField(max_length=50, null=True, blank=True)
-    paper_assigned = models.CharField(max_length=50, choices=PAPER_SIZE_CHOICES)
-    paper_quality = models.CharField(max_length=50, choices=GSM_CHOICES)
+    paper_assigned = models.CharField(max_length=50, choices=PAPER_SIZE_CHOICES, blank=True, default='')
+    paper_quality = models.CharField(max_length=50, choices=GSM_CHOICES, blank=True, default='')
     last_checked = models.DateTimeField()
     ip_address = models.CharField(max_length=255)
     node_name = models.CharField(max_length=255, null=True, blank=True)
+    tray_capacity = models.IntegerField(null=True, blank=True)
+    tray_level = models.CharField(max_length=20, default='Needs Refill')  # Full, Low, Needs Refill
+    last_refill_time = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return self.printer_name
@@ -372,6 +377,8 @@ class SupportTicket(models.Model):
         ('in-progress', 'In Progress'),
         ('resolved', 'Resolved'),
         ('closed', 'Closed'),
+        ('voided', 'Voided'),
+        ('refunded', 'Refunded'),
     ]
     
     ticket_number = models.CharField(max_length=20, unique=True, db_index=True)

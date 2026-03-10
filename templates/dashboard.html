@@ -23,9 +23,19 @@ Dashboard
     {% else %}
         <img src="{{ MEDIA_URL }}profile_images/default-avatar.png" alt="Default Avatar" class="user-avatar">
     {% endif %}
-        <h1>Welcome, {{ user.name }}</h1>
+        <h1>Hello, {{ user.name }}!</h1>
     </div>
-    <button class="need-assistance-btn">Need Assistance?</button>
+    <div style="position:relative;">
+        <button id="notification-bell" class="notification-bell" aria-label="Notifications" style="background:transparent; border:none; padding:6px; cursor:pointer;">
+            <span style="position:relative; display:inline-block; width:34px; height:34px;">
+                <svg class="bell-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="50" height="50" fill="#000" stroke="none" aria-hidden="true">
+                    <path d="M12 2C10.343 2 9 3.343 9 5v1.07C6.163 7.165 4 9.97 4 13v3l-1 1v1h18v-1l-1-1v-3c0-3.03-2.163-5.835-5-6.93V5c0-1.657-1.343-3-3-3z" />
+                    <path d="M13.73 20a2 2 0 01-3.46 0" fill="#000" />
+                </svg>
+                <span id="notification-count" style="position:absolute; top:-4px; right:-16px; background:#d9534f; color:#fff; border-radius:50%; padding:4px 6px; font-size:0.75rem; min-width:20px; text-align:center; line-height:1; box-shadow:0 1px 0 rgba(0,0,0,0.2);">{{ active_tickets_count }}</span>
+            </span>
+        </button>
+    </div>
     <div id="pageMessages"></div>
 </div>
 
@@ -35,12 +45,12 @@ Dashboard
         <p>{{ completed_jobs_count }}</p>
     </div>
     <div class="stat-card red">
-        <h3>Printer <br>Errors</h3>
-        <p>{{ printer_errors_count }}</p>
+        <h3>Active <br>Tickets</h3>
+        <p id="active-tickets-count">{{ active_tickets_count }}</p>
     </div>
     <div class="stat-card yellow">
-        <h3>Pending <br>Customers</h3>
-        <p>{{ pending_customers_count }}</p>
+        <h3>Resolved <br>Tickets</h3>
+        <p id="resolved-tickets-count">{{ resolved_tickets_count }}</p>
     </div>
 </div>
 
@@ -50,15 +60,14 @@ Dashboard
     <div class="dashboard-left">
         <div class="document-approvals">
             <div class="document-approvals-header">
-                <h2>Pending Document Approvals</h2>
-                <a href="{% url 'printing_queue' %}" class="view-all-btn">View all Pending Documents</a>
+                <h2>Active Tickets</h2>
             </div>
                 
             <div class="document-list-container">
                 <div id="document-results" class="document-results">
                     <div class="list-header">
                         <div class="search-bar">
-                            <input type="text" id="dashboard-search" placeholder="Search by Name or Document ID">
+                            <input type="text" id="dashboard-search" placeholder="Search by Ticket Number">
                             <span class="search-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
                                     <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -67,78 +76,169 @@ Dashboard
                             </span>
                         </div>
                         <div class="document-item-title">
-                            <span>Document Name</span>
-                            <p>Document ID</p>
+                            <span>Ticket Number</span>
+                            <p>Issue</p>
+                            <p>Date Submitted</p>
+                            <p>Customer ID</p>
+                            <span class="action-title"></span>
                         </div>
                     </div>
-                    
-                    <div class="no-documents">
-                        <img src="{% static 'assets/no-documents.png' %}" alt="No Documents">
-                        <p>No documents found, Please enter a Customer ID</p>
+
+                    {% for ticket in active_tickets %}
+                    <div class="document-item" data-ticket-number="{{ ticket.ticket_number }}" data-ticket-id="{{ ticket.id }}">
+                        <div class="ticket-cell">
+                            <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
+                            <div class="ticket-meta">
+                                <h6>{{ ticket.ticket_number }}</h6>
+                                <span>{% if ticket.payment_amount %}₱{{ ticket.payment_amount }}{% else %}—{% endif %}</span>
+                            </div>
+                        </div>
+                        <div class="ticket-issue">{{ ticket.get_problem_type_display }}</div>
+                        <div class="ticket-date">{{ ticket.created_at|date:"Y-m-d H:i:s" }}</div>
+                        <div class="ticket-customer">#{{ ticket.customer_id }}</div>
+                        <div class="actions">
+                            <button class="deny-btn" type="button" data-action="void" data-ticket-id="{{ ticket.id }}">Void</button>
+                            <button class="approve-btn" type="button" data-open-ticket-modal
+                                data-ticket-id="{{ ticket.id }}"
+                                data-ticket-number="{{ ticket.ticket_number }}"
+                                data-customer-id="{{ ticket.customer_id }}"
+                                data-customer-name="{{ ticket.customer_name }}"
+                                data-email="{{ ticket.email }}"
+                                data-phone="{{ ticket.phone_number }}"
+                                data-doc-id="{{ ticket.document.doc_id|default:'' }}"
+                                data-doc-name="{{ ticket.document_name }}"
+                                data-issue="{{ ticket.description }}"
+                                data-problem-type="{{ ticket.get_problem_type_display }}"
+                                data-was-reprinted="{{ ticket.was_reprinted }}"
+                            >Verify</button>
+                            <button class="refund-btn" type="button" data-action="refund" data-ticket-id="{{ ticket.id }}">Refund</button>
+                        </div>
                     </div>
+                    {% empty %}
+                    <div class="document-item empty-row" style="display:flex; align-items:center;">
+                        <p style="margin: 0; font-family: 'Montserrat', sans-serif;">No active tickets.</p>
+                    </div>
+                    {% endfor %}
                 </div>  
+            </div>
+        </div>
+
+        <div class="document-approvals">
+            <div class="document-approvals-header">
+                <h2>Resolved Tickets</h2>
+            </div>
+
+            <div class="document-list-container resolved-list-container">
+                <div class="document-results">
+                    <div class="list-header">
+                        <div class="search-bar">
+                            <input type="text" placeholder="Search by Ticket Number">
+                            <span class="search-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </span>
+                        </div>
+                        <div class="document-item-title resolved-header">
+                            <span>Ticket Number</span>
+                            <p>Customer Name</p>
+                            <p>Email</p>
+                            <p>Verified by</p>
+                            <p>Status</p>
+                            <p></p>
+                        </div>
+                    </div>
+
+                    {% for ticket in resolved_tickets %}
+                    <div class="document-item resolved-row">
+                        <div class="ticket-cell">
+                            <img src="{% static 'assets/ticket-icon.png' %}" alt="Ticket" class="ticket-icon">
+                            <div class="ticket-meta">
+                                <h6>{{ ticket.ticket_number }}</h6>
+                                <span>{% if ticket.payment_amount %}₱{{ ticket.payment_amount }}{% else %}—{% endif %}</span>
+                            </div>
+                        </div>
+                        <div class="resolved-customer">{{ ticket.customer_name }}</div>
+                        <div class="resolved-email">{{ ticket.email }}</div>
+                        <div class="resolved-verifier">{{ ticket.resolved_by|default:"—" }}</div>
+                        <div class="resolved-status">{{ ticket.get_status_display }}</div>
+                        <div class="resolved-details">
+                            <button class="approve-btn view-details-btn" type="button" data-open-ticket-modal
+                                data-ticket-id="{{ ticket.id }}"
+                                data-ticket-number="{{ ticket.ticket_number }}"
+                                data-customer-id="{{ ticket.customer_id }}"
+                                data-customer-name="{{ ticket.customer_name }}"
+                                data-email="{{ ticket.email }}"
+                                data-phone="{{ ticket.phone_number }}"
+                                data-doc-id="{{ ticket.document.doc_id|default:'' }}"
+                                data-doc-name="{{ ticket.document_name }}"
+                                data-issue="{{ ticket.description }}"
+                                data-problem-type="{{ ticket.get_problem_type_display }}"
+                                data-was-reprinted="{{ ticket.was_reprinted }}"
+                            >View Details</button>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="document-item empty-row" style="display:flex; align-items:center;">
+                        <p style="margin: 0; font-family: 'Montserrat', sans-serif;">No resolved tickets.</p>
+                    </div>
+                    {% endfor %}
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="dashboard-right">
-        <div class="customer-info">
-            <div class='price-display'>
-                <p id="price-to-pay">₱{{ total_price|floatformat:2 }}</p>
-                <h2>Price to Pay</h2>
-            </div>
-            <div class='dashboard-rows'>  
-                <h2>Enter Customer ID</h2>
-                <button class="clear-btn" class="clear-btn" id="clear-btn">Clear</button>
-            </div>
-                {% csrf_token %}
-                <input type="text" name="customer_id" id="customer-id-input" placeholder="CID-XXXX" value="{% if customer_id %}{{ customer_id }}{% else %}{% endif %}" required>
-                <button type="submit" class="search-btn" id="search-btn">Search by Customer ID</button>
-                <div class="approval-buttons" id="approval-actions">
-                    <button class="deny-btn" id="deny-all-btn">Deny All</button>
-                    <button class="approve-btn" id="approve-all-btn">Approve All</button>
-                </div>
-        </div>
+</div>
 
-        <div class="completed-jobs">
-            <div class='dashboard-rows'>
-                <h2>Completed Jobs</h2>
-                <button onclick="window.location.href='{% url 'print_completed' %}'" class="view-all-btn specific-view-all-btn">View All</button>
-            </div>
-            
-            {% if completed_documents %}
-            <div class="completedJobs-item-title">
-                <span>Document Name</span>
-                <p>Printer Assigned</p>
-            </div>
-        
-            <div class="jobs-item">
-                {% for doc in completed_documents %}
-                        <div class="jobs-item-wrapper">
-                            <h6 title="{{ doc.filename }}">{{ doc.filename }}</h6>
-                            <div class="Printer-Assigned">
-                                {% if doc.printed_at %}
-                                    {{ doc.printed_at }}
-                                {% else %}
-                                    No Printer
-                                {% endif %}
-                            </div>
-                            <button class="jobs-done-btn" data-doc-id="{{ doc.doc_id }}">Done</button>
-                        </div>
-                {% empty %}
-                    <div class="no-jobs">
-                        <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
-                        <p>All Completed!</p>
-                    </div>
-                {% endfor %}
-            </div>
-        {% else %}
-            <div class="no-jobs">
-                <img src="{% static 'assets/empty-jobs.png' %}" alt="Completed Jobs">
-                <p>All Completed!</p>
-            </div>
-        {% endif %}
+<div id="ticket-modal" class="ticket-modal" aria-hidden="true">
+    <div class="ticket-modal__backdrop" data-close-ticket-modal></div>
+    <div class="ticket-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="ticket-modal-title">
+        <div class="ticket-modal__header">
+            <h3 id="ticket-modal-title">Ticket Details</h3>
+            <button class="ticket-modal__done" type="button" data-close-ticket-modal>Done</button>
         </div>
+        <div class="ticket-modal__card">
+            <div class="ticket-modal__grid">
+                <div>
+                    <p class="ticket-modal__label">Customer ID</p>
+                    <p class="ticket-modal__value" id="modal-customer-id"></p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Document ID</p>
+                    <p class="ticket-modal__value" id="modal-doc-id"></p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Customer Name</p>
+                    <p class="ticket-modal__value" id="modal-customer-name"></p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Document Name</p>
+                    <p class="ticket-modal__value" id="modal-doc-name"></p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Email</p>
+                    <p class="ticket-modal__value" id="modal-email"></p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Problem Type</p>
+                    <p class="ticket-modal__value" id="modal-problem-type"></p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Contact Number</p>
+                    <p class="ticket-modal__value" id="modal-phone"></p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Reprinted</p>
+                    <p class="ticket-modal__value" id="modal-reprinted"></p>
+                </div>
+            </div>
+            <div class="ticket-modal__issue">
+                <p class="ticket-modal__label">Issue</p>
+                <p class="ticket-modal__value" id="modal-issue"></p>
+            </div>
+        </div>
+        <button class="ticket-modal__download" type="button">Download System Logs</button>
     </div>
 </div>
 

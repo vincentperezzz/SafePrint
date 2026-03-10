@@ -98,6 +98,219 @@ window.onload = function () {
 let selectedIds = [];
 
 document.addEventListener('DOMContentLoaded', () => {
+    const ticketModal = document.getElementById('ticket-modal');
+    const openTicketButtons = document.querySelectorAll('[data-open-ticket-modal]');
+    const closeTicketTargets = document.querySelectorAll('[data-close-ticket-modal]');
+
+    const openTicketModal = (button) => {
+        if (!ticketModal) return;
+
+        // Populate modal fields from data attributes on the clicked button
+        if (button) {
+            document.getElementById('modal-customer-id').textContent = button.getAttribute('data-customer-id') || '';
+            document.getElementById('modal-doc-id').textContent = '#' + (button.getAttribute('data-doc-id') || '—');
+            document.getElementById('modal-customer-name').textContent = button.getAttribute('data-customer-name') || '';
+            document.getElementById('modal-doc-name').textContent = button.getAttribute('data-doc-name') || '';
+            document.getElementById('modal-email').textContent = button.getAttribute('data-email') || '';
+            document.getElementById('modal-phone').textContent = button.getAttribute('data-phone') || '—';
+            document.getElementById('modal-issue').textContent = button.getAttribute('data-issue') || '';
+            document.getElementById('modal-problem-type').textContent = button.getAttribute('data-problem-type') || '';
+            document.getElementById('modal-reprinted').textContent = button.getAttribute('data-was-reprinted') === 'True' ? 'Yes' : 'No';
+            document.getElementById('ticket-modal-title').textContent = button.getAttribute('data-ticket-number') || '';
+        }
+
+        ticketModal.classList.add('is-open');
+        ticketModal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+    };
+
+    const closeTicketModal = () => {
+        if (!ticketModal) return;
+        ticketModal.classList.remove('is-open');
+        ticketModal.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+    };
+
+    if (ticketModal) {
+        // Use event delegation so dynamically added buttons also work
+        document.addEventListener('click', (event) => {
+            const btn = event.target.closest('[data-open-ticket-modal]');
+            if (btn) openTicketModal(btn);
+        });
+
+        closeTicketTargets.forEach((target) => {
+            target.addEventListener('click', closeTicketModal);
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && ticketModal.classList.contains('is-open')) {
+                closeTicketModal();
+            }
+        });
+    }
+
+    const activeResults = document.getElementById('document-results');
+    const resolvedResults = document.querySelector('.resolved-list-container .document-results');
+
+    const buildResolvedRow = (data) => {
+        const row = document.createElement('div');
+        row.className = 'document-item resolved-row';
+        const priceText = data.payment_amount ? '₱' + Number(data.payment_amount).toFixed(2) : (data.price || '—');
+        const ticketNumber = data.ticket_number || data.ticketNumber || '';
+        const customerName = data.customer_name || data.customerName || '';
+        const email = data.email || '';
+        const verifiedBy = data.resolved_by || data.verifiedBy || '—';
+        const status = data.status || '';
+        const ticketId = data.ticket_id || '';
+        const customerId = data.customer_id || '';
+        const phone = data.phone || '';
+        const docId = data.doc_id || '';
+        const docName = data.doc_name || '';
+        const issue = data.description || '';
+        const problemType = data.problem_type || '';
+        const wasReprinted = data.was_reprinted ? 'True' : 'False';
+
+        row.innerHTML = `
+            <div class="ticket-cell">
+                <img src="/static/assets/ticket-icon.png" alt="Ticket" class="ticket-icon">
+                <div class="ticket-meta">
+                    <h6>${ticketNumber}</h6>
+                    <span>${priceText}</span>
+                </div>
+            </div>
+            <div class="resolved-customer">${customerName}</div>
+            <div class="resolved-email">${email}</div>
+            <div class="resolved-verifier">${verifiedBy}</div>
+            <div class="resolved-status">${status}</div>
+            <div class="resolved-details">
+                <button class="approve-btn view-details-btn" type="button" data-open-ticket-modal
+                    data-ticket-id="${ticketId}"
+                    data-ticket-number="${ticketNumber}"
+                    data-customer-id="${customerId}"
+                    data-customer-name="${customerName}"
+                    data-email="${email}"
+                    data-phone="${phone}"
+                    data-doc-id="${docId}"
+                    data-doc-name="${docName}"
+                    data-issue="${issue}"
+                    data-problem-type="${problemType}"
+                    data-was-reprinted="${wasReprinted}"
+                >View Details</button>
+            </div>
+        `;
+        return row;
+    };
+
+    const updateTicketCounts = () => {
+        const activeCountEl = document.getElementById('active-tickets-count');
+        const resolvedCountEl = document.getElementById('resolved-tickets-count');
+
+        if (activeResults && activeCountEl) {
+            const activeRows = Array.from(activeResults.querySelectorAll('.document-item'))
+                .filter((row) => !row.classList.contains('empty-row'));
+            activeCountEl.textContent = activeRows.length.toString();
+        }
+
+        if (resolvedResults && resolvedCountEl) {
+            const resolvedRows = Array.from(resolvedResults.querySelectorAll('.document-item.resolved-row'))
+                .filter((row) => !row.classList.contains('empty-row'));
+            resolvedCountEl.textContent = resolvedRows.length.toString();
+        }
+    };
+
+    const updateResolvedEmptyState = () => {
+        if (!resolvedResults) return;
+        const existingEmptyRow = resolvedResults.querySelector('.document-item.empty-row');
+        const rows = Array.from(resolvedResults.querySelectorAll('.document-item.resolved-row'));
+
+        if (rows.length === 0) {
+            if (!existingEmptyRow) {
+                const emptyRow = document.createElement('div');
+                emptyRow.className = 'document-item resolved-row empty-row';
+                emptyRow.innerHTML = `
+                    <div class="ticket-cell">
+                        <div class="ticket-meta">
+                            <p style="font-family: 'Montserrat', sans-serif;">No resolved tickets.</p>
+                        </div>
+                    </div>
+                    <div class="resolved-customer"></div>
+                    <div class="resolved-email"></div>
+                    <div class="resolved-verifier"></div>
+                    <div class="resolved-status"></div>
+                `;
+                resolvedResults.appendChild(emptyRow);
+            }
+        } else if (existingEmptyRow) {
+            existingEmptyRow.remove();
+        }
+    };
+
+    const updateActiveEmptyState = () => {
+        if (!activeResults) return;
+        const existingEmpty = activeResults.querySelector('.no-documents');
+        const existingEmptyRow = activeResults.querySelector('.document-item.empty-row');
+        const rows = Array.from(activeResults.querySelectorAll('.document-item'));
+
+        if (rows.length === 0) {
+            if (!existingEmptyRow) {
+                if (existingEmpty) existingEmpty.remove();
+                const emptyRow = document.createElement('div');
+                emptyRow.className = 'document-item empty-row';
+                emptyRow.innerHTML = `
+                    <div class="ticket-cell">
+                        <div class="ticket-meta">
+                            <p style="font-family: 'Montserrat', sans-serif;">No active tickets.</p>
+                        </div>
+                    </div>
+                    <div class="ticket-customer"></div>
+                    <div class="ticket-date"></div>
+                    <div class="ticket-doc"></div>
+                    <div class="actions"></div>
+                `;
+                activeResults.appendChild(emptyRow);
+            }
+        } else {
+            if (existingEmpty) existingEmpty.remove();
+            if (existingEmptyRow) existingEmptyRow.remove();
+        }
+    };
+
+    const moveToResolved = (row, status) => {
+        if (!resolvedResults || !row) return;
+
+        const ticketNumber = row.querySelector('.ticket-meta h6')?.textContent?.trim() || '-';
+        const price = row.querySelector('.ticket-meta span')?.textContent?.trim() || '-';
+        const customerId = row.querySelector('.ticket-customer')?.textContent?.trim() || 'Customer';
+
+        const data = {
+            ticketNumber,
+            price,
+            customerName: row.dataset.customerName || customerId,
+            email: row.dataset.customerEmail || 'example@email.com',
+            verifiedBy: row.dataset.verifiedBy || 'Admin',
+            status
+        };
+
+        const newRow = buildResolvedRow(data);
+        const header = resolvedResults.querySelector('.list-header');
+        if (header && header.nextSibling) {
+            resolvedResults.insertBefore(newRow, null);
+        } else {
+            resolvedResults.appendChild(newRow);
+        }
+
+        row.remove();
+        updateActiveEmptyState();
+        updateResolvedEmptyState();
+        updateTicketCounts();
+    };
+
+    // Attach event listeners to any existing dynamic elements (if on dashboard page)
+    if (typeof attachTicketEventListeners === 'function') {
+        attachTicketEventListeners();
+    }
+
+    updateResolvedEmptyState();
 
     //Customer ID Enter key Functionality
     const customerIdInput = document.getElementById('customer-id-input');
@@ -651,15 +864,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const field = this.dataset.field;
                 const value = this.value;
                 // Only handle printer status dropdowns that declare both data attributes
-                if (!printerId || !field) return;
+                if (!printerId || !field) {
+                    return;
+                }
 
                 // Form data for the request
                 const formData = new FormData();
                 formData.append('printer_id', printerId);
                 formData.append('field', field);
                 formData.append('value', value);
-
-                fetch('/api/update_printer_field/', {
+                
+                fetch('/portal/api/update_printer_field/', {
                     method: 'POST',
                     headers: {
                         'X-CSRFToken': csrfToken
@@ -676,11 +891,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         return response.json();
                     })
                     .then(data => {
-                        createAlert('Success', 'Status Updated', 'Printer status has been updated successfully.', 'success', true, true, 'pageMessages');
+                        // Show appropriate success message based on field
+                        let fieldLabel = field === 'paper_assigned' ? 'Paper Assigned' : 
+                                         field === 'paper_quality' ? 'GSM' : 'Printer setting';
+                        createAlert('Success', 'Printer Updated', `${fieldLabel} has been updated successfully.`, 'success', true, true, 'pageMessages');
+                        // Reload page after short delay to reflect changes in Paper Refill section
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
                     })
                     .catch(error => {
-                        console.error('Error updating printer status:', error);
-                        createAlert('Error', 'Update Failed', 'Failed to update printer status. Please try again or contact support.', 'danger', true, true, 'pageMessages');
+                        console.error('Error updating printer setting:', error);
+                        createAlert('Error', 'Update Failed', 'Failed to update printer setting. Please try again or contact support.', 'danger', true, true, 'pageMessages');
                     });
             });
         });
@@ -734,10 +956,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let noOnqueueMatchRow = document.getElementById('no-onqueue-match-row');
     if (!noOnqueueMatchRow && document.querySelector('.on-queue-documents-list')) {
         noOnqueueMatchRow = document.createElement('div');
-        noOnqueueMatchRow.className = 'on-queue-row';
+        noOnqueueMatchRow.className = 'on-queue-row on-queue-empty';
         noOnqueueMatchRow.id = 'no-onqueue-match-row';
         noOnqueueMatchRow.style.display = 'none';
-        noOnqueueMatchRow.innerHTML = `<div class="queue-col" style="width: 100%; text-align: center;">No match found.</div>`;
+        noOnqueueMatchRow.innerHTML = `<div class="queue-empty-text">No match found.</div>`;
         const onqueueList = document.querySelector('.on-queue-documents-list');
         onqueueList.appendChild(noOnqueueMatchRow);
     }
@@ -1022,8 +1244,10 @@ function displayDocuments(documents, total_price) {
         dashboardSearchInput.oninput = function () {
             const filter = dashboardSearchInput.value.trim().toLowerCase();
             const filteredDocs = lastDocuments.filter(doc =>
-                doc.filename.toLowerCase().includes(filter) ||
-                doc.doc_id.toLowerCase().includes(filter)
+                (doc.filename || '').toLowerCase().includes(filter) ||
+                (doc.doc_id || '').toLowerCase().includes(filter) ||
+                (doc.ticket_number || '').toLowerCase().includes(filter) ||
+                (doc.customer_id || '').toLowerCase().includes(filter)
             );
             renderDocumentItems(filteredDocs, resultsDiv);
         };
@@ -1035,19 +1259,27 @@ function renderDocumentItems(documents, resultsDiv) {
     Array.from(resultsDiv.querySelectorAll('.document-item, .no-documents')).forEach(el => el.remove());
     let html = '';
     documents.forEach(doc => {
+        const ticketNumber = doc.ticket_number || doc.doc_id || '';
+        const customerId = doc.customer_id ? `#${doc.customer_id.replace('#', '')}` : '';
+        const timeSubmitted = doc.time_submitted || '';
+        const documentId = doc.document_id || doc.doc_id || '';
+        const price = Number.parseFloat(doc.price || 0);
         html += `
         <div class="document-item" data-doc-id="${doc.doc_id}">
-            <div class="document-item-wrapper">
-                <img src="/static/assets/pdf-icon.svg" alt="PDF Icon">
-                <div class="document-info">
-                    <h6 title="${doc.filename}">${doc.filename}</h6>
-                    <span>₱${parseFloat(doc.price).toFixed(2)}</span>
+            <div class="ticket-cell">
+                <img src="/static/assets/pdf-icon.svg" alt="Ticket">
+                <div class="ticket-meta">
+                    <h6 title="${ticketNumber}">${ticketNumber}</h6>
+                    <span>₱${price.toFixed(2)}</span>
                 </div>
             </div>
-            <div class="document-id">${doc.doc_id}</div>
+            <div class="ticket-customer">${customerId}</div>
+            <div class="ticket-date">${timeSubmitted}</div>
+            <div class="ticket-doc">${documentId}</div>
             <div class="actions">
-                <button class="deny-btn">Deny</button>
-                <button class="approve-btn">Approve</button>
+                <button class="deny-btn" type="button">Void</button>
+                <button class="approve-btn" type="button">Verify</button>
+                <button class="refund-btn" type="button">Refund</button>
             </div>
         </div>
         `;
@@ -1083,14 +1315,17 @@ function renderDocumentItems(documents, resultsDiv) {
 
                         // Recalculate total price
                         let total = 0;
-                        resultsDiv.querySelectorAll('.document-item .document-info span').forEach(span => {
+                        resultsDiv.querySelectorAll('.document-item .ticket-meta span').forEach(span => {
                             total += parseFloat(span.textContent.replace('₱', '')) || 0;
                         });
-                        document.getElementById('price-to-pay').textContent = '₱' + total.toFixed(2);
+                        const priceDisplay = document.getElementById('price-to-pay');
+                        if (priceDisplay) priceDisplay.textContent = '₱' + total.toFixed(2);
 
                         // If no more documents, clear everything and hide search/title
                         if (resultsDiv.querySelectorAll('.document-item').length === 0) {
-                            clearCustomerIdAndPrice();
+                            if (typeof clearCustomerIdAndPrice === 'function') {
+                                clearCustomerIdAndPrice();
+                            }
                             const searchBar = resultsDiv.querySelector('.search-bar');
                             const docTitle = resultsDiv.querySelector('.document-item-title');
                             if (searchBar) searchBar.style.display = 'none';
@@ -1134,14 +1369,17 @@ function renderDocumentItems(documents, resultsDiv) {
 
                         // Recalculate total price
                         let total = 0;
-                        resultsDiv.querySelectorAll('.document-item .document-info span').forEach(span => {
+                        resultsDiv.querySelectorAll('.document-item .ticket-meta span').forEach(span => {
                             total += parseFloat(span.textContent.replace('₱', '')) || 0;
                         });
-                        document.getElementById('price-to-pay').textContent = '₱' + total.toFixed(2);
+                        const priceDisplay = document.getElementById('price-to-pay');
+                        if (priceDisplay) priceDisplay.textContent = '₱' + total.toFixed(2);
 
                         // If no more documents, clear everything
                         if (resultsDiv.querySelectorAll('.document-item').length === 0) {
-                            clearCustomerIdAndPrice();
+                            if (typeof clearCustomerIdAndPrice === 'function') {
+                                clearCustomerIdAndPrice();
+                            }
                             const searchBar = resultsDiv.querySelector('.search-bar');
                             const docTitle = resultsDiv.querySelector('.document-item-title');
                             if (searchBar) searchBar.style.display = 'none';
@@ -1687,8 +1925,72 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function playNotificationSound() {
+            // Helper that attempts to play via <audio> then falls back to WebAudio
+            function tryPlayAudio(path) {
+                return new Promise((resolve, reject) => {
+                    try {
+                        notificationAudio.src = path;
+                        notificationAudio.volume = 1.0;
+                        const p = notificationAudio.play();
+                        if (p && typeof p.then === 'function') {
+                            p.then(() => resolve('audio'))
+                                .catch(err => reject(err));
+                        } else {
+                            // If play returned undefined, assume success
+                            resolve('audio');
+                        }
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+            }
 
-            // If sound settings are missing from localStorage, fetch them from server first
+            function tryWebAudio(path) {
+                return new Promise((resolve, reject) => {
+                    try {
+                        const AudioContext = window.AudioContext || window.webkitAudioContext;
+                        if (!AudioContext) return reject(new Error('WebAudio not supported'));
+                        const ctx = new AudioContext();
+                        Promise.resolve(ctx.state === 'suspended' ? ctx.resume() : ctx)
+                            .then(() => fetch(path))
+                            .then(res => res.arrayBuffer())
+                            .then(buf => ctx.decodeAudioData(buf))
+                            .then(decoded => {
+                                const src = ctx.createBufferSource();
+                                src.buffer = decoded;
+                                src.connect(ctx.destination);
+                                try {
+                                    src.start(0);
+                                    resolve('webaudio');
+                                } catch (e) {
+                                    reject(e);
+                                }
+                            })
+                            .catch(reject);
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+            }
+
+            function playIfEnabled(path) {
+                // Prefer <audio> element first, then WebAudio fallback
+                return tryPlayAudio(path).catch(err => {
+                    console.warn('Audio element play failed, trying WebAudio fallback:', err);
+                    return tryWebAudio(path);
+                });
+            }
+
+            function runPlay(soundSlug) {
+                if (!soundSlug) soundSlug = 'chime';
+                const soundPath = `/static/sounds/${soundSlug}.mp3`;
+                playIfEnabled(soundPath).then(method => {
+                    console.log('Notification sound played via', method);
+                }).catch(err => {
+                    console.warn('All playback methods failed:', err);
+                });
+            }
+
             if (!localStorage.getItem('sound_slug')) {
                 fetch('/api/get-notification-prefs/', {
                     method: 'POST',
@@ -1700,43 +2002,26 @@ document.addEventListener('DOMContentLoaded', function () {
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            // Save to localStorage
                             localStorage.setItem('sound_slug', data.sound_slug);
                             localStorage.setItem('sound_enabled', data.sound_enabled ? 'true' : 'false');
-
-                            // Only play if actually enabled
-                            if (data.sound_enabled) {
-                                const soundPath = `/static/sounds/${data.sound_slug}.mp3`;
-                                notificationAudio.src = soundPath;
-                                notificationAudio.volume = 1.0;
-                                notificationAudio.play()
-                                    .then(() => console.log("Sound played successfully"))
-                                    .catch(e => console.error("Couldn't play notification sound:", e));
-                            }
+                            if (data.sound_enabled) runPlay(data.sound_slug);
                         }
                     })
-                    .catch(e => console.error("Couldn't fetch sound preferences:", e));
+                    .catch(e => console.warn("Couldn't fetch sound preferences:", e));
             } else {
-                // Sound settings exist in localStorage
-                const soundEnabled = localStorage.getItem('sound_enabled') === 'true';
-                let soundSlug = localStorage.getItem('sound_slug');
-
-                if (soundEnabled) {
-                    // Normal path - sound slug is available
-                    const soundPath = `/static/sounds/${soundSlug}.mp3`;
-                    notificationAudio.src = soundPath;
-                    notificationAudio.volume = 1.0;
-                    notificationAudio.play()
-                        .then(() => console.log("Sound played successfully"))
-                        .catch(e => console.error("Couldn't play notification sound:", e));
-                }
+                const enabled = localStorage.getItem('sound_enabled') === 'true';
+                const slug = localStorage.getItem('sound_slug') || 'chime';
+                if (enabled) runPlay(slug);
             }
+
+            // Expose SSE sound player so other scripts can reuse it
+            try { window.playNotificationSound = playNotificationSound; } catch (e) { /* ignore */ }
         }
 
-        function startTitleFlash(completedCount) {
+        function startTitleFlash(activeCount) {
             // Coerce and guard: if 0 or invalid, stop flashing
-            completedCount = parseInt(String(completedCount), 10) || 0;
-            if (completedCount <= 0) {
+            activeCount = parseInt(String(activeCount), 10) || 0;
+            if (activeCount <= 0) {
                 stopTitleFlash();
                 return;
             }
@@ -1745,10 +2030,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 clearInterval(titleFlashInterval);
                 titleFlashInterval = null;
             }
-            let showCompleted = true;
+            let showActive = true;
             titleFlashInterval = setInterval(() => {
-                document.title = showCompleted ? `(${completedCount}) Print Jobs Completed` : baseTitle;
-                showCompleted = !showCompleted;
+                document.title = showActive ? `(${activeCount}) Active Tickets` : baseTitle;
+                showActive = !showActive;
             }, 1000);
         }
 
@@ -1797,8 +2082,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Find new document IDs that we haven't seen before
                 const newDocIds = currentDocIds.filter(id => !seenDocIds.includes(id));
 
-                // If there are any new document IDs, play the notification
-                if (newDocIds.length > 0) {
+                // Get active tickets count
+                const activeCount = parseInt(String(stats.active_tickets_count || 0), 10) || 0;
+
+                // If there are any new document IDs AND there are active tickets, play the notification
+                if (newDocIds.length > 0 && activeCount > 0) {
                     console.log("New completed jobs detected:", newDocIds.length);
                     playNotificationSound();
 
@@ -1814,12 +2102,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     sessionStorage.setItem('seenDocIds', JSON.stringify(currentDocIds));
                 }
 
-                // Update previous completed count
-                previousCompletedCount = completedCount;
+                // Always update seen IDs (even when no sound plays)
+                if (newDocIds.length > 0) {
+                    sessionStorage.setItem('seenDocIds', JSON.stringify(currentDocIds));
+                }
 
-                // Update UI elements for tab title flashing based on current count
-                if (completedCount > 0) {
-                    startTitleFlash(completedCount);
+                // Use active tickets for title flashing instead of completed jobs
+                if (activeCount > 0) {
+                    startTitleFlash(activeCount);
                 } else {
                     stopTitleFlash();
                 }
@@ -1831,15 +2121,15 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (completedElem && stats.hasOwnProperty('completed_jobs_count')) {
                         completedElem.textContent = String(stats.completed_jobs_count);
                     }
-                    // Update Printer Errors
-                    const errorElem = document.querySelector('.stat-card.red p');
-                    if (errorElem && stats.hasOwnProperty('printer_errors_count')) {
-                        errorElem.textContent = String(stats.printer_errors_count);
+                    // Update Printer Errors / Active Tickets
+                    const errorElem = document.getElementById('active-tickets-count');
+                    if (errorElem && stats.hasOwnProperty('active_tickets_count')) {
+                        errorElem.textContent = String(stats.active_tickets_count);
                     }
-                    // Update Pending Customers
-                    const pendingElem = document.querySelector('.stat-card.yellow p');
-                    if (pendingElem && stats.hasOwnProperty('pending_customers_count')) {
-                        pendingElem.textContent = String(stats.pending_customers_count);
+                    // Update Pending Customers / Resolved Tickets
+                    const pendingElem = document.getElementById('resolved-tickets-count');
+                    if (pendingElem && stats.hasOwnProperty('resolved_tickets_count')) {
+                        pendingElem.textContent = String(stats.resolved_tickets_count);
                     }
 
                     // Update Completed Jobs List (dashboard-right)
@@ -1923,10 +2213,10 @@ function updateOnQueueEmptyState() {
         if (remainingOnQueueRows.length === 0) {
             if (!noOnqueueRow) {
                 noOnqueueRow = document.createElement('div');
-                noOnqueueRow.className = 'on-queue-row';
+                noOnqueueRow.className = 'on-queue-row on-queue-empty';
                 noOnqueueRow.id = 'no-onqueue-documents-row';
                 noOnqueueRow.style.display = 'flex';
-                noOnqueueRow.innerHTML = `<div class="queue-col" style="width: 100%; text-align: center;">No documents in queue.</div>`;
+                noOnqueueRow.innerHTML = `<div class="queue-empty-text">No documents in queue.</div>`;
                 onQueueList.appendChild(noOnqueueRow);
             } else {
                 noOnqueueRow.style.display = 'flex';
@@ -2088,3 +2378,632 @@ if (addPrinterForm) {
         closeAddPrinterPopup();
     };
 }
+// ==================== Real-time Dashboard Ticket Updates ====================
+(function() {
+    // Only run on dashboard page
+    if (!document.getElementById('document-results')) {
+        return;
+    }
+
+    let lastActiveCount = null;
+    let lastResolvedCount = null;
+
+    function renderActiveTicketRow(ticket) {
+        const paymentDisplay = ticket.payment_amount ? `₱${ticket.payment_amount.toFixed(2)}` : '—';
+        let actionButtons = `
+            <button class="deny-btn" type="button" data-action="void" data-ticket-id="${ticket.id}">Void</button>
+            <button class="approve-btn" type="button" data-open-ticket-modal
+                data-ticket-id="${ticket.id}"
+                data-ticket-number="${ticket.ticket_number}"
+                data-customer-id="${ticket.customer_id}"
+                data-customer-name="${ticket.customer_name}"
+                data-email="${ticket.email}"
+                data-phone="${ticket.phone_number}"
+                data-doc-id="${ticket.doc_id || ''}"
+                data-doc-name="${ticket.document_name}"
+                data-issue="${ticket.description.replace(/"/g, '&quot;')}"
+                data-problem-type="${ticket.problem_type}"
+                data-was-reprinted="${ticket.was_reprinted}">Verify</button>
+            <button class="refund-btn" type="button" data-action="refund" data-ticket-id="${ticket.id}">Refund</button>
+        `;
+
+        return `
+            <div class="document-item" data-ticket-number="${ticket.ticket_number}" data-ticket-id="${ticket.id}">
+                <div class="ticket-cell">
+                    <img src="/static/assets/ticket-icon.png" alt="Ticket" class="ticket-icon">
+                    <div class="ticket-meta">
+                        <h6>${ticket.ticket_number}</h6>
+                        <span>${paymentDisplay}</span>
+                    </div>
+                </div>
+                <div class="ticket-issue">${ticket.problem_type}</div>
+                <div class="ticket-date">${ticket.created_at}</div>
+                <div class="ticket-customer">#${ticket.customer_id}</div>
+                <div class="actions">
+                    ${actionButtons}
+                </div>
+            </div>
+        `;
+    }
+
+    function renderResolvedTicketRow(ticket) {
+        const paymentDisplay = ticket.payment_amount ? `₱${ticket.payment_amount.toFixed(2)}` : '—';
+        return `
+            <div class="document-item resolved-row">
+                <div class="ticket-cell">
+                    <img src="/static/assets/ticket-icon.png" alt="Ticket" class="ticket-icon">
+                    <div class="ticket-meta">
+                        <h6>${ticket.ticket_number}</h6>
+                        <span>${paymentDisplay}</span>
+                    </div>
+                </div>
+                <div class="resolved-customer">${ticket.customer_name}</div>
+                <div class="resolved-email">${ticket.email}</div>
+                <div class="resolved-verifier">${ticket.resolved_by || '—'}</div>
+                <div class="resolved-status">${ticket.status}</div>
+                <div class="resolved-details">
+                    <button class="approve-btn view-details-btn" type="button" data-open-ticket-modal
+                        data-ticket-id="${ticket.id}"
+                        data-ticket-number="${ticket.ticket_number}"
+                        data-customer-id="${ticket.customer_id}"
+                        data-customer-name="${ticket.customer_name}"
+                        data-email="${ticket.email}"
+                        data-phone="${ticket.phone_number}"
+                        data-doc-id="${ticket.doc_id || ''}"
+                        data-doc-name="${ticket.document_name}"
+                        data-issue="${ticket.description.replace(/"/g, '&quot;')}"
+                        data-problem-type="${ticket.problem_type}"
+                        data-was-reprinted="${ticket.was_reprinted}">View Details</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function updateActiveTickets(tickets) {
+        // Merge new tickets into the current DOM instead of replacing all HTML.
+        const container = document.getElementById('document-results');
+        if (!container) return;
+
+        console.log('[tickets] updateActiveTickets called —', tickets.length, 'tickets');
+
+        // Ensure the header/search exists (don't stomp other scripts)
+        let header = container.querySelector('.list-header');
+        if (!header) {
+            header = document.createElement('div');
+            header.className = 'list-header';
+            header.innerHTML = `
+                <div class="search-bar">
+                    <input type="text" id="dashboard-search" placeholder="Search by Ticket Number">
+                    <span class="search-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span>
+                </div>
+                <div class="document-item-title">
+                    <span>Ticket Number</span>
+                    <p>Issue</p>
+                    <p>Date Submitted</p>
+                    <p>Customer ID</p>
+                    <span class="action-title"></span>
+                </div>
+            `;
+            // Insert header at top
+            container.insertAdjacentElement('afterbegin', header);
+        }
+
+        // Build a set of incoming ticket IDs
+        const incomingIds = new Set(tickets.map(t => String(t.id)));
+
+        // Remove DOM items that are no longer active
+        Array.from(container.querySelectorAll('.document-item[data-ticket-id]')).forEach(el => {
+            const id = el.getAttribute('data-ticket-id');
+            if (!incomingIds.has(id)) {
+                el.remove();
+            }
+        });
+
+        // For each incoming ticket, append if not present
+        tickets.forEach(ticket => {
+            const exists = container.querySelector('.document-item[data-ticket-id="' + ticket.id + '"]');
+            if (!exists) {
+                console.log('[tickets] adding ticket', ticket.id, ticket.ticket_number);
+                // Insert new ticket right after the header
+                const temp = document.createElement('div');
+                temp.innerHTML = renderActiveTicketRow(ticket);
+                const node = temp.firstElementChild;
+                if (header.nextSibling) {
+                    container.insertBefore(node, header.nextSibling);
+                } else {
+                    container.appendChild(node);
+                }
+            } else {
+                // existing
+                // console.log('[tickets] already present', ticket.id);
+            }
+        });
+
+        // If there are no tickets, ensure an empty-row message exists
+        if (tickets.length === 0) {
+            if (!container.querySelector('.empty-row')) {
+                const empty = document.createElement('div');
+                empty.className = 'document-item empty-row';
+                empty.innerHTML = `<p style="margin:0; font-family: 'Montserrat', sans-serif;">No active tickets.</p>`;
+                container.appendChild(empty);
+            }
+        } else {
+            // Remove any empty-row placeholder
+            Array.from(container.querySelectorAll('.empty-row')).forEach(el => el.remove());
+        }
+
+        attachTicketEventListeners();
+    }
+
+    function updateResolvedTickets(tickets) {
+        const container = document.querySelector('.resolved-list-container .document-results');
+        if (!container) return;
+
+        if (tickets.length === 0) {
+            container.innerHTML = `
+                <div class="list-header">
+                    <div class="search-bar">
+                        <input type="text" placeholder="Search by Ticket Number">
+                        <span class="search-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                    </div>
+                    <div class="document-item-title resolved-header">
+                        <span>Ticket Number</span>
+                        <p>Customer Name</p>
+                        <p>Email</p>
+                        <p>Verified by</p>
+                        <p>Status</p>
+                        <p></p>
+                    </div>
+                </div>
+                <div class="document-item empty-row">
+                    <p style="margin:0; font-family: 'Montserrat', sans-serif;">No resolved tickets.</p>
+                </div>
+            `;
+        } else {
+            let html = `
+                <div class="list-header">
+                    <div class="search-bar">
+                        <input type="text" placeholder="Search by Ticket Number">
+                        <span class="search-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                    </div>
+                    <div class="document-item-title resolved-header">
+                        <span>Ticket Number</span>
+                        <p>Customer Name</p>
+                        <p>Email</p>
+                        <p>Verified by</p>
+                        <p>Status</p>
+                        <p></p>
+                    </div>
+                </div>
+            `;
+            tickets.forEach(ticket => {
+                html += renderResolvedTicketRow(ticket);
+            });
+            container.innerHTML = html;
+        }
+
+        attachTicketEventListeners();
+    }
+
+    function attachTicketEventListeners() {
+        // Re-attach modal opener listeners to dynamically added elements
+        document.querySelectorAll('[data-open-ticket-modal]').forEach(button => {
+            button.onclick = function(e) {
+                e.preventDefault();
+                const ticketId = this.getAttribute('data-ticket-id');
+                const ticketNumber = this.getAttribute('data-ticket-number');
+                const customerId = this.getAttribute('data-customer-id');
+                const customerName = this.getAttribute('data-customer-name');
+                const email = this.getAttribute('data-email');
+                const phone = this.getAttribute('data-phone');
+                const docId = this.getAttribute('data-doc-id');
+                const docName = this.getAttribute('data-doc-name');
+                const issue = this.getAttribute('data-issue');
+                const problemType = this.getAttribute('data-problem-type');
+                const wasReprinted = this.getAttribute('data-was-reprinted');
+
+                document.getElementById('modal-customer-id').textContent = customerId;
+                document.getElementById('modal-doc-id').textContent = docId;
+                document.getElementById('modal-customer-name').textContent = customerName;
+                document.getElementById('modal-doc-name').textContent = docName;
+                document.getElementById('modal-email').textContent = email;
+                document.getElementById('modal-problem-type').textContent = problemType;
+                document.getElementById('modal-phone').textContent = phone;
+                document.getElementById('modal-reprinted').textContent = wasReprinted ? 'Yes' : 'No';
+                document.getElementById('modal-issue').textContent = issue;
+
+                document.getElementById('ticket-modal').setAttribute('aria-hidden', 'false');
+            };
+        });
+
+        // Re-attach action listeners
+        document.querySelectorAll('[data-action="void"]').forEach(button => {
+            button.onclick = handleVoidTicket;
+        });
+
+        document.querySelectorAll('[data-action="refund"]').forEach(button => {
+            button.onclick = handleRefundTicket;
+        });
+
+        // Re-attach modal close listeners
+        document.querySelectorAll('[data-close-ticket-modal]').forEach(el => {
+            el.onclick = function() {
+                document.getElementById('ticket-modal').setAttribute('aria-hidden', 'true');
+            };
+        });
+    }
+
+    function handleVoidTicket(e) {
+        e.preventDefault();
+        const ticketId = this.getAttribute('data-ticket-id');
+        if (confirm('Are you sure you want to void this ticket?')) {
+            fetch('/api/void-ticket/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ ticket_id: ticketId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    createAlert('Success', 'Ticket Voided', 'The ticket has been successfully voided.', 'success', true, true, 'pageMessages');
+                    refreshTickets();
+                } else {
+                    createAlert('Error', 'Void Failed', data.error || 'Failed to void the ticket.', 'danger', true, true, 'pageMessages');
+                }
+            })
+            .catch(error => {
+                console.error('Error voiding ticket:', error);
+                createAlert('Error', 'Void Failed', 'An error occurred while voiding the ticket.', 'danger', true, true, 'pageMessages');
+            });
+        }
+    }
+
+    function handleRefundTicket(e) {
+        e.preventDefault();
+        const ticketId = this.getAttribute('data-ticket-id');
+        if (confirm('Are you sure you want to refund this ticket?')) {
+            fetch('/api/refund-ticket/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ ticket_id: ticketId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    createAlert('Success', 'Ticket Refunded', 'The ticket has been successfully refunded.', 'success', true, true, 'pageMessages');
+                    refreshTickets();
+                } else {
+                    createAlert('Error', 'Refund Failed', data.error || 'Failed to refund the ticket.', 'danger', true, true, 'pageMessages');
+                }
+            })
+            .catch(error => {
+                console.error('Error refunding ticket:', error);
+                createAlert('Error', 'Refund Failed', 'An error occurred while refunding the ticket.', 'danger', true, true, 'pageMessages');
+            });
+        }
+    }
+
+    function refreshTickets() {
+        console.log('[tickets] refreshTickets -> fetching /portal/api/get-active-tickets/');
+        fetch('/portal/api/get-active-tickets/')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const activeCount = data.active_count || 0;
+                    const resolvedCount = data.resolved_count || 0;
+
+                    // Update counts in stat cards
+                    document.getElementById('active-tickets-count').textContent = activeCount;
+                    document.getElementById('resolved-tickets-count').textContent = resolvedCount;
+
+                    // Update notification bell badge if present
+                    const notifCountEl = document.getElementById('notification-count');
+                    if (notifCountEl) notifCountEl.textContent = activeCount;
+
+                    // Populate notification panel with a compact list
+                    const panelList = document.getElementById('notification-panel-list');
+                    if (panelList) {
+                        panelList.innerHTML = '';
+                        if (Array.isArray(data.active_tickets) && data.active_tickets.length > 0) {
+                            data.active_tickets.slice(0, 20).forEach(t => {
+                                const item = document.createElement('div');
+                                item.className = 'notif-item';
+                                item.style.padding = '6px 4px';
+                                item.style.borderBottom = '1px solid #f1f1f1';
+                                item.innerHTML = `<div style="font-weight:600">${t.ticket_number}</div><div style="font-size:0.9rem;color:#666">${t.problem_type} • ${t.created_at}</div>`;
+                                item.addEventListener('click', function() {
+                                    // Open ticket modal using the same attributes
+                                    document.getElementById('modal-customer-id').textContent = t.customer_id || '';
+                                    document.getElementById('modal-doc-id').textContent = t.doc_id || '';
+                                    document.getElementById('modal-customer-name').textContent = t.customer_name || '';
+                                    document.getElementById('modal-doc-name').textContent = t.document_name || '';
+                                    document.getElementById('modal-email').textContent = t.email || '';
+                                    document.getElementById('modal-problem-type').textContent = t.problem_type || '';
+                                    document.getElementById('modal-phone').textContent = t.phone_number || '';
+                                    document.getElementById('modal-reprinted').textContent = t.was_reprinted ? 'Yes' : 'No';
+                                    document.getElementById('modal-issue').textContent = t.description || '';
+                                    document.getElementById('ticket-modal').setAttribute('aria-hidden', 'false');
+                                    // Hide panel
+                                    const panel = document.getElementById('notification-panel');
+                                    if (panel) panel.style.display = 'none';
+                                });
+                                panelList.appendChild(item);
+                            });
+                        } else {
+                            panelList.innerHTML = '<div style="padding:8px;color:#666;font-family:Montserrat,sans-serif">No active tickets</div>';
+                        }
+                    }
+
+                    // Update ticket lists
+                    updateActiveTickets(data.active_tickets);
+                    updateResolvedTickets(data.resolved_tickets);
+
+                    // Play notification sound on initial load if there are active tickets,
+                    // or when the active ticket count increases thereafter.
+                    if (lastActiveCount === null) {
+                        if (activeCount > 0) {
+                            playNotificationSound();
+                        }
+                    } else if (activeCount > lastActiveCount) {
+                        playNotificationSound();
+                    }
+
+                    lastActiveCount = activeCount;
+                    lastResolvedCount = resolvedCount;
+                }
+            })
+            .catch(error => console.error('Error refreshing tickets:', error));
+    }
+
+    function playNotificationSound() {
+        // Prefer existing global playNotificationSound (SSE block) if available
+        try {
+            if (typeof window.playNotificationSound === 'function') {
+                const p = window.playNotificationSound();
+                if (p && typeof p.then === 'function') {
+                    p.catch(err => console.warn('Global playNotificationSound() failed:', err));
+                }
+                return;
+            }
+        } catch (e) {
+            console.log('Error calling global playNotificationSound():', e);
+        }
+
+        // Reuse a single Audio element to ensure repeated plays work
+        try {
+            window._sp_fallback_audio = window._sp_fallback_audio || new Audio();
+            const audio = window._sp_fallback_audio;
+            const soundSlug = localStorage.getItem('sound_slug') || 'chime';
+            const soundPath = `/static/sounds/${soundSlug}.mp3`;
+            // If src differs, set it
+            if (audio.src.indexOf(soundPath) === -1) audio.src = soundPath;
+            audio.volume = 1.0;
+            // Reset playback position
+            try { audio.currentTime = 0; } catch (e) { /* ignore */ }
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                    console.warn('Fallback audio.play() failed:', err);
+                    // Try WebAudio fallback
+                    try {
+                        const AudioContext = window.AudioContext || window.webkitAudioContext;
+                        if (!AudioContext) throw new Error('WebAudio not supported');
+                        const ctx = window._sp_audio_ctx || new AudioContext();
+                        window._sp_audio_ctx = ctx;
+                        Promise.resolve(ctx.state === 'suspended' ? ctx.resume() : ctx)
+                            .then(() => fetch(soundPath))
+                            .then(res => res.arrayBuffer())
+                            .then(buf => ctx.decodeAudioData(buf))
+                            .then(decoded => {
+                                const src = ctx.createBufferSource();
+                                src.buffer = decoded;
+                                src.connect(ctx.destination);
+                                try { src.start(0); } catch (e) { console.warn('WebAudio start failed:', e); }
+                            })
+                            .catch(webErr => console.warn('WebAudio fallback failed:', webErr));
+                    } catch (we) {
+                        console.warn('WebAudio fallback unavailable:', we);
+                    }
+                });
+            }
+        } catch (error) {
+            console.log('Could not play notification sound (fallback):', error);
+        }
+    }
+    // Note: removed explicit enable-sound button. Browsers may still block
+    // autoplay; if so, playback requires a user gesture in that browser.
+
+    // Initial fetch and setup polling
+    refreshTickets();
+    setInterval(refreshTickets, 5000); // Poll every 5 seconds
+})();
+
+// Notification bell interactions and sound enable prompt
+(function(){
+    // Toggle notification panel when bell clicked
+    const bell = document.getElementById('notification-bell');
+    if (bell) {
+        bell.addEventListener('click', function(e){
+            e.preventDefault();
+            const panel = document.getElementById('notification-panel');
+            if (!panel) return;
+            panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
+        });
+    }
+})();
+
+// Paper Refill - Tray Capacity editing and Mark as Refilled
+(function() {
+    // Time ago helper function
+    function timeAgo(date) {
+        const now = new Date();
+        const seconds = Math.floor((now - date) / 1000);
+        
+        if (seconds < 5) return 'Just now';
+        if (seconds < 60) return seconds + ' seconds ago';
+        
+        const minutes = Math.floor(seconds / 60);
+        if (minutes === 1) return '1 minute ago';
+        if (minutes < 60) return minutes + ' minutes ago';
+        
+        const hours = Math.floor(minutes / 60);
+        if (hours === 1) return '1 hour ago';
+        if (hours < 24) return hours + ' hours ago';
+        
+        const days = Math.floor(hours / 24);
+        if (days === 1) return 'Yesterday';
+        if (days < 7) return days + ' days ago';
+        
+        const weeks = Math.floor(days / 7);
+        if (weeks === 1) return '1 week ago';
+        if (weeks < 4) return weeks + ' weeks ago';
+        
+        const months = Math.floor(days / 30);
+        if (months === 1) return '1 month ago';
+        return months + ' months ago';
+    }
+
+    // Update all refill times on the page
+    function updateRefillTimes() {
+        document.querySelectorAll('.refill-time[data-timestamp]').forEach(el => {
+            const timestamp = el.dataset.timestamp;
+            if (timestamp && timestamp !== 'None' && timestamp !== '') {
+                const date = new Date(timestamp);
+                if (!isNaN(date.getTime())) {
+                    el.textContent = timeAgo(date);
+                }
+            }
+        });
+    }
+
+    // Click on tray capacity to edit
+    document.querySelectorAll('.tray-capacity-display').forEach(display => {
+        display.style.cursor = 'pointer';
+        display.addEventListener('click', function() {
+            const printerId = this.dataset.printerId;
+            const input = document.querySelector(`.tray-capacity-input[data-printer-id="${printerId}"]`);
+            if (input) {
+                this.style.display = 'none';
+                input.style.display = 'inline-block';
+                input.focus();
+                input.select();
+            }
+        });
+    });
+
+    // Handle tray capacity input
+    document.querySelectorAll('.tray-capacity-input').forEach(input => {
+        const saveCapacity = function() {
+            const printerId = input.dataset.printerId;
+            const display = document.querySelector(`.tray-capacity-display[data-printer-id="${printerId}"]`);
+            const value = parseInt(input.value, 10);
+            
+            if (isNaN(value) || value <= 0) {
+                input.value = parseInt(display.textContent, 10);
+                input.style.display = 'none';
+                display.style.display = 'inline';
+                return;
+            }
+
+            fetch('/portal/api/update_printer_field/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken
+                },
+                body: `printer_id=${printerId}&field=tray_capacity&value=${value}`
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    display.textContent = value + ' sheets';
+                }
+                input.style.display = 'none';
+                display.style.display = 'inline';
+            })
+            .catch(err => {
+                console.error('Error updating tray capacity:', err);
+                input.style.display = 'none';
+                display.style.display = 'inline';
+            });
+        };
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveCapacity();
+            } else if (e.key === 'Escape') {
+                const printerId = input.dataset.printerId;
+                const display = document.querySelector(`.tray-capacity-display[data-printer-id="${printerId}"]`);
+                input.value = parseInt(display.textContent, 10);
+                input.style.display = 'none';
+                display.style.display = 'inline';
+            }
+        });
+
+        input.addEventListener('blur', saveCapacity);
+    });
+
+    // Mark as Refilled button
+    document.querySelectorAll('.refill-btn[data-printer-id]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const printerId = this.dataset.printerId;
+            const row = this.closest('.printer-table-row');
+            
+            fetch('/portal/api/mark_printer_refilled/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken
+                },
+                body: `printer_id=${printerId}`
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Update tray level display
+                    const trayLevelCell = row.querySelector('.status-dot');
+                    if (trayLevelCell) {
+                        trayLevelCell.className = 'status-dot ok';
+                        trayLevelCell.parentElement.innerHTML = '<span class="status-dot ok"></span> Full';
+                    }
+                    
+                    // Update refill time
+                    const refillTimeCell = row.querySelector('.refill-time');
+                    if (refillTimeCell) {
+                        refillTimeCell.dataset.timestamp = data.last_refill_time;
+                        refillTimeCell.textContent = 'Just now';
+                    }
+                }
+            })
+            .catch(err => {
+                console.error('Error marking printer as refilled:', err);
+            });
+        });
+    });
+
+    // Update refill times initially and every minute
+    updateRefillTimes();
+    setInterval(updateRefillTimes, 60000);
+})();

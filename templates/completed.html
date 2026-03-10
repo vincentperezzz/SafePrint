@@ -10,7 +10,17 @@ Print Completed
     <div class="header-left">
         <h1>Print Completed</h1>
     </div>
-    <button class="need-assistance-btn">Need Assistance?</button>
+    <div style="position:relative;">
+        <button id="notification-bell" class="notification-bell" aria-label="Notifications" style="background:transparent; border:none; padding:6px; cursor:pointer;">
+            <span style="position:relative; display:inline-block; width:34px; height:34px;">
+                <svg class="bell-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="50" height="50" fill="#000" stroke="none" aria-hidden="true">
+                    <path d="M12 2C10.343 2 9 3.343 9 5v1.07C6.163 7.165 4 9.97 4 13v3l-1 1v1h18v-1l-1-1v-3c0-3.03-2.163-5.835-5-6.93V5c0-1.657-1.343-3-3-3z" />
+                    <path d="M13.73 20a2 2 0 01-3.46 0" fill="#000" />
+                </svg>
+                <span id="notification-count" style="position:absolute; top:-4px; right:-16px; background:#d9534f; color:#fff; border-radius:50%; padding:4px 6px; font-size:0.75rem; min-width:20px; text-align:center; line-height:1; box-shadow:0 1px 0 rgba(0,0,0,0.2);">0</span>
+            </span>
+        </button>
+    </div>
     <div id="pageMessages"></div>
 </div>
 
@@ -18,7 +28,6 @@ Print Completed
 
 <div class="dashboard-rows">
     <div class="completed-section">
-        <h2 class="completed-title">All Printers</h2>
 
         {% for printer in printers_with_completed %}
         <div class="completed-printer-card">
@@ -31,6 +40,7 @@ Print Completed
                 <div class="completed-col doc-action"></div>
             </div>
             
+            <div class="completed-rows-scroll">
             {% if printer.documents %}
                 {% for document in printer.documents %}
                 <div class="completed-row" data-doc-id="{{ document.doc_id }}">
@@ -41,13 +51,13 @@ Print Completed
                         </div>
                     </div>
                     <div class="completed-col doc-id">#{{ document.doc_id }}</div>
-                    <div class="completed-col doc-customer">{{ document.customer_id }}</div>
+                    <div class="completed-col doc-customer">#{{ document.customer_id }}</div>
                     <div class="completed-col doc-printer">{{ document.printed_at }}</div>
                     <div class="completed-col doc-action">
                         {% if document.handed_over %}
-                            <span class="handed-over-status">✓ Handed Over</span>
+                            <span class="handed-over-status">✓ Picked Up</span>
                         {% else %}
-                            <button class="handed-over-btn">Handed Over</button>
+                            <button class="handed-over-btn">Picked Up</button>
                         {% endif %}
                     </div>
                 </div>
@@ -55,9 +65,10 @@ Print Completed
             {% else %}
                 <div class="completed-row completed-empty">
                     <img src="{% static 'assets/all-completed.png' %}" alt="All Completed" class="all-completed">
-                    <div class="completed-empty-text">All jobs handed over!</div>
+                    <div class="completed-empty-text">All jobs picked up!</div>
                 </div>
             {% endif %}
+            </div>
         </div>
         {% empty %}
         <div class="completed-printer-card">

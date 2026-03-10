@@ -16,7 +16,7 @@ DJANGO_WSGI_MODULE=SafePrint.wsgi
 LOG_LEVEL=debug
 
 cd $DJANGODIR
-source venv/bin/activate
+source /opt/venv/bin/activate
 
 # Export Django settings
 export DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE
@@ -45,8 +45,8 @@ exec gunicorn ${DJANGO_WSGI_MODULE}:application \
   --name $NAME \
   --workers $WORKERS \
   --worker-class gevent \
-  --user=$USER \
-  --group=$GROUP \
+  --reload \
+  \
   --bind=$BIND \
   --log-level=$LOG_LEVEL \
   --log-file=/var/log/gunicorn/safeprint-error.log \

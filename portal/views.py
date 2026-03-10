@@ -36,8 +36,33 @@ def dashboard(request):
     
     # Dashboard Stats
     completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
-    printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
-    pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
+    
+    # Ticket queries
+    active_tickets = list(SupportTicket.objects.filter(
+        status__in=['open', 'in-progress']
+    ).select_related('document').order_by('-created_at'))
+    
+    resolved_tickets = list(SupportTicket.objects.filter(
+        status__in=['resolved', 'closed', 'voided', 'refunded']
+    ).select_related('document').order_by('-resolved_at', '-updated_at'))
+    
+    # Attach payment amount to each ticket via its document
+    for ticket in active_tickets:
+        ticket.payment_amount = None
+        if ticket.document:
+            payment = Payment.objects.filter(doc=ticket.document).first()
+            if payment:
+                ticket.payment_amount = payment.price
+    
+    for ticket in resolved_tickets:
+        ticket.payment_amount = None
+        if ticket.document:
+            payment = Payment.objects.filter(doc=ticket.document).first()
+            if payment:
+                ticket.payment_amount = payment.price
+    
+    active_tickets_count = len(active_tickets)
+    resolved_tickets_count = len(resolved_tickets)
     
     # Get recent completed documents with payment info and printed_at timestamp
     completed_documents = Document.objects.filter(
@@ -52,8 +77,10 @@ def dashboard(request):
     context = {
         'user': user,
         'completed_jobs_count': completed_jobs_count,
-        'printer_errors_count': printer_errors_count,
-        'pending_customers_count': pending_customers_count,
+        'active_tickets': active_tickets,
+        'resolved_tickets': resolved_tickets,
+        'active_tickets_count': active_tickets_count,
+        'resolved_tickets_count': resolved_tickets_count,
         'completed_documents': completed_documents,
         'searched_documents': searched_documents,
         'customer_id_display': customer_id_display,
@@ -176,6 +203,86 @@ def check_voucher_api(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid request format.'})
     except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def get_active_tickets_api(request):
+    """
+    API endpoint that returns active and resolved tickets as JSON.
+    Used by dashboard JavaScript for real-time updates without page reload.
+    """
+    try:
+        # Fetch active tickets
+        active_tickets = list(SupportTicket.objects.filter(
+            status__in=['open', 'in-progress']
+        ).select_related('document').order_by('-created_at'))
+        
+        # Fetch resolved tickets
+        resolved_tickets = list(SupportTicket.objects.filter(
+            status__in=['resolved', 'closed', 'voided', 'refunded']
+        ).select_related('document').order_by('-resolved_at', '-updated_at'))
+        
+        # Attach payment amounts and format data
+        active_tickets_data = []
+        for ticket in active_tickets:
+            payment_amount = None
+            if ticket.document:
+                payment = Payment.objects.filter(doc=ticket.document).first()
+                if payment:
+                    payment_amount = float(payment.price)
+            
+            active_tickets_data.append({
+                'id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'customer_id': ticket.customer_id,
+                'customer_name': ticket.customer_name,
+                'email': ticket.email,
+                'phone_number': ticket.phone_number,
+                'document_name': ticket.document_name,
+                'problem_type': ticket.get_problem_type_display(),
+                'description': ticket.description,
+                'created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'payment_amount': payment_amount,
+                'was_reprinted': ticket.was_reprinted,
+                'doc_id': ticket.document.doc_id if ticket.document else '',
+            })
+        
+        resolved_tickets_data = []
+        for ticket in resolved_tickets:
+            payment_amount = None
+            if ticket.document:
+                payment = Payment.objects.filter(doc=ticket.document).first()
+                if payment:
+                    payment_amount = float(payment.price)
+            
+            resolved_tickets_data.append({
+                'id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'customer_id': ticket.customer_id,
+                'customer_name': ticket.customer_name,
+                'email': ticket.email,
+                'phone_number': ticket.phone_number,
+                'document_name': ticket.document_name,
+                'problem_type': ticket.get_problem_type_display(),
+                'description': ticket.description,
+                'created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'payment_amount': payment_amount,
+                'was_reprinted': ticket.was_reprinted,
+                'doc_id': ticket.document.doc_id if ticket.document else '',
+                'status': ticket.get_status_display(),
+                'resolved_by': ticket.resolved_by,
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'active_tickets': active_tickets_data,
+            'resolved_tickets': resolved_tickets_data,
+            'active_count': len(active_tickets_data),
+            'resolved_count': len(resolved_tickets_data),
+        })
+    except Exception as e:
+        logger.error(f"Error fetching active tickets: {str(e)}")
         return JsonResponse({'success': False, 'error': str(e)})
 
 
@@ -747,16 +854,13 @@ def printing_queue(request):
     if not user_id:
         raise Http404("User not found in session")
     
-    # Pending Documents
-    # Use consistent casing for status values
-    pending_documents = Document.objects.filter(doc_status='Pending').order_by('-time_submitted')
-
-    # Queue Documents
-    on_queue_documents = Document.objects.filter(doc_status__in=['Queued', 'Printing']).select_related('printed_at').order_by('-time_submitted')
+    # Queue Documents — Pending, Queued, and Printing (Finished goes to Print Completed)
+    on_queue_documents = Document.objects.filter(
+        doc_status__in=['Pending', 'Queued', 'Printing']
+    ).select_related('printer_assigned', 'printed_at').order_by('-time_submitted')
     
-    # Combine all documents to fetch all related payments
-    all_documents = list(pending_documents) + list(on_queue_documents)
-    payments = {p.doc.doc_id: p for p in Payment.objects.filter(doc__in=all_documents)}
+    # Fetch all related payments
+    payments = {p.doc.doc_id: p for p in Payment.objects.filter(doc__in=on_queue_documents)}
 
     # Reroute histories for on-queue documents
     reroute_histories = {}
@@ -764,7 +868,6 @@ def printing_queue(request):
         reroute_histories[doc.doc_id] = list(doc.reroute_history.select_related('printer').all())
 
     return render(request, 'queue.html', {
-        'pending_documents': pending_documents,
         'on_queue_documents': on_queue_documents,
         'payments': payments,
         'reroute_histories': reroute_histories,
@@ -776,14 +879,18 @@ def print_completed(request):
     if not user_id:
         raise Http404("User not found in session")
     
-    # Get all completed documents grouped by printer - filter by doc_status='finished'
-    completed_documents = Document.objects.filter(doc_status='Finished').select_related('printed_at').order_by('printer_assigned__id', '-time_submitted')
+    # Get completed documents that were actually printed (have a printed_at printer)
+    # Documents with no printer assigned are NOT completed — they belong in the queue
+    completed_documents = Document.objects.filter(
+        doc_status='Finished',
+        printed_at__isnull=False
+    ).select_related('printed_at').order_by('printer_assigned__id', '-time_submitted')
     
     # Group documents by printer
     printers_with_completed = {}
     for doc in completed_documents:
-        printer_id = doc.printed_at.id if doc.printed_at else 'unassigned'
-        printer_name = str(doc.printed_at) if doc.printed_at else 'Unassigned'
+        printer_id = doc.printed_at.id
+        printer_name = str(doc.printed_at)
         if printer_id not in printers_with_completed:
             printers_with_completed[printer_id] = {
                 'printer': doc.printed_at,
@@ -834,6 +941,7 @@ def printer_status(request):
     })
 
 
+@csrf_exempt
 def update_printer_field(request):
     if request.method == "POST":
         printer_id = request.POST.get('printer_id')
@@ -841,9 +949,35 @@ def update_printer_field(request):
         value = request.POST.get('value')
         try:
             printer = Printer.objects.get(id=printer_id)
+            # Handle tray_capacity as integer
+            if field == 'tray_capacity':
+                value = int(value) if value else None
             setattr(printer, field, value)
             printer.save()
             return JsonResponse({'success': True})
+        except Printer.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Printer not found'})
+        except ValueError as e:
+            return JsonResponse({'success': False, 'error': 'Invalid value'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+
+def mark_printer_refilled(request):
+    """Mark a printer as refilled - sets tray_level to Full and updates last_refill_time"""
+    if request.method == "POST":
+        printer_id = request.POST.get('printer_id')
+        try:
+            printer = Printer.objects.get(id=printer_id)
+            printer.tray_level = 'Full'
+            printer.last_refill_time = timezone.now()
+            printer.save()
+            return JsonResponse({
+                'success': True,
+                'tray_level': printer.tray_level,
+                'last_refill_time': printer.last_refill_time.isoformat()
+            })
         except Printer.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Printer not found'})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
@@ -1481,6 +1615,8 @@ def dashboard_status_event_stream():
         completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
         printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
         pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
+        active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
+        resolved_tickets_count = SupportTicket.objects.filter(status__in=['resolved', 'closed', 'voided', 'refunded']).count()
         # Get recent completed documents (limit 5, order by -printed_at)
         completed_documents = list(
             Document.objects.filter(doc_status='Finished')
@@ -1498,6 +1634,8 @@ def dashboard_status_event_stream():
             'completed_jobs_count': completed_jobs_count,
             'printer_errors_count': printer_errors_count,
             'pending_customers_count': pending_customers_count,
+            'active_tickets_count': active_tickets_count,
+            'resolved_tickets_count': resolved_tickets_count,
             'completed_documents': completed_docs_data,
         }
         json_data = json.dumps(data)
@@ -2320,5 +2458,143 @@ def finish_transaction(request):
             'picked_up_count': picked_up_count
         })
 
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def void_ticket(request):
+    """
+    Void an active support ticket. Sets status to 'closed' with resolution 'Voided'.
+    Moves ticket from Active to Resolved section on dashboard.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        ticket_id = data.get('ticket_id')
+
+        if not ticket_id:
+            return JsonResponse({'success': False, 'error': 'ticket_id is required'})
+
+        ticket = SupportTicket.objects.get(id=ticket_id)
+
+        if ticket.status in ['resolved', 'closed', 'voided', 'refunded']:
+            return JsonResponse({'success': False, 'error': 'Ticket is already resolved/closed'})
+
+        # Get current admin user name for resolved_by
+        admin_user_id = request.session.get('admin_user_id')
+        admin_name = ''
+        if admin_user_id:
+            try:
+                admin = AdminUser.objects.get(id=admin_user_id)
+                admin_name = admin.name
+            except AdminUser.DoesNotExist:
+                pass
+
+        from django.utils import timezone
+        ticket.status = 'voided'
+        ticket.resolved_by = admin_name
+        ticket.resolved_at = timezone.now()
+        ticket.admin_notes = (ticket.admin_notes + '\nVoided by ' + admin_name).strip()
+        ticket.save()
+
+        # Get payment amount
+        payment_amount = None
+        if ticket.document:
+            payment = Payment.objects.filter(doc=ticket.document).first()
+            if payment:
+                payment_amount = float(payment.price)
+
+        return JsonResponse({
+            'success': True,
+            'ticket_id': ticket.id,
+            'ticket_number': ticket.ticket_number,
+            'status': 'Voided',
+            'customer_name': ticket.customer_name,
+            'customer_id': ticket.customer_id,
+            'email': ticket.email,
+            'phone': ticket.phone_number,
+            'doc_id': ticket.document.doc_id if ticket.document else '',
+            'doc_name': ticket.document_name,
+            'description': ticket.description,
+            'problem_type': ticket.get_problem_type_display(),
+            'was_reprinted': ticket.was_reprinted,
+            'resolved_by': admin_name,
+            'payment_amount': payment_amount,
+        })
+
+    except SupportTicket.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Ticket not found'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def refund_ticket(request):
+    """
+    Refund an active support ticket. Sets status to 'resolved' with resolution 'Refunded'.
+    Moves ticket from Active to Resolved section on dashboard.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        ticket_id = data.get('ticket_id')
+
+        if not ticket_id:
+            return JsonResponse({'success': False, 'error': 'ticket_id is required'})
+
+        ticket = SupportTicket.objects.get(id=ticket_id)
+
+        if ticket.status in ['resolved', 'closed', 'voided', 'refunded']:
+            return JsonResponse({'success': False, 'error': 'Ticket is already resolved/closed'})
+
+        # Get current admin user name for resolved_by
+        admin_user_id = request.session.get('admin_user_id')
+        admin_name = ''
+        if admin_user_id:
+            try:
+                admin = AdminUser.objects.get(id=admin_user_id)
+                admin_name = admin.name
+            except AdminUser.DoesNotExist:
+                pass
+
+        from django.utils import timezone
+        ticket.status = 'refunded'
+        ticket.resolved_by = admin_name
+        ticket.resolved_at = timezone.now()
+        ticket.admin_notes = (ticket.admin_notes + '\nRefunded by ' + admin_name).strip()
+        ticket.save()
+
+        # Get payment amount
+        payment_amount = None
+        if ticket.document:
+            payment = Payment.objects.filter(doc=ticket.document).first()
+            if payment:
+                payment_amount = float(payment.price)
+
+        return JsonResponse({
+            'success': True,
+            'ticket_id': ticket.id,
+            'ticket_number': ticket.ticket_number,
+            'status': 'Refunded',
+            'customer_name': ticket.customer_name,
+            'customer_id': ticket.customer_id,
+            'email': ticket.email,
+            'phone': ticket.phone_number,
+            'doc_id': ticket.document.doc_id if ticket.document else '',
+            'doc_name': ticket.document_name,
+            'description': ticket.description,
+            'problem_type': ticket.get_problem_type_display(),
+            'was_reprinted': ticket.was_reprinted,
+            'resolved_by': admin_name,
+            'payment_amount': payment_amount,
+        })
+
+    except SupportTicket.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Ticket not found'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
