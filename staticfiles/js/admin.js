@@ -894,7 +894,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Show appropriate success message based on field
                         let fieldLabel = field === 'paper_assigned' ? 'Paper Assigned' : 
                                          field === 'paper_quality' ? 'GSM' : 'Printer setting';
-                        createAlert('Success', 'Setting Updated', `${fieldLabel} has been updated successfully.`, 'success', true, true, 'pageMessages');
+                        createAlert('Success', 'Printer Updated', `${fieldLabel} has been updated successfully.`, 'success', true, true, 'pageMessages');
                         // Reload page after short delay to reflect changes in Paper Refill section
                         setTimeout(() => {
                             window.location.reload();
