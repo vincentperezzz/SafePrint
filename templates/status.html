@@ -10,11 +10,25 @@ Printer Status
     <div class="header-left">
         <h1>Printer Status</h1>
     </div>
-    <button class="need-assistance-btn">Need Assistance?</button>
+    <div style="position:relative;">
+        <button id="notification-bell" class="notification-bell" aria-label="Notifications" style="background:transparent; border:none; padding:6px; cursor:pointer;">
+            <span style="position:relative; display:inline-block; width:34px; height:34px;">
+                <svg class="bell-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="50" height="50" fill="#000" stroke="none" aria-hidden="true">
+                    <path d="M12 2C10.343 2 9 3.343 9 5v1.07C6.163 7.165 4 9.97 4 13v3l-1 1v1h18v-1l-1-1v-3c0-3.03-2.163-5.835-5-6.93V5c0-1.657-1.343-3-3-3z" />
+                    <path d="M13.73 20a2 2 0 01-3.46 0" fill="#000" />
+                </svg>
+                <span id="notification-count" style="position:absolute; top:-4px; right:-16px; background:#d9534f; color:#fff; border-radius:50%; padding:4px 6px; font-size:0.75rem; min-width:20px; text-align:center; line-height:1; box-shadow:0 1px 0 rgba(0,0,0,0.2);">0</span>
+            </span>
+        </button>
+    </div>
 </div>
 
 <hr class="dashboard-divider">
 <div id="pageMessages"></div>
+
+<div class="queue-header">
+    <h2 class="dashboard-section-header">All Printers</h2>
+</div>
 
 <div class="printer-status-card">
     <div class="queue-search-bar">
@@ -85,7 +99,7 @@ Printer Status
                 <div class="dropdown">
                     <select class="dropdown-select" data-printer-id="{{ printer.id }}" data-field="paper_assigned">
                         {% for size, label in paper_size_choices %}
-                            <option value="{{ size }}" {% if printer.paper_assigned == size %}selected{% endif %}>{{ label }}</option>
+                            <option value="{{ size }}" {% if printer.paper_assigned|default_if_none:'' == size %}selected{% endif %}>{{ label }}</option>
                         {% endfor %}
                     </select>
                     <span class="dropdown-arrow">
@@ -99,7 +113,7 @@ Printer Status
                 <div class="dropdown">
                     <select class="dropdown-select" data-printer-id="{{ printer.id }}" data-field="paper_quality">
                         {% for gsm, label in gsm_choices %}
-                            <option value="{{ gsm }}" {% if printer.paper_quality == gsm %}selected{% endif %}>{{ label }}</option>
+                            <option value="{{ gsm }}" {% if printer.paper_quality|default_if_none:'' == gsm %}selected{% endif %}>{{ label }}</option>
                         {% endfor %}
                     </select>
                     <span class="dropdown-arrow">
@@ -128,6 +142,73 @@ Printer Status
     <button class="add-printer-btn" onclick="openAddPrinterPopup()">Configure to Add Printer</button>
 </div>
 
+    <div class="queue-header">
+        <h2 class="dashboard-section-header">Paper Refill</h2>
+    </div>
+    <div class="printer-status-card">
+        <div class="queue-search-bar">
+            <input type="text" id="paper-refill-search" placeholder="Search by Printer Name or IP Address">
+            <span class="search-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </span>
+        </div>
+        <div class="printer-table paper-refill-table">
+            <div class="printer-table-header">
+                <div>Printer Name</div>
+                <div>Paper Assigned</div>
+                <div>Tray Capacity</div>
+                <div>Tray Level</div>
+                <div>Last Refill Time</div>
+                <div>Refill Action</div>
+                <div class="printer-edit-btn-container">
+                <button class="reload-btn" title="Reload" onclick="window.location.reload()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.06-.27 2.05-.74 2.91l1.46 1.46A7.963 7.963 0 0020 12c0-4.42-3.58-8-8-8zm-6.26 3.09A7.963 7.963 0 004 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3c-3.31 0-6-2.69-6-6 0-1.06.27-2.05.74-2.91l-1.46-1.46z" fill="#18191F"/>
+                    </svg>
+                </button>
+            </div>
+            </div>
+            {% for printer in printers %}
+            <div class="printer-table-row" data-printer-id="{{ printer.id }}">
+                <div class="printer-info">
+                    <div class="printer-name">{{ printer.printer_name }}</div>
+                    <div class="printer-model">{{ printer.model_name }}</div>
+                </div>
+                <div>{% if printer.paper_assigned %}{{ printer.paper_assigned }}{% else %}None{% endif %}</div>
+                <div class="tray-capacity-cell">
+                    <span class="tray-capacity-display" data-printer-id="{{ printer.id }}">{% if printer.tray_capacity %}{{ printer.tray_capacity }} sheets{% else %}Not set{% endif %}</span>
+                    <input type="number" class="tray-capacity-input" data-printer-id="{{ printer.id }}" value="{{ printer.tray_capacity|default:'' }}" style="display:none; width: 80px; text-align: center;">
+                </div>
+                <div>
+                    <span class="status-dot {% if printer.tray_level == 'Full' %}ok{% elif printer.tray_level == 'Low' %}low{% else %}danger{% endif %}"></span>
+                    {{ printer.tray_level }}
+                </div>
+                <div class="refill-time" data-printer-id="{{ printer.id }}" data-timestamp="{{ printer.last_refill_time|date:'c' }}">
+                    {% if printer.last_refill_time %}
+                        {{ printer.last_refill_time|timesince }} ago
+                    {% else %}
+                        Never
+                    {% endif %}
+                </div>
+                <div><button class="refill-btn" data-printer-id="{{ printer.id }}">Mark as Refilled</button></div>
+            </div>
+            {% empty %}
+            <div class="printer-table-row">
+                <div style="grid-column: 1 / -1; text-align: center;">No printers configured.</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+<script>
+    var csrfToken = "{{ csrf_token }}";
+</script>
+{% endblock %}
+
+{% block modals %}
 <!-- Add Printer Popup (hidden by default, styled like popup overlay) -->
 <div class="popup-overlay" id="addPrinterPopup" style="display:none;">
   <div class="popup-form">
@@ -172,9 +253,4 @@ Printer Status
     </div>
   </div>
 </div>
-</div>
-
-<script>
-    var csrfToken = "{{ csrf_token }}";
-</script>
 {% endblock %}

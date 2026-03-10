@@ -5,6 +5,15 @@ echo "========================================"
 echo "SafePrint Docker Environment Startup"
 echo "========================================"
 
+VENV_PATH="/opt/venv"
+
+if [ ! -d "$VENV_PATH" ]; then
+    python3 -m venv "$VENV_PATH"
+fi
+
+"$VENV_PATH/bin/pip" install --upgrade pip
+"$VENV_PATH/bin/pip" install -r /home/safeprint/dev/SafePrint/requirements.txt
+
 # ========================================
 # MYSQL INITIALIZATION
 # ========================================
@@ -30,7 +39,7 @@ done
 
 # Create database and user if not exists
 mysql -u root <<-EOF
-    CREATE DATABASE IF NOT EXISTS SAFEPRINT_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CREATE DATABASE IF NOT EXISTS SAFEPRINT_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
     CREATE USER IF NOT EXISTS 'SAFEPRINT_ADMIN'@'localhost' IDENTIFIED BY '@MYSQL_datugavinoperez1';
     GRANT ALL PRIVILEGES ON SAFEPRINT_DB.* TO 'SAFEPRINT_ADMIN'@'localhost';
     FLUSH PRIVILEGES;
@@ -42,13 +51,31 @@ echo "MySQL initialized and database created."
 # IMPORT DATABASE DUMP IF EXISTS
 # ========================================
 if [ -f "/home/safeprint/dev/SafePrint/docker/data/database_dump.sql" ]; then
-    echo "[2/6] Importing database dump..."
-    mysql -u SAFEPRINT_ADMIN -p'@MYSQL_datugavinoperez1' SAFEPRINT_DB < /home/safeprint/dev/SafePrint/docker/data/database_dump.sql
-    echo "Database imported successfully."
+    # Only import if database is empty (no tables yet)
+    TABLE_COUNT=$(mysql -u SAFEPRINT_ADMIN -p'@MYSQL_datugavinoperez1' -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='SAFEPRINT_DB';" 2>/dev/null || echo "0")
+    if [ "$TABLE_COUNT" -eq 0 ] || [ "$TABLE_COUNT" = "0" ]; then
+        echo "[2/6] Importing database dump..."
+        mysql -u SAFEPRINT_ADMIN -p'@MYSQL_datugavinoperez1' SAFEPRINT_DB < /home/safeprint/dev/SafePrint/docker/data/database_dump.sql
+        echo "Database imported successfully."
+        
+        # Run migrations after import to create any new tables
+        echo "[2.5/6] Running migrations after import..."
+        cd /home/safeprint/dev/SafePrint
+        source "$VENV_PATH/bin/activate"
+        python manage.py migrate --fake-initial --noinput
+        echo "Post-import migrations completed."
+    else
+        echo "[2/6] Database already has $TABLE_COUNT tables, skipping dump import."
+        echo "[2.5/6] Running pending migrations..."
+        cd /home/safeprint/dev/SafePrint
+        source "$VENV_PATH/bin/activate"
+        python manage.py migrate --noinput
+        echo "Migrations completed."
+    fi
 else
     echo "[2/6] No database dump found, running migrations..."
     cd /home/safeprint/dev/SafePrint
-    source venv/bin/activate
+    source "$VENV_PATH/bin/activate"
     python manage.py migrate --noinput
     
     # Create default notification sounds
@@ -72,8 +99,10 @@ fi
 # ========================================
 echo "[3/6] Setting up environment variables..."
 
-if [ ! -f "/home/safeprint/dev/SafePrint/venv/.env" ]; then
-    cat > /home/safeprint/dev/SafePrint/venv/.env << 'ENVFILE'
+mkdir -p "$VENV_PATH"
+
+if [ ! -f "$VENV_PATH/.env" ]; then
+    cat > "$VENV_PATH/.env" << 'ENVFILE'
 DJANGO_SECRET_KEY=your-secret-key-change-for-production
 DB_NAME=SAFEPRINT_DB
 DB_USER=SAFEPRINT_ADMIN
@@ -89,7 +118,7 @@ fi
 # ========================================
 echo "[4/6] Collecting static files..."
 cd /home/safeprint/dev/SafePrint
-source venv/bin/activate
+source "$VENV_PATH/bin/activate"
 python manage.py collectstatic --noinput --clear
 
 # ========================================
