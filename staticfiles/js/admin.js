@@ -2155,8 +2155,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (window.location.pathname.startsWith('/portal/')) {
         let baseTitle = document.title;
         let titleFlashInterval = null;
-        let previousCompletedCount = 0; // Track previous count to detect changes
+        let previousCompletedCount = 0; // unused, kept for compat
         let previousActiveTicketCount = null; // Track ticket count for sound on all pages
+        let previousPrinterErrorCount = null; // Track printer errors for sound notifications
 
         // Create notification audio element
         const notificationAudio = new Audio();
@@ -2342,51 +2343,26 @@ document.addEventListener('DOMContentLoaded', function () {
             evtSourceDash.onmessage = function (event) {
             try {
                 const stats = JSON.parse(event.data);
-                // Use the "Print Jobs Completed" value directly for the flashing count
-                let completedCount = parseInt(String(stats.completed_jobs_count), 10);
-                if (Number.isNaN(completedCount)) {
-                    completedCount = Array.isArray(stats.completed_documents)
-                        ? stats.completed_documents.length
-                        : 0;
-                }
-                completedCount = Math.max(0, completedCount);
-
-                // Track document IDs instead of just counts
-                const currentDocIds = Array.isArray(stats.completed_documents)
-                    ? stats.completed_documents.map(doc => doc.doc_id)
-                    : [];
-
-                // Get previously seen document IDs from sessionStorage
-                const seenDocIds = JSON.parse(sessionStorage.getItem('seenDocIds') || '[]');
-
-                // Find new document IDs that we haven't seen before
-                const newDocIds = currentDocIds.filter(id => !seenDocIds.includes(id));
 
                 // Get active tickets count
                 const activeCount = parseInt(String(stats.active_tickets_count || 0), 10) || 0;
 
-                // If there are any new document IDs AND there are active tickets, play the notification
-                // Skip on first SSE message to avoid sound on every page load
-                if (!sseFirstMessage && newDocIds.length > 0 && activeCount > 0) {
-                    console.log("New completed jobs detected:", newDocIds.length);
+                // Get printer errors count
+                const printerErrorCount = parseInt(String(stats.printer_errors_count || 0), 10) || 0;
+
+                // Play sound when printer error count increases (on any page)
+                if (!sseFirstMessage && previousPrinterErrorCount !== null && printerErrorCount > previousPrinterErrorCount) {
+                    console.log("New printer error(s) detected:", printerErrorCount - previousPrinterErrorCount);
                     playNotificationSound();
 
-                    // Show browser notification if supported and permitted
                     if ("Notification" in window && Notification.permission === "granted") {
-                        new Notification("SafePrint", {
-                            body: `${newDocIds.length} new print job${newDocIds.length > 1 ? 's' : ''} completed`,
+                        new Notification("SafePrint — Printer Error", {
+                            body: `${printerErrorCount} printer${printerErrorCount > 1 ? 's' : ''} in error state`,
                             icon: "/static/assets/favicon.ico"
                         });
                     }
-
-                    // Update the seen document IDs in sessionStorage
-                    sessionStorage.setItem('seenDocIds', JSON.stringify(currentDocIds));
                 }
-
-                // Always update seen IDs (even when no sound plays)
-                if (newDocIds.length > 0) {
-                    sessionStorage.setItem('seenDocIds', JSON.stringify(currentDocIds));
-                }
+                previousPrinterErrorCount = printerErrorCount;
 
                 // Update notification bell badge on ALL pages
                 const bellBadge = document.getElementById('notification-count');
@@ -2404,7 +2380,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 previousActiveTicketCount = activeCount;
 
-                // Use active tickets for title flashing instead of completed jobs
+                // Use active tickets for title flashing
                 if (activeCount > 0) {
                     startTitleFlash(activeCount);
                 } else {
@@ -2413,17 +2389,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 // Only update dashboard DOM when on dashboard page
                 if (window.location.pathname.includes('/portal/dashboard')) {
-                    // Update Print Jobs Completed
-                    const completedElem = document.querySelector('.stat-card.green p');
-                    if (completedElem && stats.hasOwnProperty('completed_jobs_count')) {
-                        completedElem.textContent = String(stats.completed_jobs_count);
+                    // Update Printer Errors card
+                    const printerErrorsElem = document.getElementById('printer-errors-count');
+                    if (printerErrorsElem && stats.hasOwnProperty('printer_errors_count')) {
+                        printerErrorsElem.textContent = String(stats.printer_errors_count);
                     }
-                    // Update Printer Errors / Active Tickets
+                    // Update Active Tickets
                     const errorElem = document.getElementById('active-tickets-count');
                     if (errorElem && stats.hasOwnProperty('active_tickets_count')) {
                         errorElem.textContent = String(stats.active_tickets_count);
                     }
-                    // Update Pending Customers / Resolved Tickets
+                    // Update Resolved Tickets
                     const pendingElem = document.getElementById('resolved-tickets-count');
                     if (pendingElem && stats.hasOwnProperty('resolved_tickets_count')) {
                         pendingElem.textContent = String(stats.resolved_tickets_count);
