@@ -10,7 +10,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_protect
 from django.utils import timezone
-from portal.models import Document, SupportTicket, DocumentReprintLog, Printer
+from portal.models import Document, SupportTicket, DocumentReprintLog, Printer, TicketAuditLog
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +274,7 @@ def submit_ticket(request):
         if isinstance(was_reprinted, str):
             was_reprinted = was_reprinted.lower() in ('true', '1', 'yes')
         receipt_code = data.get('receipt_code', '').strip()
+        gcash_number = data.get('gcash_number', '').strip()
         
         # Handle documents list (for multi-doc mode)
         documents_list = data.get('documents')
@@ -326,9 +327,19 @@ def submit_ticket(request):
             was_reprinted=was_reprinted,
             receipt_code=receipt_code,
             receipt_screenshot=receipt_screenshot,
+            gcash_number=gcash_number,
         )
         
         logger.info(f"Support ticket created: {ticket.ticket_number} for customer {customer_name}")
+        
+        # Create audit log entry for ticket creation
+        TicketAuditLog.objects.create(
+            ticket=ticket,
+            action='created',
+            new_status='open',
+            performed_by=customer_name,
+            details=f"Ticket submitted by {customer_name}. Problem: {ticket.get_problem_type_display()}."
+        )
         
         # Send email alert to admins
         try:

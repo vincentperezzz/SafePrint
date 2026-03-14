@@ -1640,7 +1640,14 @@ function hideAllSteps() {
 function showStep(stepId) {
     hideAllSteps();
     const el = document.getElementById(stepId);
-    if (el) el.style.display = 'block';
+    if (el) {
+        // Use flex display for sections that need it
+        if (el.classList.contains('problem-ticket-section')) {
+            el.style.display = 'flex';
+        } else {
+            el.style.display = 'block';
+        }
+    }
 }
 
 // Show Problem Report Overlay
@@ -2144,7 +2151,83 @@ function goToTicketForm() {
         }
     }
     showStep('step-ticket-form');
+    showTicketSubstep('ticket-step-contact');
     prefillTicketForm();
+}
+
+// Show a specific ticket sub-step
+function showTicketSubstep(stepId) {
+    document.querySelectorAll('.ticket-substep').forEach(function(el) {
+        el.style.display = 'none';
+    });
+    var el = document.getElementById(stepId);
+    if (el) el.style.display = 'flex';
+}
+
+// Navigate to next ticket sub-step with validation
+function nextTicketStep(fromStep) {
+    if (fromStep === 1) {
+        var name = document.getElementById('ticket-customer-name').value.trim();
+        var email = document.getElementById('ticket-email').value.trim();
+        var phone = document.getElementById('ticket-phone').value.trim();
+
+        if (!name) {
+            alert('Please enter your name.');
+            document.getElementById('ticket-customer-name').focus();
+            return;
+        }
+        if (!email) {
+            alert('Please enter your email address.');
+            document.getElementById('ticket-email').focus();
+            return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            alert('Please enter a valid email address.');
+            document.getElementById('ticket-email').focus();
+            return;
+        }
+        if (!phone) {
+            alert('Please enter your phone number.');
+            document.getElementById('ticket-phone').focus();
+            return;
+        }
+        if (!/^09\d{9}$/.test(phone)) {
+            alert('Please enter a valid Philippine mobile number (e.g. 09171234567).');
+            document.getElementById('ticket-phone').focus();
+            return;
+        }
+        showTicketSubstep('ticket-step-proof');
+    } else if (fromStep === 2) {
+        var receiptCode = document.getElementById('ticket-receipt-code').value.trim();
+        var receiptFile = document.getElementById('ticket-receipt-screenshot').files[0];
+
+        if (!receiptCode) {
+            alert('Please enter the receipt code from your payment receipt.');
+            document.getElementById('ticket-receipt-code').focus();
+            return;
+        }
+        if (!receiptFile) {
+            alert('Please upload a screenshot of your payment receipt.');
+            return;
+        }
+        // Skip description step if already captured from problem type (e.g. "Other")
+        var state = window.problemReportState;
+        if (state.description) {
+            document.getElementById('ticket-description').value = state.description;
+            submitTicketForm();
+        } else {
+            showTicketSubstep('ticket-step-describe');
+        }
+    }
+}
+
+// Navigate to previous ticket sub-step
+function prevTicketStep(fromStep) {
+    if (fromStep === 2) {
+        showTicketSubstep('ticket-step-contact');
+    } else if (fromStep === 3) {
+        showTicketSubstep('ticket-step-proof');
+    }
 }
 
 // Prefill ticket form with known data
@@ -2205,44 +2288,6 @@ function submitTicketForm() {
     const receiptFile = document.getElementById('ticket-receipt-screenshot').files[0];
     const description = document.getElementById('ticket-description').value.trim();
 
-    if (!customerName) {
-        alert('Please enter your name.');
-        document.getElementById('ticket-customer-name').focus();
-        return;
-    }
-
-    if (!email) {
-        alert('Please enter your email address.');
-        document.getElementById('ticket-email').focus();
-        return;
-    }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        alert('Please enter a valid email address.');
-        document.getElementById('ticket-email').focus();
-        return;
-    }
-
-    if (!phoneNumber) {
-        alert('Please enter your phone number.');
-        document.getElementById('ticket-phone').focus();
-        return;
-    }
-
-    if (!receiptCode) {
-        alert('Please enter the receipt code from your payment receipt.');
-        document.getElementById('ticket-receipt-code').focus();
-        return;
-    }
-
-    if (!receiptFile) {
-        alert('Please upload a screenshot of your payment receipt.');
-        document.getElementById('ticket-receipt-screenshot').focus();
-        return;
-    }
-
     if (!description) {
         alert('Please describe the issue.');
         document.getElementById('ticket-description').focus();
@@ -2269,6 +2314,10 @@ function submitTicketForm() {
     formData.append('reprinted', state.hasReprinted ? 'true' : 'false');
     formData.append('receipt_code', receiptCode);
     formData.append('receipt_screenshot', receiptFile);
+    var gcashNumber = document.getElementById('ticket-gcash-number');
+    if (gcashNumber && gcashNumber.value.trim()) {
+        formData.append('gcash_number', gcashNumber.value.trim());
+    }
 
     // For multiple docs in same-issue mode
     if (!state.isIndividualMode && state.selectedDocs.length > 1) {
@@ -2658,6 +2707,38 @@ document.addEventListener('change', function(e) {
         if (label) {
             label.textContent = e.target.files.length > 0 ? e.target.files[0].name : 'No file chosen';
         }
+    }
+    // GCash "Same as Contact Number" checkbox
+    if (e.target && e.target.id === 'gcash-same-as-phone') {
+        var gcashInput = document.getElementById('ticket-gcash-number');
+        var phoneInput = document.getElementById('ticket-phone');
+        if (gcashInput && phoneInput) {
+            if (e.target.checked) {
+                gcashInput.value = phoneInput.value;
+                gcashInput.readOnly = true;
+                gcashInput.style.backgroundColor = '#f5f5f5';
+            } else {
+                gcashInput.readOnly = false;
+                gcashInput.style.backgroundColor = '';
+            }
+        }
+    }
+});
+
+// Keep GCash synced with phone when checkbox is checked
+document.addEventListener('input', function(e) {
+    if (e.target && e.target.id === 'ticket-phone') {
+        // Strip non-digits
+        e.target.value = e.target.value.replace(/\D/g, '');
+        var cb = document.getElementById('gcash-same-as-phone');
+        if (cb && cb.checked) {
+            var gcashInput = document.getElementById('ticket-gcash-number');
+            if (gcashInput) gcashInput.value = e.target.value;
+        }
+    }
+    // GCash number: digits only
+    if (e.target && e.target.id === 'ticket-gcash-number') {
+        e.target.value = e.target.value.replace(/\D/g, '');
     }
 });
 
