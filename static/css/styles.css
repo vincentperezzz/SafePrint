@@ -7384,14 +7384,33 @@ input:focus::placeholder {
         height: 34px;
     }
 
-    /* --- Stat cards stack --- */
+    /* --- Stat cards row on mobile --- */
     .dashboard-stats {
-        flex-direction: column;
+        flex-direction: row;
+        gap: 8px;
     }
 
     .stat-card {
-        width: 100%;
-        font-size: 2rem;
+        width: auto;
+        flex: 1;
+        min-width: 0;
+        font-size: 3rem;
+        padding: 12px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .stat-card h3 {
+        font-size: 1rem;
+        margin: 0;
+        line-height: 1.2;
+    }
+
+    .stat-card p {
+        font-size: inherit;
+        padding-right: 0;
+        margin: 0;
     }
 
     /* --- Dashboard left/right columns → single column --- */
@@ -7457,6 +7476,8 @@ input:focus::placeholder {
         max-width: none;
         min-width: 0;
         width: auto;
+        font-size: 1rem;
+        padding: 8px 10px;
     }
 
     /* --- Resolved ticket rows --- */
@@ -7716,12 +7737,12 @@ input:focus::placeholder {
     }
 
     .stat-card {
-        font-size: 1.5rem;
-        padding: 14px 16px;
+        font-size: 2.2rem;
+        padding: 10px 10px;
     }
 
     .stat-card h3 {
-        font-size: 0.85rem;
+        font-size: 0.8rem;
     }
 
     .customer-info input {
