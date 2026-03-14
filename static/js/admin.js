@@ -509,7 +509,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
                     .then(response => response.json())
                     .then(data => {
-                        var img = document.getElementById('profile-img');
                         if (data.success) {
                             var img = document.getElementById('profile-img');
                             if (img) {
@@ -600,6 +599,33 @@ document.addEventListener('DOMContentLoaded', () => {
                         document.getElementById('edit-password-form').reset();
                     } else {
                         createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating your password.', 'danger', true, true, 'pageMessages');
+                    }
+                });
+        };
+    }
+
+    // Edit Email
+    const editEmailForm = document.getElementById('edit-email-form');
+    if (editEmailForm) {
+        editEmailForm.onsubmit = function (e) {
+            e.preventDefault();
+            var formData = new FormData(this);
+            fetch('/api/update-email/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken
+                },
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        createAlert('Success', 'Email Updated', 'Your notification email has been updated.', 'success', true, true, 'pageMessages');
+                        document.getElementById('Email').value = data.new_email || '';
+                        hidePopupOverlay('editEmailOverlay');
+                        document.getElementById('edit-email-form').reset();
+                    } else {
+                        createAlert('Error', 'Update Failed', data.error || 'An error occurred while updating your email.', 'danger', true, true, 'pageMessages');
                     }
                 });
         };
@@ -725,6 +751,7 @@ document.addEventListener('DOMContentLoaded', () => {
             var formData = new FormData(form);
 
             var name = formData.get('name');
+            var email = formData.get('email');
             var username = formData.get('username');
             var password = formData.get('password');
             var confirmPassword = formData.get('confirm_password');
@@ -737,6 +764,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify({
                     name: name,
+                    email: email,
                     username: username,
                     password: password,
                     confirm_password: confirmPassword
@@ -2624,10 +2652,14 @@ if (addPrinterForm) {
                 document.getElementById('modal-email').textContent = email;
                 document.getElementById('modal-problem-type').textContent = problemType;
                 document.getElementById('modal-phone').textContent = phone;
-                document.getElementById('modal-reprinted').textContent = wasReprinted ? 'Yes' : 'No';
+                document.getElementById('modal-reprinted').textContent = (wasReprinted === 'True' || wasReprinted === 'true') ? 'Yes' : 'No';
                 document.getElementById('modal-issue').textContent = issue;
+                document.getElementById('ticket-modal-title').textContent = ticketNumber || 'Ticket Details';
 
-                document.getElementById('ticket-modal').setAttribute('aria-hidden', 'false');
+                const modal = document.getElementById('ticket-modal');
+                modal.classList.add('is-open');
+                modal.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
             };
         });
 
@@ -2643,7 +2675,10 @@ if (addPrinterForm) {
         // Re-attach modal close listeners
         document.querySelectorAll('[data-close-ticket-modal]').forEach(el => {
             el.onclick = function() {
-                document.getElementById('ticket-modal').setAttribute('aria-hidden', 'true');
+                const modal = document.getElementById('ticket-modal');
+                modal.classList.remove('is-open');
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
             };
         });
     }
@@ -2743,7 +2778,11 @@ if (addPrinterForm) {
                                     document.getElementById('modal-phone').textContent = t.phone_number || '';
                                     document.getElementById('modal-reprinted').textContent = t.was_reprinted ? 'Yes' : 'No';
                                     document.getElementById('modal-issue').textContent = t.description || '';
-                                    document.getElementById('ticket-modal').setAttribute('aria-hidden', 'false');
+                                    document.getElementById('ticket-modal-title').textContent = t.ticket_number || 'Ticket Details';
+                                    const modal = document.getElementById('ticket-modal');
+                                    modal.classList.add('is-open');
+                                    modal.setAttribute('aria-hidden', 'false');
+                                    document.body.style.overflow = 'hidden';
                                     // Hide panel
                                     const panel = document.getElementById('notification-panel');
                                     if (panel) panel.style.display = 'none';

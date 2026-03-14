@@ -12,6 +12,7 @@ class AdminUser(models.Model):
     username = models.CharField(max_length=255)
     password = models.CharField(max_length=255)
     role = models.CharField(max_length=50)
+    email = models.EmailField(max_length=255, null=True, blank=True)
     profile_image = models.ImageField(upload_to='profile_images/', null=True, blank=True)
     notification_sound = models.ForeignKey('NotificationSound', null=True, blank=True, on_delete=models.SET_NULL)
     sound_enabled = models.BooleanField(default=True)

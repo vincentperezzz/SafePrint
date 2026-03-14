@@ -330,10 +330,12 @@ def submit_ticket(request):
         
         logger.info(f"Support ticket created: {ticket.ticket_number} for customer {customer_name}")
         
-        # In a real implementation, you would:
-        # 1. Send confirmation email to customer
-        # 2. Notify admin/support staff
-        # 3. Create any necessary follow-up tasks
+        # Send email alert to admins
+        try:
+            from portal.services.email_notify import alert_new_ticket
+            alert_new_ticket(ticket.ticket_number, customer_name, problem_type, description)
+        except Exception:
+            pass  # Email failure should not block ticket creation
         
         return JsonResponse({
             'success': True,

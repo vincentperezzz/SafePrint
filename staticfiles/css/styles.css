@@ -5483,7 +5483,7 @@ input:focus::placeholder {
     background: #fff;
     border: 2px solid #222;
     border-radius: 18px;
-    max-width: 400px;
+    max-width: 500px;
     width: 90%;
     max-height: 90vh;
     overflow-y: auto;
@@ -5562,7 +5562,7 @@ input:focus::placeholder {
 }
 
 .popup-done-btn {
-    flex: 1;
+    width: 100%;
     padding: 12px 24px;
     border-radius: 12px;
     border: 2px solid #18191F;
