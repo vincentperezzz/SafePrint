@@ -15,7 +15,7 @@ from django.utils.timezone import localtime
 from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
 from django.views.decorators.csrf import csrf_exempt
-from .models import AdminUser, Printer, Document, Payment, NotificationSound, SupportTicket
+from .models import AdminUser, Printer, Document, Payment, NotificationSound, SupportTicket, SiteSetting
 from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.decorators import login_required
@@ -1023,12 +1023,14 @@ def account_settings(request):
     feedback_comments = Feedback.objects.filter(category='Comment').order_by('-submitted_at')
     problem_reports = Feedback.objects.filter(category='Report a Problem').order_by('-submitted_at')
     notification_sounds = NotificationSound.objects.filter(is_active=True).order_by('display_name')
+    site = SiteSetting.load()
     return render(request, 'settings.html', {
         'user': user,
         'users': users,
         'feedback_comments': feedback_comments,
         'problem_reports': problem_reports,
         'notification_sounds': notification_sounds,
+        'site_settings': site,
     })
 
 
@@ -1563,6 +1565,49 @@ def get_notification_prefs(request):
         })
     except AdminUser.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'User not found'})
+
+
+def get_customer_sound_prefs(request):
+    """Public API: returns the configured customer-side sounds."""
+    site = SiteSetting.load()
+    completion_slug = site.customer_completion_sound.slug if site.customer_completion_sound else 'chime'
+    reroute_slug = site.customer_reroute_sound.slug if site.customer_reroute_sound else 'rerouted'
+    return JsonResponse({
+        'completion_sound': f'/static/sounds/{completion_slug}.mp3',
+        'reroute_sound': f'/static/sounds/{reroute_slug}.mp3',
+    })
+
+
+def update_customer_sound_prefs(request):
+    """Admin-only API: update the customer-side sound settings."""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Not authenticated'})
+    try:
+        data = json.loads(request.body.decode('utf-8')) if request.body else {}
+    except Exception:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'})
+
+    site = SiteSetting.load()
+    completion_slug = data.get('completion_sound')
+    reroute_slug = data.get('reroute_sound')
+
+    if completion_slug:
+        try:
+            site.customer_completion_sound = NotificationSound.objects.get(slug=completion_slug, is_active=True)
+        except NotificationSound.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Completion sound not found'})
+    if reroute_slug:
+        try:
+            site.customer_reroute_sound = NotificationSound.objects.get(slug=reroute_slug, is_active=True)
+        except NotificationSound.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Reroute sound not found'})
+
+    site.save()
+    return JsonResponse({'success': True})
+
 
 def printer_status_stream(request):
     # SSE headers

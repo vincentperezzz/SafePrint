@@ -1170,6 +1170,17 @@ let previousDocStatuses = {}; // Track previous statuses by doc_id
 const printCompleteAudio = new Audio('/static/sounds/chime.mp3');
 const rerouteAlertAudio = new Audio('/static/sounds/rerouted.mp3');
 
+// Fetch configured customer sounds from server
+(function loadCustomerSoundPrefs() {
+    fetch('/api/get-customer-sound-prefs/')
+        .then(r => r.json())
+        .then(data => {
+            if (data.completion_sound) printCompleteAudio.src = data.completion_sound;
+            if (data.reroute_sound) rerouteAlertAudio.src = data.reroute_sound;
+        })
+        .catch(() => {});
+})();
+
 function playPrintCompleteSound() {
     printCompleteAudio.currentTime = 0;
     printCompleteAudio.volume = 1.0;
