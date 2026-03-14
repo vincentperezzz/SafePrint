@@ -1275,6 +1275,26 @@ function checkForNewCompletions(documents) {
         stopConfirmationTitleFlash();
     }
 }
+
+// Track which docs have already triggered the timeout popup
+var _timeoutPopupShown = {};
+
+function checkForTimeoutCancellations(documents) {
+    if (!documents || documents.length === 0) return;
+    documents.forEach(function(doc) {
+        if (doc.doc_status === 'Cancelled' && !_timeoutPopupShown[doc.doc_id]) {
+            var reason = (doc.cancel_reason || '').toLowerCase();
+            if (reason.indexOf('no printer available for') !== -1) {
+                _timeoutPopupShown[doc.doc_id] = true;
+                // Auto-show the problem report overlay for this timed-out document
+                if (typeof showProblemReportOverlay === 'function') {
+                    showProblemReportOverlay();
+                }
+            }
+        }
+    });
+}
+
 // --- End print completion sound & tab title flash ---
 
 // --- Toast notification ---
@@ -1328,6 +1348,7 @@ function initConfirmationSSE() {
             const data = JSON.parse(event.data);
             window.customerDocuments = data.documents || [];
             checkForNewCompletions(data.documents || []);
+            checkForTimeoutCancellations(data.documents || []);
             renderDocumentRows(data.documents);
             updateConfirmationUI(data);
         } catch (e) {
@@ -1752,9 +1773,9 @@ function populateDocumentsList() {
     let docs = [];
 
     if (window.customerDocuments && window.customerDocuments.length > 0) {
-        // Use SSE data - filter to show docs that are Queued, Printing, or Finished
+        // Use SSE data - filter to show docs that are Queued, Printing, Finished, or Cancelled
         docs = window.customerDocuments.filter(doc =>
-            ['Pending', 'Queued', 'Printing', 'Finished'].includes(doc.doc_status)
+            ['Pending', 'Queued', 'Printing', 'Finished', 'Cancelled'].includes(doc.doc_status)
         );
     } else {
         // Fallback: scrape from DOM

@@ -1787,7 +1787,9 @@ def delete_printer(request):
 
 @transaction.atomic
 def assign_document_to_printer(document):
-    import time
+    import time as _time
+    TIMEOUT_SECONDS = 1800  # 30 minutes
+    start_time = _time.monotonic()
     while True:
         # Check if document still exists and is queued
         try:
@@ -1798,6 +1800,22 @@ def assign_document_to_printer(document):
         if doc.doc_status != 'Queued':
             print(f"[CANCELLED] Document {document.doc_id} is no longer queued (status: {doc.doc_status}). Aborting printer assignment.")
             return None
+
+        # Check for 30-minute timeout
+        elapsed = _time.monotonic() - start_time
+        if elapsed >= TIMEOUT_SECONDS:
+            print(f"[TIMEOUT] Document {doc.doc_id} waited {elapsed:.0f}s with no printer available. Auto-cancelling.")
+            doc.doc_status = 'Cancelled'
+            doc.save()
+            # Log timeout in reroute history so cancel_reason propagates via SSE
+            RerouteHistory.objects.create(
+                document=doc,
+                printer=None,
+                status='Error: No printer available for 30 minutes'
+            )
+            print(f"[TIMEOUT] Document {doc.doc_id} cancelled. Customer will be prompted to file a ticket.")
+            return None
+
         printers = Printer.objects.all()
         
         # Check if this is a rerouted document (has reroute history)
@@ -1844,7 +1862,7 @@ def assign_document_to_printer(document):
             return printer
         else:
             print(f"No available printer for {doc.paper_size} ({getattr(doc, 'paper_quality', None)}). Document {doc.doc_id} paused. Retrying in 5 seconds...")
-            time.sleep(5)
+            _time.sleep(5)
 
 
 def print_page(document, page_num):
