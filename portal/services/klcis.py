@@ -147,7 +147,22 @@ class KLCiSClient:
 
         except requests.RequestException as e:
             self._logged_in = False
-            raise KLCiSError(f'KLCiS login request failed: {str(e)}')
+            error_msg = f'KLCiS login request failed: {str(e)}'
+            try:
+                from portal.services.email_notify import alert_klcis_failure
+                alert_klcis_failure(error_msg)
+            except Exception:
+                pass
+            raise KLCiSError(error_msg)
+
+        except KLCiSError as ke:
+            # Send email alert on login failure (e.g., invalid credentials)
+            try:
+                from portal.services.email_notify import alert_klcis_failure
+                alert_klcis_failure(str(ke))
+            except Exception:
+                pass
+            raise
 
     def _ensure_logged_in(self):
         """Ensure we have an active, non-expired session. Re-login if needed."""

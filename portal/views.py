@@ -1085,6 +1085,22 @@ def update_password(request):
             user.save()
             return JsonResponse({'success': True})
         return JsonResponse({'success': False, 'error': 'Password incorrect or does not match.'})
+
+
+def update_email(request):
+    if request.method == 'POST':
+        user_id = request.session.get('admin_user_id')
+        if not user_id:
+            return JsonResponse({'success': False, 'error': 'Not authenticated'})
+        new_email = request.POST.get('new_email', '').strip()
+        try:
+            user = AdminUser.objects.get(id=user_id)
+            user.email = new_email if new_email else None
+            user.save()
+            return JsonResponse({'success': True, 'new_email': new_email})
+        except AdminUser.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User not found.'})
+    return JsonResponse({'success': False, 'error': 'Invalid request.'})
     
 
 @csrf_exempt
@@ -1144,6 +1160,7 @@ def add_user_ajax(request):
     if request.method == 'POST':
         data = json.loads(request.body)
         name = data.get('name')
+        email = data.get('email', '').strip()
         username = data.get('username')
         password = data.get('password')
         confirm_password = data.get('confirm_password')
@@ -1163,7 +1180,8 @@ def add_user_ajax(request):
             name=name,
             username=username,
             password=make_password(password),
-            role=role
+            role=role,
+            email=email if email else None,
         )
         return JsonResponse({'success': True, 'name': name, 'username': username, 'user_id': new_user.id})
 

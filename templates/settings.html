@@ -64,6 +64,13 @@ Account Settings
             </div>
             <button class="general-btn" onclick="showPopupOverlay('editPasswordOverlay')">Change Password</button>
         </div>
+        <div class="settings-field-row">
+            <div class="settings-field">
+                <label for="Email">Email (for alerts)</label>
+                <input type="email" id="Email" value="{{ user.email|default:'' }}" readonly autocomplete="email">
+            </div>
+            <button class="general-btn" onclick="showPopupOverlay('editEmailOverlay')">Edit</button>
+        </div>
 
       <div class="notification-title">Notifications</div>
       <div class="settings-field-row">
@@ -128,6 +135,7 @@ Account Settings
                     <div class="user-info">
                         <div class="user-name">{{ user.name }}</div>
                         <div class="user-username">{{ user.username }}</div>
+                        {% if user.email %}<div class="user-email" style="font-size: 0.8rem; color: #6b7280;">{{ user.email }}</div>{% endif %}
                     </div>
                     <button class="user-edit-btn" onclick="showEditUserPasswordOverlay({{user.id}}, '{{user.username}}')">
                         <svg xmlns="http://www.w3.org/2000/svg" width="21" height="20" viewBox="0 0 21 20" fill="none">
@@ -279,6 +287,23 @@ Account Settings
   </div>
 </div>
 
+<!-- Edit Email Overlay -->
+<div class="popup-overlay" id="editEmailOverlay" style="display:none;">
+  <div class="popup-form">
+    <div class="popup-header">
+      <span class="popup-title">Edit Email</span>
+      <span class="popup-close" onclick="hidePopupOverlay('editEmailOverlay')">&times;</span>
+    </div>
+    <hr class="popup-divider">
+    <form id="edit-email-form" method="post">
+      {% csrf_token %}
+      <input type="email" name="new_email" class="popup-input" placeholder="Enter email address" autocomplete="email">
+      <p style="font-size: 0.8rem; color: #6b7280; margin: 0 0 12px;">Leave blank to disable email notifications for this account.</p>
+      <button type="submit" class="popup-done-btn">Done</button>
+    </form>
+  </div>
+</div>
+
 <!-- Overlay for editing password (hidden by default) -->
 <div class="popup-overlay" id="editUserPasswordOverlay">
   <div class="popup-form">
@@ -325,6 +350,7 @@ Account Settings
     <form id="create-account-form" method="post">
       {% csrf_token %}
       <input type="text" name="name" class="popup-input" placeholder="Enter Name" required autocomplete="name">
+      <input type="email" name="email" class="popup-input" placeholder="Enter Email (for alerts)" autocomplete="email">
       <input type="text" name="username" class="popup-input" placeholder="Enter Username" required autocomplete="username">
       <input type="password" name="password" class="popup-input" placeholder="Enter Password" required autocomplete="new-password">
       <input type="password" name="confirm_password" class="popup-input" placeholder="Re-enter Password" required autocomplete="new-password">
