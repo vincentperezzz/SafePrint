@@ -359,68 +359,101 @@ SafePrint
             </div>
         </div>
 
-        <!-- Submit Ticket Form -->
+        <!-- Submit Ticket Form (Multi-step Wizard) -->
         <div class="problem-ticket-section" id="step-ticket-form" style="display:none;">
-            <div class="problem-subtitle">Submit a Ticket</div>
 
-            <div class="ticket-form-grid">
-                <div class="ticket-field">
-                    <label>Customer ID</label>
-                    <input type="text" id="ticket-customer-id" readonly>
+            <!-- Ticket Sub-step 1: Document & Contact Info -->
+            <div class="ticket-substep" id="ticket-step-contact">
+                <div class="problem-subtitle">Submit a Ticket</div>
+
+                <div class="ticket-form-grid">
+                    <div class="ticket-field">
+                        <label>Customer ID</label>
+                        <input type="text" id="ticket-customer-id" readonly>
+                    </div>
+                    <div class="ticket-field">
+                        <label>Document ID</label>
+                        <input type="text" id="ticket-document-id" readonly>
+                    </div>
                 </div>
-                <div class="ticket-field">
-                    <label>Document ID</label>
-                    <input type="text" id="ticket-document-id" readonly>
+
+                <div class="ticket-field full-width">
+                    <label>Document Name</label>
+                    <input type="text" id="ticket-document-name" readonly>
+                </div>
+
+                <div class="ticket-field full-width">
+                    <label>Customer Name <span class="required">*</span></label>
+                    <input type="text" id="ticket-customer-name" placeholder="Enter your name" required>
+                </div>
+
+                <div class="ticket-field full-width">
+                    <label>Email <span class="required">*</span></label>
+                    <input type="email" id="ticket-email" placeholder="Enter your email address" required>
+                </div>
+
+                <div class="ticket-field full-width">
+                    <label>Contact Number <span class="required">*</span></label>
+                    <input type="tel" id="ticket-phone" placeholder="09XXXXXXXXX" maxlength="11" pattern="09[0-9]{9}" inputmode="numeric" required>
+                </div>
+
+                <div class="ticket-field full-width">
+                    <label>GCash Number <small style="color:#888;">(if applicable for refund)</small></label>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <input type="checkbox" id="gcash-same-as-phone" style="width:16px;height:16px;cursor:pointer;">
+                        <label for="gcash-same-as-phone" style="font-size:0.85rem; color:#555; cursor:pointer; margin:0;">Same as Contact Number</label>
+                    </div>
+                    <input type="text" id="ticket-gcash-number" placeholder="Enter your GCash number" maxlength="20">
+                </div>
+
+                <div class="popup-bottom-actions">
+                    <button class="popup-cancel-btn" onclick="backFromTicketForm()">Previous</button>
+                    <button class="popup-next-btn" onclick="nextTicketStep(1)">Next</button>
                 </div>
             </div>
 
-            <div class="ticket-field full-width">
-                <label>Document Name</label>
-                <input type="text" id="ticket-document-name" readonly>
-            </div>
+            <!-- Ticket Sub-step 2: Payment Proof -->
+            <div class="ticket-substep" id="ticket-step-proof" style="display:none;">
+                <div class="problem-subtitle">Submit a Ticket</div>
 
-            <div class="ticket-field full-width">
-                <label>Customer Name <span class="required">*</span></label>
-                <input type="text" id="ticket-customer-name" placeholder="Enter your name" required>
-            </div>
-
-            <div class="ticket-field full-width">
-                <label>Email <span class="required">*</span></label>
-                <input type="email" id="ticket-email" placeholder="Enter your email address" required>
-            </div>
-
-            <div class="ticket-field full-width">
-                <label>Contact Number <span class="required">*</span></label>
-                <input type="tel" id="ticket-phone" placeholder="Enter your contact number" required>
-            </div>
-
-            <div class="ticket-field full-width">
-                <label>Receipt Code <span class="required">*</span></label>
-                <input type="text" id="ticket-receipt-code" placeholder="Enter the code shown on your payment receipt" required>
-            </div>
-
-            <div class="ticket-field full-width">
-                <label>Receipt Screenshot <span class="required">*</span></label>
-                <div class="receipt-upload-area">
-                    <input type="file" id="ticket-receipt-screenshot" accept="image/*" required style="display:none;">
-                    <button type="button" class="browse-btn receipt-browse-btn" onclick="document.getElementById('ticket-receipt-screenshot').click()">
-                        Browse Image
-                    </button>
-                    <span class="receipt-file-name" id="receipt-file-name">No file chosen</span>
+                <div class="ticket-field full-width">
+                    <label>Receipt Code <span class="required">*</span></label>
+                    <input type="text" id="ticket-receipt-code" placeholder="Enter the code shown on your payment receipt" required>
                 </div>
-                <small style="color: #999; margin-top: 4px; display: block;">Please upload a screenshot of your payment receipt</small>
+
+                <div class="ticket-field full-width">
+                    <label>Receipt Screenshot <span class="required">*</span></label>
+                    <div class="receipt-upload-area">
+                        <input type="file" id="ticket-receipt-screenshot" accept="image/*" required style="display:none;">
+                        <button type="button" class="browse-btn receipt-browse-btn" onclick="document.getElementById('ticket-receipt-screenshot').click()">
+                            Browse Image
+                        </button>
+                        <span class="receipt-file-name" id="receipt-file-name">No file chosen</span>
+                    </div>
+                    <small style="color: #999; margin-top: 4px; display: block;">Please upload a screenshot of your payment receipt</small>
+                </div>
+
+                <div class="popup-bottom-actions">
+                    <button class="popup-cancel-btn" onclick="prevTicketStep(2)">Previous</button>
+                    <button class="popup-next-btn" onclick="nextTicketStep(2)">Next</button>
+                </div>
             </div>
 
-            <div class="ticket-field full-width">
-                <label>Describe the Issue <span class="required">*</span></label>
-                <textarea id="ticket-description" class="popup-textarea"
-                    placeholder="Please provide details about the problem (Max 500 characters)"
-                    maxlength="500"></textarea>
-            </div>
+            <!-- Ticket Sub-step 3: Describe the Issue -->
+            <div class="ticket-substep" id="ticket-step-describe" style="display:none;">
+                <div class="problem-subtitle">Submit a Ticket</div>
 
-            <div class="popup-bottom-actions">
-                <button class="popup-cancel-btn" onclick="backFromTicketForm()">Previous</button>
-                <button class="popup-done-btn" onclick="submitTicketForm()">Submit</button>
+                <div class="ticket-field full-width">
+                    <label>Describe the Issue <span class="required">*</span></label>
+                    <textarea id="ticket-description" class="popup-textarea"
+                        placeholder="Please provide details about the problem (Max 500 characters)"
+                        maxlength="500"></textarea>
+                </div>
+
+                <div class="popup-bottom-actions">
+                    <button class="popup-cancel-btn" onclick="prevTicketStep(3)">Previous</button>
+                    <button class="popup-done-btn" onclick="submitTicketForm()">Submit</button>
+                </div>
             </div>
         </div>
 

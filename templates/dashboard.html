@@ -232,10 +232,34 @@ Dashboard
                     <p class="ticket-modal__label">Reprinted</p>
                     <p class="ticket-modal__value" id="modal-reprinted"></p>
                 </div>
+                <div>
+                    <p class="ticket-modal__label">GCash Number</p>
+                    <p class="ticket-modal__value" id="modal-gcash"></p>
+                </div>
+                <div>
+                    <p class="ticket-modal__label">Payment Amount</p>
+                    <p class="ticket-modal__value" id="modal-payment-amount"></p>
+                </div>
             </div>
             <div class="ticket-modal__issue">
                 <p class="ticket-modal__label">Issue</p>
                 <p class="ticket-modal__value" id="modal-issue"></p>
+            </div>
+            <!-- Refund completion section (shown for pending refunds) -->
+            <div id="modal-refund-section" style="display:none; margin-top:16px; padding:16px; background:#f0f9ff; border-radius:12px; border:1px solid #bae6fd;">
+                <p style="font-weight:600; margin-bottom:8px; font-family:Montserrat,sans-serif;">Refund Pending</p>
+                <p style="font-size:0.9rem; color:#555; margin-bottom:12px; font-family:Montserrat,sans-serif;">
+                    Amount: <strong id="modal-refund-amount"></strong> &bull; GCash: <strong id="modal-refund-gcash"></strong>
+                </p>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" id="modal-refund-ref" placeholder="GCash Reference Number" style="flex:1; padding:10px 12px; border:2px solid #18191F; border-radius:10px; font-family:Montserrat,sans-serif; font-size:0.9rem;">
+                    <button id="modal-complete-refund-btn" class="approve-btn" type="button" style="white-space:nowrap;">Mark Completed</button>
+                </div>
+            </div>
+            <!-- Audit log section -->
+            <div style="margin-top:16px;">
+                <p class="ticket-modal__label" style="margin-bottom:8px;">Activity Log</p>
+                <div id="modal-audit-log" style="max-height:200px; overflow-y:auto; font-size:0.85rem; font-family:Montserrat,sans-serif;"></div>
             </div>
         </div>
         <button class="ticket-modal__download" type="button">Download System Logs</button>

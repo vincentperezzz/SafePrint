@@ -874,8 +874,17 @@ html {
         padding: 28px 12px;
     }
 
+    .confirmation .popup-form {
+        padding: 0 1.2em 0 1.2em;
+        max-width: 600px;
+    }
+
     .confirmation .popup-form .popup-header { 
-        padding: 16px 18px; 
+        padding: 12px 0; 
+    }
+
+    .confirmation .popup-form .popup-divider {
+        margin: 0 0 0.5em 0;
     }
 
     .footer-line {
@@ -1199,6 +1208,11 @@ html {
     color:#047857; 
     border:1px solid rgba(4,120,87,0.12); 
     box-shadow:0 2px 0 rgba(0,0,0,0.02); 
+}
+.status-ticket {
+    background:#f3e8ff;
+    color:#7c3aed;
+    border:1px solid rgba(124,58,237,0.12);
 }
 
 /* Buttons that follow settings/dashboard style */
@@ -5472,11 +5486,11 @@ input:focus::placeholder {
     background: #fff;
     border: 2px solid #222;
     border-radius: 18px;
-    max-width: 500px;
-    width: 90%;
+    max-width: 560px;
+    width: 92%;
     max-height: 90vh;
     overflow-y: auto;
-    padding: 0 2.5em 2em 2.5em;
+    padding: 0 2.5em 0 2.5em;
     box-shadow: 0 4px 32px rgba(0, 0, 0, 0.18);
     position: relative;
     display: flex;
@@ -5509,8 +5523,9 @@ input:focus::placeholder {
     bottom: 0;
     background: #fff;
     z-index: 2;
-    padding: 1em 0 2em 0;
+    padding: 1em 0 1.5em 0;
     margin-top: auto;
+    border-radius: 0 0 16px 16px;
 }
 
 .popup-header {
@@ -5947,7 +5962,7 @@ input:focus::placeholder {
     font-size: 1.1em;
     font-weight: 600;
     color: #18191F;
-    margin: 1em;
+    margin: 0.3em 0;
     text-align: center;
 }
 
@@ -6163,7 +6178,7 @@ input:focus::placeholder {
 
 /* Print Quality Popup Styles */
 .print-quality-section {
-    padding: 1em 0;
+    padding: 1em 0 1.5em 0;
     display: flex;
     flex-direction: column;
     gap: 1.2em;
@@ -6528,16 +6543,43 @@ input:focus::placeholder {
 
 /* Ticket Form Styles */
 .problem-ticket-section {
-    padding: 0.5em 0;
+    padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 2em;
+    gap: 1em;
+}
+
+.ticket-substep {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+}
+
+.problem-ticket-section .popup-bottom-actions {
+    padding: 1em 0 1.5em 0;
+    margin-top: auto;
+    border-radius: 0 0 16px 16px;
 }
 
 .ticket-form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 1em;
+    gap: 0;
+    column-gap: 0.5em;
+}
+
+.ticket-form-grid .ticket-field input {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 400px) {
+    .ticket-form-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .ticket-field {
@@ -7323,7 +7365,7 @@ input:focus::placeholder {
 
     /* --- Popup overlay forms --- */
     .popup-form {
-        padding: 0 1.2em 1.5em 1.2em;
+        padding: 0 1.2em 0 1.2em;
     }
 
     /* --- View all button --- */

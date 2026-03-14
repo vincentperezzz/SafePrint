@@ -435,6 +435,19 @@ class SupportTicket(models.Model):
     receipt_code = models.CharField(max_length=100, blank=True, default="")
     receipt_screenshot = models.ImageField(upload_to=receipt_upload_path, null=True, blank=True)
     
+    # Refund info
+    gcash_number = models.CharField(max_length=20, blank=True, default="")
+    refund_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    REFUND_STATUS_CHOICES = [
+        ('none', 'None'),
+        ('pending', 'Pending'),
+        ('completed', 'Completed'),
+        ('rejected', 'Rejected'),
+    ]
+    refund_status = models.CharField(max_length=20, choices=REFUND_STATUS_CHOICES, default='none')
+    refund_completed_at = models.DateTimeField(null=True, blank=True)
+    refund_reference = models.CharField(max_length=100, blank=True, default="")
+    
     # Status tracking
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='open')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -485,6 +498,41 @@ class SupportTicket(models.Model):
     class Meta:
         db_table = 'support_tickets'
         ordering = ['-created_at']
+
+
+class TicketAuditLog(models.Model):
+    """
+    Audit trail for all actions taken on support tickets.
+    """
+    ACTION_CHOICES = [
+        ('created', 'Ticket Created'),
+        ('status_changed', 'Status Changed'),
+        ('refund_approved', 'Refund Approved'),
+        ('refund_completed', 'Refund Completed'),
+        ('refund_rejected', 'Refund Rejected'),
+        ('voided', 'Ticket Voided'),
+        ('note_added', 'Note Added'),
+        ('verified', 'Ticket Verified'),
+    ]
+
+    ticket = models.ForeignKey(
+        SupportTicket,
+        on_delete=models.CASCADE,
+        related_name='audit_logs'
+    )
+    action = models.CharField(max_length=30, choices=ACTION_CHOICES)
+    old_status = models.CharField(max_length=50, blank=True, default="")
+    new_status = models.CharField(max_length=50, blank=True, default="")
+    performed_by = models.CharField(max_length=255, blank=True, default="")
+    details = models.TextField(blank=True, default="")
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.ticket.ticket_number} — {self.get_action_display()} at {self.timestamp}"
+
+    class Meta:
+        db_table = 'ticket_audit_logs'
+        ordering = ['-timestamp']
 
 
 class DocumentReprintLog(models.Model):

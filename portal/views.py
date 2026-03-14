@@ -15,7 +15,7 @@ from django.utils.timezone import localtime
 from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
 from django.views.decorators.csrf import csrf_exempt
-from .models import AdminUser, Printer, Document, Payment, NotificationSound, SupportTicket, SiteSetting
+from .models import AdminUser, Printer, Document, Payment, NotificationSound, SupportTicket, SiteSetting, TicketAuditLog
 from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.decorators import login_required
@@ -246,6 +246,7 @@ def get_active_tickets_api(request):
                 'payment_amount': payment_amount,
                 'was_reprinted': ticket.was_reprinted,
                 'doc_id': ticket.document.doc_id if ticket.document else '',
+                'gcash_number': ticket.gcash_number,
             })
         
         resolved_tickets_data = []
@@ -272,6 +273,11 @@ def get_active_tickets_api(request):
                 'doc_id': ticket.document.doc_id if ticket.document else '',
                 'status': ticket.get_status_display(),
                 'resolved_by': ticket.resolved_by,
+                'gcash_number': ticket.gcash_number,
+                'refund_amount': float(ticket.refund_amount) if ticket.refund_amount else None,
+                'refund_status': ticket.refund_status,
+                'refund_reference': ticket.refund_reference,
+                'refund_completed_at': ticket.refund_completed_at.strftime('%Y-%m-%d %H:%M:%S') if ticket.refund_completed_at else None,
             })
         
         return JsonResponse({
@@ -2528,8 +2534,8 @@ def finish_transaction(request):
 @csrf_exempt
 def void_ticket(request):
     """
-    Void an active support ticket. Sets status to 'closed' with resolution 'Voided'.
-    Moves ticket from Active to Resolved section on dashboard.
+    Void an active support ticket. Sets status to 'voided'.
+    Writes an audit log entry.
     """
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
@@ -2546,7 +2552,6 @@ def void_ticket(request):
         if ticket.status in ['resolved', 'closed', 'voided', 'refunded']:
             return JsonResponse({'success': False, 'error': 'Ticket is already resolved/closed'})
 
-        # Get current admin user name for resolved_by
         admin_user_id = request.session.get('admin_user_id')
         admin_name = ''
         if admin_user_id:
@@ -2557,13 +2562,23 @@ def void_ticket(request):
                 pass
 
         from django.utils import timezone
+        old_status = ticket.status
         ticket.status = 'voided'
         ticket.resolved_by = admin_name
         ticket.resolved_at = timezone.now()
         ticket.admin_notes = (ticket.admin_notes + '\nVoided by ' + admin_name).strip()
         ticket.save()
 
-        # Get payment amount
+        # Audit log
+        TicketAuditLog.objects.create(
+            ticket=ticket,
+            action='voided',
+            old_status=old_status,
+            new_status='voided',
+            performed_by=admin_name,
+            details=f"Ticket voided by {admin_name}."
+        )
+
         payment_amount = None
         if ticket.document:
             payment = Payment.objects.filter(doc=ticket.document).first()
@@ -2597,8 +2612,8 @@ def void_ticket(request):
 @csrf_exempt
 def refund_ticket(request):
     """
-    Refund an active support ticket. Sets status to 'resolved' with resolution 'Refunded'.
-    Moves ticket from Active to Resolved section on dashboard.
+    Approve a refund for an active support ticket. Sets status to 'refunded'
+    and refund_status to 'pending'. Writes an audit log entry.
     """
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
@@ -2615,7 +2630,6 @@ def refund_ticket(request):
         if ticket.status in ['resolved', 'closed', 'voided', 'refunded']:
             return JsonResponse({'success': False, 'error': 'Ticket is already resolved/closed'})
 
-        # Get current admin user name for resolved_by
         admin_user_id = request.session.get('admin_user_id')
         admin_name = ''
         if admin_user_id:
@@ -2626,18 +2640,44 @@ def refund_ticket(request):
                 pass
 
         from django.utils import timezone
-        ticket.status = 'refunded'
-        ticket.resolved_by = admin_name
-        ticket.resolved_at = timezone.now()
-        ticket.admin_notes = (ticket.admin_notes + '\nRefunded by ' + admin_name).strip()
-        ticket.save()
 
-        # Get payment amount
+        # Look up payment amount
         payment_amount = None
         if ticket.document:
             payment = Payment.objects.filter(doc=ticket.document).first()
             if payment:
                 payment_amount = float(payment.price)
+
+        # Set refund amount (from request or from payment)
+        refund_amount = data.get('refund_amount')
+        if refund_amount is not None:
+            try:
+                refund_amount = float(refund_amount)
+            except (ValueError, TypeError):
+                refund_amount = payment_amount
+        else:
+            refund_amount = payment_amount
+
+        old_status = ticket.status
+        ticket.status = 'refunded'
+        ticket.resolved_by = admin_name
+        ticket.resolved_at = timezone.now()
+        ticket.refund_amount = refund_amount
+        ticket.refund_status = 'pending'
+        ticket.admin_notes = (ticket.admin_notes + '\nRefund approved by ' + admin_name).strip()
+        ticket.save()
+
+        # Audit log
+        amount_str = f"₱{refund_amount:.2f}" if refund_amount else "N/A"
+        gcash_str = f" GCash: {ticket.gcash_number}" if ticket.gcash_number else ""
+        TicketAuditLog.objects.create(
+            ticket=ticket,
+            action='refund_approved',
+            old_status=old_status,
+            new_status='refunded',
+            performed_by=admin_name,
+            details=f"Refund of {amount_str} approved.{gcash_str}"
+        )
 
         return JsonResponse({
             'success': True,
@@ -2648,6 +2688,7 @@ def refund_ticket(request):
             'customer_id': ticket.customer_id,
             'email': ticket.email,
             'phone': ticket.phone_number,
+            'gcash_number': ticket.gcash_number,
             'doc_id': ticket.document.doc_id if ticket.document else '',
             'doc_name': ticket.document_name,
             'description': ticket.description,
@@ -2655,9 +2696,113 @@ def refund_ticket(request):
             'was_reprinted': ticket.was_reprinted,
             'resolved_by': admin_name,
             'payment_amount': payment_amount,
+            'refund_amount': refund_amount,
+            'refund_status': 'pending',
         })
 
     except SupportTicket.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'Ticket not found'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def complete_refund(request):
+    """
+    Mark a pending refund as completed. Admin provides GCash reference number
+    after manually sending the refund. Writes an audit log entry.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        ticket_id = data.get('ticket_id')
+        refund_reference = data.get('refund_reference', '').strip()
+
+        if not ticket_id:
+            return JsonResponse({'success': False, 'error': 'ticket_id is required'})
+        if not refund_reference:
+            return JsonResponse({'success': False, 'error': 'refund_reference is required'})
+
+        ticket = SupportTicket.objects.get(id=ticket_id)
+
+        if ticket.refund_status != 'pending':
+            return JsonResponse({'success': False, 'error': 'Ticket does not have a pending refund'})
+
+        admin_user_id = request.session.get('admin_user_id')
+        admin_name = ''
+        if admin_user_id:
+            try:
+                admin = AdminUser.objects.get(id=admin_user_id)
+                admin_name = admin.name
+            except AdminUser.DoesNotExist:
+                pass
+
+        from django.utils import timezone
+        ticket.refund_status = 'completed'
+        ticket.refund_completed_at = timezone.now()
+        ticket.refund_reference = refund_reference
+        ticket.admin_notes = (ticket.admin_notes + f'\nRefund completed by {admin_name}. Ref: {refund_reference}').strip()
+        ticket.save()
+
+        # Audit log
+        amount_str = f"₱{ticket.refund_amount:.2f}" if ticket.refund_amount else "N/A"
+        TicketAuditLog.objects.create(
+            ticket=ticket,
+            action='refund_completed',
+            old_status='refunded',
+            new_status='refunded',
+            performed_by=admin_name,
+            details=f"Refund of {amount_str} completed. Reference: {refund_reference}."
+        )
+
+        return JsonResponse({
+            'success': True,
+            'ticket_id': ticket.id,
+            'ticket_number': ticket.ticket_number,
+            'refund_status': 'completed',
+            'refund_reference': refund_reference,
+            'refund_completed_at': ticket.refund_completed_at.strftime('%Y-%m-%d %H:%M:%S'),
+        })
+
+    except SupportTicket.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Ticket not found'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def get_ticket_audit_log(request):
+    """
+    Return the audit log for a specific ticket.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        ticket_id = data.get('ticket_id')
+
+        if not ticket_id:
+            return JsonResponse({'success': False, 'error': 'ticket_id is required'})
+
+        logs = TicketAuditLog.objects.filter(ticket_id=ticket_id).order_by('-timestamp')
+        logs_data = []
+        for log in logs:
+            logs_data.append({
+                'action': log.get_action_display(),
+                'old_status': log.old_status,
+                'new_status': log.new_status,
+                'performed_by': log.performed_by,
+                'details': log.details,
+                'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            })
+
+        return JsonResponse({
+            'success': True,
+            'audit_logs': logs_data,
+        })
+
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})

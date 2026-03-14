@@ -45,4 +45,6 @@ urlpatterns = [
     path('api/finish-transaction/', views.finish_transaction, name='finish_transaction'),
     path('api/void-ticket/', views.void_ticket, name='void_ticket'),
     path('api/refund-ticket/', views.refund_ticket, name='refund_ticket'),
+    path('api/complete-refund/', views.complete_refund, name='complete_refund'),
+    path('api/ticket-audit-log/', views.get_ticket_audit_log, name='get_ticket_audit_log'),
 ]

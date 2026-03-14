@@ -143,12 +143,98 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('modal-problem-type').textContent = button.getAttribute('data-problem-type') || '';
             document.getElementById('modal-reprinted').textContent = button.getAttribute('data-was-reprinted') === 'True' ? 'Yes' : 'No';
             document.getElementById('ticket-modal-title').textContent = button.getAttribute('data-ticket-number') || '';
+
+            // GCash and payment amount
+            var gcashEl = document.getElementById('modal-gcash');
+            if (gcashEl) gcashEl.textContent = button.getAttribute('data-gcash-number') || '—';
+            var payAmountEl = document.getElementById('modal-payment-amount');
+            if (payAmountEl) {
+                var amt = button.getAttribute('data-payment-amount');
+                payAmountEl.textContent = amt ? '₱' + parseFloat(amt).toFixed(2) : '—';
+            }
+
+            // Refund section
+            var refundSection = document.getElementById('modal-refund-section');
+            var refundStatus = button.getAttribute('data-refund-status') || 'none';
+            var ticketId = button.getAttribute('data-ticket-id') || '';
+            if (refundSection) {
+                if (refundStatus === 'pending') {
+                    refundSection.style.display = 'block';
+                    var refAmtEl = document.getElementById('modal-refund-amount');
+                    var refGcashEl = document.getElementById('modal-refund-gcash');
+                    if (refAmtEl) {
+                        var refAmt = button.getAttribute('data-refund-amount');
+                        refAmtEl.textContent = refAmt ? '₱' + parseFloat(refAmt).toFixed(2) : '—';
+                    }
+                    if (refGcashEl) refGcashEl.textContent = button.getAttribute('data-gcash-number') || '—';
+                    var refInput = document.getElementById('modal-refund-ref');
+                    if (refInput) refInput.value = '';
+                    // Wire up complete refund button
+                    var completeBtn = document.getElementById('modal-complete-refund-btn');
+                    if (completeBtn) {
+                        completeBtn.onclick = function() {
+                            var ref = document.getElementById('modal-refund-ref').value.trim();
+                            if (!ref) { alert('Please enter the GCash reference number.'); return; }
+                            fetch('/portal/api/complete-refund/', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                                body: JSON.stringify({ ticket_id: ticketId, refund_reference: ref })
+                            })
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) {
+                                if (data.success) {
+                                    createAlert('Success', 'Refund Completed', 'Refund marked as completed. Ref: ' + ref, 'success', true, true, 'pageMessages');
+                                    refundSection.style.display = 'none';
+                                    if (typeof refreshTickets === 'function') refreshTickets();
+                                    fetchAuditLog(ticketId);
+                                } else {
+                                    createAlert('Error', 'Complete Failed', data.error || 'Failed to complete refund.', 'danger', true, true, 'pageMessages');
+                                }
+                            });
+                        };
+                    }
+                } else {
+                    refundSection.style.display = 'none';
+                }
+            }
+
+            // Fetch audit log
+            fetchAuditLog(ticketId);
         }
 
         ticketModal.classList.add('is-open');
         ticketModal.setAttribute('aria-hidden', 'false');
         document.body.style.overflow = 'hidden';
     };
+
+    function fetchAuditLog(ticketId) {
+        var logContainer = document.getElementById('modal-audit-log');
+        if (!logContainer || !ticketId) return;
+        logContainer.innerHTML = '<div style="color:#999;">Loading...</div>';
+        fetch('/portal/api/ticket-audit-log/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ ticket_id: ticketId })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success && data.audit_logs && data.audit_logs.length > 0) {
+                logContainer.innerHTML = data.audit_logs.map(function(log) {
+                    return '<div style="padding:6px 0; border-bottom:1px solid #f0f0f0;">'
+                        + '<div style="display:flex;justify-content:space-between;"><strong>' + log.action + '</strong><span style="color:#888;font-size:0.8rem;">' + log.timestamp + '</span></div>'
+                        + '<div style="color:#555;">' + log.details + '</div>'
+                        + (log.performed_by ? '<div style="color:#999;font-size:0.8rem;">by ' + log.performed_by + '</div>' : '')
+                        + '</div>';
+                }).join('');
+            } else {
+                logContainer.innerHTML = '<div style="color:#999;">No activity log yet.</div>';
+            }
+        })
+        .catch(function() {
+            logContainer.innerHTML = '<div style="color:#d9534f;">Failed to load audit log.</div>';
+        });
+    }
+    window.fetchAuditLog = fetchAuditLog;
 
     const closeTicketModal = () => {
         if (!ticketModal) return;
@@ -193,6 +279,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const docId = data.doc_id || '';
         const docName = data.doc_name || '';
         const issue = data.description || '';
+        const gcashNumber = data.gcash_number || '';
+        const paymentAmount = data.payment_amount || '';
+        const refundStatus = data.refund_status || 'none';
+        const refundAmount = data.refund_amount || '';
         const problemType = data.problem_type || '';
         const wasReprinted = data.was_reprinted ? 'True' : 'False';
 
@@ -221,6 +311,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     data-issue="${issue}"
                     data-problem-type="${problemType}"
                     data-was-reprinted="${wasReprinted}"
+                    data-gcash-number="${gcashNumber}"
+                    data-payment-amount="${paymentAmount}"
+                    data-refund-status="${refundStatus}"
+                    data-refund-amount="${refundAmount}"
                 >View Details</button>
             </div>
         `;
@@ -2526,7 +2620,11 @@ if (addPrinterForm) {
                 data-doc-name="${ticket.document_name}"
                 data-issue="${ticket.description.replace(/"/g, '&quot;')}"
                 data-problem-type="${ticket.problem_type}"
-                data-was-reprinted="${ticket.was_reprinted}">Verify</button>
+                data-was-reprinted="${ticket.was_reprinted}"
+                data-gcash-number="${ticket.gcash_number || ''}"
+                data-payment-amount="${ticket.payment_amount || ''}"
+                data-refund-status="${ticket.refund_status || 'none'}"
+                data-refund-amount="${ticket.refund_amount || ''}">Verify</button>
             <button class="refund-btn" type="button" data-action="refund" data-ticket-id="${ticket.id}">Refund</button>
         `;
 
@@ -2576,7 +2674,11 @@ if (addPrinterForm) {
                         data-doc-name="${ticket.document_name}"
                         data-issue="${ticket.description.replace(/"/g, '&quot;')}"
                         data-problem-type="${ticket.problem_type}"
-                        data-was-reprinted="${ticket.was_reprinted}">View Details</button>
+                        data-was-reprinted="${ticket.was_reprinted}"
+                        data-gcash-number="${ticket.gcash_number || ''}"
+                        data-payment-amount="${ticket.payment_amount || ''}"
+                        data-refund-status="${ticket.refund_status || 'none'}"
+                        data-refund-amount="${ticket.refund_amount || ''}">View Details</button>
                 </div>
             </div>
         `;
@@ -2751,6 +2853,61 @@ if (addPrinterForm) {
                 document.getElementById('modal-issue').textContent = issue;
                 document.getElementById('ticket-modal-title').textContent = ticketNumber || 'Ticket Details';
 
+                // GCash and payment amount
+                var gcashEl = document.getElementById('modal-gcash');
+                if (gcashEl) gcashEl.textContent = this.getAttribute('data-gcash-number') || '—';
+                var payAmountEl = document.getElementById('modal-payment-amount');
+                if (payAmountEl) {
+                    var amt = this.getAttribute('data-payment-amount');
+                    payAmountEl.textContent = amt ? '₱' + parseFloat(amt).toFixed(2) : '—';
+                }
+
+                // Refund section
+                var refundSection = document.getElementById('modal-refund-section');
+                var refundStatus = this.getAttribute('data-refund-status') || 'none';
+                if (refundSection) {
+                    if (refundStatus === 'pending') {
+                        refundSection.style.display = 'block';
+                        var refAmtEl = document.getElementById('modal-refund-amount');
+                        var refGcashEl = document.getElementById('modal-refund-gcash');
+                        if (refAmtEl) {
+                            var refAmt = this.getAttribute('data-refund-amount');
+                            refAmtEl.textContent = refAmt ? '₱' + parseFloat(refAmt).toFixed(2) : '—';
+                        }
+                        if (refGcashEl) refGcashEl.textContent = this.getAttribute('data-gcash-number') || '—';
+                        var refInput = document.getElementById('modal-refund-ref');
+                        if (refInput) refInput.value = '';
+                        var completeBtn = document.getElementById('modal-complete-refund-btn');
+                        if (completeBtn) {
+                            completeBtn.onclick = function() {
+                                var ref = document.getElementById('modal-refund-ref').value.trim();
+                                if (!ref) { alert('Please enter the GCash reference number.'); return; }
+                                fetch('/portal/api/complete-refund/', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                                    body: JSON.stringify({ ticket_id: ticketId, refund_reference: ref })
+                                })
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) {
+                                    if (data.success) {
+                                        createAlert('Success', 'Refund Completed', 'Refund marked as completed. Ref: ' + ref, 'success', true, true, 'pageMessages');
+                                        refundSection.style.display = 'none';
+                                        if (typeof refreshTickets === 'function') refreshTickets();
+                                        fetchAuditLog(ticketId);
+                                    } else {
+                                        createAlert('Error', 'Complete Failed', data.error || 'Failed to complete refund.', 'danger', true, true, 'pageMessages');
+                                    }
+                                });
+                            };
+                        }
+                    } else {
+                        refundSection.style.display = 'none';
+                    }
+                }
+
+                // Fetch audit log
+                if (typeof window.fetchAuditLog === 'function') window.fetchAuditLog(ticketId);
+
                 const modal = document.getElementById('ticket-modal');
                 modal.classList.add('is-open');
                 modal.setAttribute('aria-hidden', 'false');
@@ -2809,7 +2966,17 @@ if (addPrinterForm) {
     function handleRefundTicket(e) {
         e.preventDefault();
         const ticketId = this.getAttribute('data-ticket-id');
-        if (confirm('Are you sure you want to refund this ticket?')) {
+        // Find the Verify button in the same row to get GCash info
+        const row = this.closest('.document-item');
+        let gcashInfo = '';
+        if (row) {
+            const verifyBtn = row.querySelector('[data-open-ticket-modal]');
+            if (verifyBtn) {
+                const gcash = verifyBtn.getAttribute('data-gcash-number');
+                if (gcash) gcashInfo = '\nGCash Number: ' + gcash;
+            }
+        }
+        if (confirm('Are you sure you want to refund this ticket?' + gcashInfo)) {
             fetch('/api/refund-ticket/', {
                 method: 'POST',
                 headers: {
@@ -2905,6 +3072,7 @@ if (addPrinterForm) {
             })
             .catch(error => console.error('Error refreshing tickets:', error));
     }
+    window.refreshTickets = refreshTickets;
 
     function playNotificationSound() {
         // Prefer existing global playNotificationSound (SSE block) if available
