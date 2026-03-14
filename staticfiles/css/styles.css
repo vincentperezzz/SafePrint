@@ -6867,3 +6867,467 @@ input:focus::placeholder {
     line-height: 1;
     padding: 4px;
 }
+
+/* ============================================================
+   ADMIN PORTAL — MOBILE RESPONSIVE
+   ============================================================ */
+
+/* Mobile top bar — hidden on desktop */
+.mobile-topbar {
+    display: none;
+}
+
+.mobile-nav-backdrop {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    /* --- Mobile Top Bar --- */
+    .mobile-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 56px;
+        background: var(--secondary-color, #191A23);
+        padding: 0 16px;
+        z-index: 1100;
+    }
+
+    .mobile-topbar-logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .mobile-topbar-logo img {
+        width: 32px;
+        height: 32px;
+    }
+
+    .mobile-topbar-logo .brand-title {
+        color: #fff;
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 1.2rem;
+        font-weight: 700;
+    }
+
+    /* Hamburger button */
+    .mobile-menu-toggle {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 5px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 8px;
+        z-index: 1200;
+    }
+
+    .mobile-menu-toggle span {
+        display: block;
+        width: 24px;
+        height: 3px;
+        background: #fff;
+        border-radius: 2px;
+        transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+
+    .mobile-menu-toggle.active span:nth-child(1) {
+        transform: translateY(8px) rotate(45deg);
+    }
+
+    .mobile-menu-toggle.active span:nth-child(2) {
+        opacity: 0;
+    }
+
+    .mobile-menu-toggle.active span:nth-child(3) {
+        transform: translateY(-8px) rotate(-45deg);
+    }
+
+    /* Backdrop overlay */
+    .mobile-nav-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        z-index: 999;
+    }
+
+    .mobile-nav-backdrop.active {
+        display: block;
+    }
+
+    /* --- Sidebar becomes slide-in overlay --- */
+    .vertical-navbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 280px;
+        min-width: 0;
+        margin: 0;
+        border-radius: 0;
+        z-index: 1050;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        overflow-y: auto;
+        padding-top: 70px;
+    }
+
+    .vertical-navbar.open {
+        transform: translateX(0);
+    }
+
+    /* --- Dashboard layout adjusts for top bar --- */
+    .dashboard-layout {
+        flex-direction: column;
+        padding-top: 56px;
+    }
+
+    /* --- Main content fills width --- */
+    .main-content {
+        min-width: 0;
+        width: 100%;
+        padding: 12px;
+    }
+
+    /* --- Dashboard header row --- */
+    .dashboard-rows {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .dashboard-rows h1 {
+        font-size: 1.5rem;
+    }
+
+    /* --- Stat cards stack --- */
+    .dashboard-stats {
+        flex-direction: column;
+    }
+
+    .stat-card {
+        width: 100%;
+        font-size: 2rem;
+    }
+
+    /* --- Dashboard left/right columns → single column --- */
+    .dashboard-left,
+    .dashboard-right {
+        flex: none;
+        width: 100%;
+    }
+
+    /* --- Customer info adjustments --- */
+    .customer-info input {
+        font-size: 2rem;
+    }
+
+    .customer-info input::placeholder {
+        font-size: 2rem;
+        line-height: 2rem;
+    }
+
+    /* --- Document approvals list (ticket table) --- */
+    .document-item-title {
+        display: none;
+    }
+
+    .document-item {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid #A19F9F;
+        border-radius: 12px;
+        background: #fff;
+    }
+
+    .document-item .ticket-cell {
+        width: 100%;
+    }
+
+    .document-item .ticket-customer,
+    .document-item .ticket-date,
+    .document-item .ticket-issue {
+        font-size: 14px;
+    }
+
+    .document-item .actions {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .document-item .actions button {
+        flex: 1;
+        max-width: none;
+        width: auto;
+    }
+
+    /* --- Resolved ticket rows --- */
+    .document-item-title.resolved-header {
+        display: none;
+    }
+
+    .document-item.resolved-row {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+    }
+
+    /* --- Queue rows (Print Queue page) --- */
+    .document-table-header {
+        display: none;
+    }
+
+    .queue-row {
+        flex-direction: column;
+        align-items: flex-start;
+        height: auto;
+        gap: 8px;
+        padding: 12px;
+    }
+
+    .doc-name { flex: none; width: 100%; }
+    .doc-customer { flex: none; width: 100%; font-size: 14px; }
+    .doc-date { flex: none; width: 100%; font-size: 13px; color: #6D6D6D; }
+    .doc-id { flex: none; width: 100%; font-size: 13px; }
+    .doc-actions {
+        flex: none;
+        width: 100%;
+        justify-content: stretch;
+        display: flex;
+        gap: 8px;
+    }
+
+    .doc-actions .queue-deny-btn,
+    .doc-actions .queue-approve-btn,
+    .doc-actions .queue-cancel-btn {
+        flex: 1;
+        margin-right: 0;
+        text-align: center;
+    }
+
+    /* --- On Queue Documents (grid → stacked) --- */
+    .on-queue-header {
+        display: none;
+    }
+
+    .on-queue-row {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+        padding: 12px;
+    }
+
+    .on-queue-documents-list {
+        padding: 10px;
+    }
+
+    /* --- Completed rows --- */
+    .completed-table-header {
+        display: none;
+    }
+
+    .completed-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 12px;
+    }
+
+    .completed-row .completed-col {
+        width: 100%;
+    }
+
+    .completed-row .completed-col.doc-action {
+        justify-content: stretch;
+    }
+
+    .completed-row .completed-col.doc-action .handed-over-btn {
+        width: 100%;
+        text-align: center;
+    }
+
+    /* --- Printer Status Table (8-col grid → card) --- */
+    .printer-status-card {
+        min-width: 0;
+        padding: 12px;
+    }
+
+    .printer-table-header {
+        display: none;
+    }
+
+    .printer-table-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid #E7E7E7;
+        border-radius: 12px;
+        margin-bottom: 8px;
+    }
+
+    .printer-table-row > * {
+        min-width: 45%;
+    }
+
+    .paper-refill-table .printer-table-header {
+        display: none;
+    }
+
+    .paper-refill-table .printer-table-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid #E7E7E7;
+        border-radius: 12px;
+        margin-bottom: 8px;
+    }
+
+    /* --- Settings page --- */
+    .settings-container {
+        width: 100%;
+        max-width: 100%;
+        padding: 0;
+    }
+
+    .settings-section {
+        padding: 16px;
+    }
+
+    .settings-field-row {
+        height: auto;
+        padding: 12px;
+    }
+
+    .user-accounts-header {
+        font-size: 12px;
+        padding: 10px 8px;
+    }
+
+    .user-account-row {
+        font-size: 13px;
+    }
+
+    /* --- Completed section full-width --- */
+    .completed-section {
+        padding: 12px;
+    }
+
+    .completed-printer-card {
+        padding: 12px;
+    }
+
+    /* --- Ticket modal responsive --- */
+    .ticket-modal__dialog {
+        width: 95vw;
+        padding: 16px;
+    }
+
+    .ticket-modal__grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    /* --- Popup overlay forms --- */
+    .popup-form {
+        padding: 0 1.2em 1.5em 1.2em;
+    }
+
+    /* --- View all button --- */
+    .view-all-btn {
+        font-size: 14px;
+        padding: 8px 14px;
+    }
+
+    /* --- Touch-friendly: minimum tap targets --- */
+    .navbar-item,
+    .queue-deny-btn,
+    .queue-approve-btn,
+    .queue-cancel-btn,
+    .approve-btn,
+    .deny-btn,
+    .refund-btn,
+    .handed-over-btn,
+    .picked-up-btn,
+    .refill-btn,
+    .general-btn,
+    .view-all-btn,
+    .need-assistance-btn,
+    .jobs-done-btn,
+    .search-btn,
+    .clear-btn {
+        min-height: 44px;
+    }
+
+    /* --- Price display --- */
+    .price-display p {
+        font-size: 2rem;
+    }
+}
+
+/* Extra small screens */
+@media (max-width: 480px) {
+    .dashboard-rows h1 {
+        font-size: 1.25rem;
+    }
+
+    .stat-card {
+        font-size: 1.5rem;
+        padding: 14px 16px;
+    }
+
+    .stat-card h3 {
+        font-size: 0.85rem;
+    }
+
+    .customer-info input {
+        font-size: 1.5rem;
+    }
+
+    .customer-info input::placeholder {
+        font-size: 1.5rem;
+        line-height: 1.5rem;
+    }
+
+    .queue-row,
+    .on-queue-row,
+    .completed-row,
+    .document-item,
+    .printer-table-row {
+        padding: 10px;
+    }
+
+    .doc-title {
+        font-size: 13px;
+    }
+
+    .settings-section {
+        padding: 12px;
+        border-radius: 12px;
+    }
+
+    .settings-field-row {
+        padding: 10px;
+    }
+
+    .completed-printer-card {
+        padding: 10px;
+    }
+
+    .printer-status-card {
+        padding: 10px;
+        border-radius: 12px;
+    }
+}

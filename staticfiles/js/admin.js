@@ -1,3 +1,29 @@
+// Mobile hamburger menu toggle
+(function() {
+    var toggle = document.querySelector('.mobile-menu-toggle');
+    var navbar = document.querySelector('.vertical-navbar');
+    var backdrop = document.querySelector('.mobile-nav-backdrop');
+    if (toggle && navbar) {
+        function openMenu() {
+            toggle.classList.add('active');
+            navbar.classList.add('open');
+            if (backdrop) backdrop.classList.add('active');
+        }
+        function closeMenu() {
+            toggle.classList.remove('active');
+            navbar.classList.remove('open');
+            if (backdrop) backdrop.classList.remove('active');
+        }
+        toggle.addEventListener('click', function() {
+            navbar.classList.contains('open') ? closeMenu() : openMenu();
+        });
+        if (backdrop) backdrop.addEventListener('click', closeMenu);
+        navbar.querySelectorAll('.navbar-item').forEach(function(link) {
+            link.addEventListener('click', closeMenu);
+        });
+    }
+})();
+
 // Display Alert Messages
 function createAlert(title, summary, details, severity, dismissible, autoDismiss, appendToId) {
     var iconMap = {
