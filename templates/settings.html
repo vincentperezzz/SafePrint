@@ -72,7 +72,7 @@ Account Settings
             <button class="general-btn" onclick="showPopupOverlay('editEmailOverlay')">Edit</button>
         </div>
 
-      <div class="notification-title">Notifications</div>
+      <div class="notification-title">Admin Notifications</div>
       <div class="settings-field-row">
         <div class="sound-enabled">Enable Notification Sound</div>
         <div class="switch">
@@ -103,10 +103,43 @@ Account Settings
           </span>
         </div>
       </div>
+
+      <div class="notification-title" style="margin-top: 18px;">Customer Notifications</div>
+      <div class="settings-field-row">
+        <div class="notification-sound">Completion Sound</div>
+        <div class="dropdown dropdown-compact">
+          <select id="customer-completion-sound" class="dropdown-select">
+            {% for s in notification_sounds %}
+              <option value="{{ s.slug }}" data-filepath="{{ s.file_path }}" {% if site_settings.customer_completion_sound and site_settings.customer_completion_sound.slug == s.slug %}selected{% endif %}>{{ s.display_name }}</option>
+            {% endfor %}
+          </select>
+          <span class="dropdown-arrow">
+            <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </div>
+      </div>
+      <div class="settings-field-row">
+        <div class="notification-sound">Reroute Sound</div>
+        <div class="dropdown dropdown-compact">
+          <select id="customer-reroute-sound" class="dropdown-select">
+            {% for s in notification_sounds %}
+              <option value="{{ s.slug }}" data-filepath="{{ s.file_path }}" {% if site_settings.customer_reroute_sound and site_settings.customer_reroute_sound.slug == s.slug %}selected{% endif %}>{{ s.display_name }}</option>
+            {% endfor %}
+          </select>
+          <span class="dropdown-arrow">
+            <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </div>
+      </div>
     </div>
 
-    <!-- Hidden audio element used for automatic preview playback -->
+    <!-- Hidden audio elements for preview playback -->
     <audio id="sound-preview" preload="auto" style="display:none"></audio>
+    <audio id="customer-sound-preview" preload="auto" style="display:none"></audio>
 
     {% if user.role == "Manager" %}
     <div class="settings-section" id="manager">

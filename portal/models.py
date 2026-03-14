@@ -51,6 +51,29 @@ class NotificationSound(models.Model):
     def __str__(self):
         return self.display_name
 
+
+class SiteSetting(models.Model):
+    customer_completion_sound = models.ForeignKey(
+        NotificationSound, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+'
+    )
+    customer_reroute_sound = models.ForeignKey(
+        NotificationSound, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+'
+    )
+
+    class Meta:
+        db_table = 'site_settings'
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return 'Site Settings'
+
+
 class Printer(models.Model):
     PAPER_SIZE_CHOICES = [
         ('', 'None'),

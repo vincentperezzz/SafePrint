@@ -1163,6 +1163,54 @@ document.addEventListener('DOMContentLoaded', () => {
         setPreviewSrc();
         // Default preview volume
         previewAudio.volume = 1;
+
+        // --- Customer Sound Settings ---
+        const custCompletionSelect = document.getElementById('customer-completion-sound');
+        const custRerouteSelect = document.getElementById('customer-reroute-sound');
+        const custPreviewAudio = document.getElementById('customer-sound-preview');
+
+        function saveCustomerSoundPrefs(payload) {
+            fetch('/api/update-customer-sound-prefs/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    createAlert('Success', 'Preferences Updated', 'Customer sound preferences saved.', 'success', true, true, 'pageMessages');
+                } else {
+                    createAlert('Error', 'Update Failed', data.error || 'Failed to save customer sound.', 'danger', true, true, 'pageMessages');
+                }
+            })
+            .catch(() => {
+                createAlert('Error', 'Update Failed', 'An error occurred while saving customer sound.', 'danger', true, true, 'pageMessages');
+            });
+        }
+
+        if (custCompletionSelect) {
+            custCompletionSelect.addEventListener('change', function () {
+                const filepath = this.options[this.selectedIndex].dataset.filepath;
+                if (filepath && custPreviewAudio) {
+                    custPreviewAudio.src = filepath;
+                    custPreviewAudio.play().catch(() => {});
+                }
+                saveCustomerSoundPrefs({ completion_sound: this.value });
+            });
+        }
+        if (custRerouteSelect) {
+            custRerouteSelect.addEventListener('change', function () {
+                const filepath = this.options[this.selectedIndex].dataset.filepath;
+                if (filepath && custPreviewAudio) {
+                    custPreviewAudio.src = filepath;
+                    custPreviewAudio.play().catch(() => {});
+                }
+                saveCustomerSoundPrefs({ reroute_sound: this.value });
+            });
+        }
     }
 
     // Printer Search Functionality
