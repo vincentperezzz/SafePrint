@@ -6998,13 +6998,25 @@ input:focus::placeholder {
 
     /* --- Dashboard header row --- */
     .dashboard-rows {
-        flex-direction: column;
-        align-items: flex-start;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
         gap: 10px;
+    }
+
+    .dashboard-rows .header-left {
+        flex: 1;
+        min-width: 0;
     }
 
     .dashboard-rows h1 {
         font-size: 1.5rem;
+    }
+
+    /* --- Bell icon stays right --- */
+    .notification-bell .bell-icon {
+        width: 34px;
+        height: 34px;
     }
 
     /* --- Stat cards stack --- */
@@ -7168,17 +7180,31 @@ input:focus::placeholder {
     }
 
     .printer-table-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        padding: 12px;
-        border: 1px solid #E7E7E7;
-        border-radius: 12px;
-        margin-bottom: 8px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        padding: 14px;
+        border: 2px solid #E7E7E7;
+        border-radius: 14px;
+        margin-bottom: 10px;
+        background: #fff;
     }
 
-    .printer-table-row > * {
-        min-width: 45%;
+    .printer-table-row .printer-info {
+        grid-column: 1 / -1;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 8px;
+    }
+
+    .printer-table-row .printer-edit-btn-container {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+        display: flex;
+        gap: 8px;
+    }
+
+    .printer-table .dropdown {
+        max-width: none;
     }
 
     .paper-refill-table .printer-table-header {
@@ -7186,13 +7212,33 @@ input:focus::placeholder {
     }
 
     .paper-refill-table .printer-table-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        padding: 12px;
-        border: 1px solid #E7E7E7;
-        border-radius: 12px;
-        margin-bottom: 8px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        padding: 14px;
+        border: 2px solid #E7E7E7;
+        border-radius: 14px;
+        margin-bottom: 10px;
+        background: #fff;
+    }
+
+    .paper-refill-table .printer-table-row .printer-info {
+        grid-column: 1 / -1;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 8px;
+    }
+
+    .paper-refill-table .printer-table-row > div:last-child {
+        grid-column: 1 / -1;
+    }
+
+    .paper-refill-table .printer-table-row .refill-btn {
+        width: 100%;
+    }
+
+    /* Add printer button full width */
+    .add-printer-btn {
+        width: 100%;
     }
 
     /* --- Settings page --- */
