@@ -41,16 +41,16 @@ Dashboard
 
 <div class="dashboard-stats">
     <div class="stat-card green">
-        <h3>Print Jobs <br>Completed</h3>
-        <p>{{ completed_jobs_count }}</p>
+        <h3>Resolved <br>Tickets</h3>
+        <p id="resolved-tickets-count">{{ resolved_tickets_count }}</p>
     </div>
-    <div class="stat-card red">
+    <div class="stat-card yellow">
         <h3>Active <br>Tickets</h3>
         <p id="active-tickets-count">{{ active_tickets_count }}</p>
     </div>
-    <div class="stat-card yellow">
-        <h3>Resolved <br>Tickets</h3>
-        <p id="resolved-tickets-count">{{ resolved_tickets_count }}</p>
+    <div class="stat-card red" id="stat-printer-errors">
+        <h3>Printer <br>Errors</h3>
+        <p id="printer-errors-count">{{ printer_errors_count }}</p>
     </div>
 </div>
 

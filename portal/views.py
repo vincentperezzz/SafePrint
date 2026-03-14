@@ -35,7 +35,7 @@ def dashboard(request):
         raise Http404("User not found")
     
     # Dashboard Stats
-    completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
+    printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
     
     # Ticket queries
     active_tickets = list(SupportTicket.objects.filter(
@@ -76,7 +76,7 @@ def dashboard(request):
 
     context = {
         'user': user,
-        'completed_jobs_count': completed_jobs_count,
+        'printer_errors_count': printer_errors_count,
         'active_tickets': active_tickets,
         'resolved_tickets': resolved_tickets,
         'active_tickets_count': active_tickets_count,
