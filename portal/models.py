@@ -110,6 +110,7 @@ class Printer(models.Model):
     ip_address = models.CharField(max_length=255)
     node_name = models.CharField(max_length=255, null=True, blank=True)
     tray_capacity = models.IntegerField(null=True, blank=True)
+    tray_current_count = models.IntegerField(null=True, blank=True)
     tray_level = models.CharField(max_length=20, default='Needs Refill')  # Full, Low, Needs Refill
     last_refill_time = models.DateTimeField(null=True, blank=True)
 

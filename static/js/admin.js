@@ -3391,17 +3391,35 @@ if (addPrinterForm) {
         });
     });
 
+    // Edit button click to trigger tray capacity edit
+    document.querySelectorAll('.tray-edit-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const printerId = this.dataset.printerId;
+            const display = document.querySelector(`.tray-capacity-display[data-printer-id="${printerId}"]`);
+            const input = document.querySelector(`.tray-capacity-input[data-printer-id="${printerId}"]`);
+            if (display && input) {
+                display.style.display = 'none';
+                this.style.display = 'none';
+                input.style.display = 'inline-block';
+                input.focus();
+                input.select();
+            }
+        });
+    });
+
     // Handle tray capacity input
     document.querySelectorAll('.tray-capacity-input').forEach(input => {
         const saveCapacity = function() {
             const printerId = input.dataset.printerId;
             const display = document.querySelector(`.tray-capacity-display[data-printer-id="${printerId}"]`);
+            const editBtn = document.querySelector(`.tray-edit-btn[data-printer-id="${printerId}"]`);
             const value = parseInt(input.value, 10);
             
             if (isNaN(value) || value <= 0) {
                 input.value = parseInt(display.textContent, 10);
                 input.style.display = 'none';
                 display.style.display = 'inline';
+                if (editBtn) editBtn.style.display = '';
                 return;
             }
 
@@ -3420,11 +3438,13 @@ if (addPrinterForm) {
                 }
                 input.style.display = 'none';
                 display.style.display = 'inline';
+                if (editBtn) editBtn.style.display = '';
             })
             .catch(err => {
                 console.error('Error updating tray capacity:', err);
                 input.style.display = 'none';
                 display.style.display = 'inline';
+                if (editBtn) editBtn.style.display = '';
             });
         };
 
@@ -3435,9 +3455,11 @@ if (addPrinterForm) {
             } else if (e.key === 'Escape') {
                 const printerId = input.dataset.printerId;
                 const display = document.querySelector(`.tray-capacity-display[data-printer-id="${printerId}"]`);
+                const editBtn = document.querySelector(`.tray-edit-btn[data-printer-id="${printerId}"]`);
                 input.value = parseInt(display.textContent, 10);
                 input.style.display = 'none';
                 display.style.display = 'inline';
+                if (editBtn) editBtn.style.display = '';
             }
         });
 
@@ -3466,6 +3488,12 @@ if (addPrinterForm) {
                     if (trayLevelCell) {
                         trayLevelCell.className = 'status-dot ok';
                         trayLevelCell.parentElement.innerHTML = '<span class="status-dot ok"></span> Full';
+                    }
+                    
+                    // Update remaining count
+                    const remainingCell = row.querySelector('.tray-remaining-cell');
+                    if (remainingCell && data.tray_current_count != null) {
+                        remainingCell.textContent = data.tray_current_count + ' sheets';
                     }
                     
                     // Update refill time
