@@ -200,6 +200,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Fetch audit log
             fetchAuditLog(ticketId);
+
+            // Receipt proof section
+            var receiptCodeEl = document.getElementById('modal-receipt-code');
+            var receiptImgContainer = document.getElementById('modal-receipt-image-container');
+            var receiptNone = document.getElementById('modal-receipt-none');
+            var receiptImg = document.getElementById('modal-receipt-img');
+            var receiptBtn = document.getElementById('modal-receipt-btn');
+            var receiptCode = button.getAttribute('data-receipt-code') || '';
+            var receiptUrl = button.getAttribute('data-receipt-screenshot-url') || '';
+            if (receiptCodeEl) receiptCodeEl.textContent = receiptCode || '—';
+            if (receiptUrl) {
+                if (receiptImg) receiptImg.src = receiptUrl;
+                if (receiptImgContainer) receiptImgContainer.style.display = 'block';
+                if (receiptNone) receiptNone.style.display = 'none';
+                if (receiptBtn) {
+                    receiptBtn.onclick = function() {
+                        var overlay = document.getElementById('receipt-image-overlay');
+                        var overlayImg = document.getElementById('receipt-overlay-img');
+                        if (overlay && overlayImg) {
+                            overlayImg.src = receiptUrl;
+                            overlay.style.display = 'flex';
+                            overlay.setAttribute('aria-hidden', 'false');
+                        }
+                    };
+                }
+            } else {
+                if (receiptImgContainer) receiptImgContainer.style.display = 'none';
+                if (receiptNone) receiptNone.style.display = 'block';
+            }
+
+            // Download logs button
+            var downloadBtn = document.getElementById('modal-download-logs-btn');
+            if (downloadBtn) {
+                downloadBtn.onclick = function() {
+                    var logContainer = document.getElementById('modal-audit-log');
+                    var ticketNum = button.getAttribute('data-ticket-number') || 'ticket';
+                    var lines = ['Audit Log for ' + ticketNum, ''];
+                    if (logContainer) {
+                        logContainer.querySelectorAll('div[style*="border-bottom"]').forEach(function(entry) {
+                            var text = entry.textContent.trim().replace(/\s+/g, ' ');
+                            lines.push(text);
+                        });
+                    }
+                    if (lines.length <= 2) lines.push('No audit log entries.');
+                    var blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = ticketNum.replace('#', '') + '_audit_log.txt';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                };
+            }
         }
 
         ticketModal.classList.add('is-open');
@@ -261,6 +314,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Receipt image overlay close handlers
+    (function() {
+        var overlay = document.getElementById('receipt-image-overlay');
+        if (!overlay) return;
+        var closeBtn = document.getElementById('receipt-overlay-close');
+        function closeOverlay() {
+            overlay.style.display = 'none';
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+        if (closeBtn) closeBtn.addEventListener('click', closeOverlay);
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) closeOverlay();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && overlay.style.display === 'flex') {
+                e.stopImmediatePropagation();
+                e.preventDefault();
+                closeOverlay();
+            }
+        }, true);
+    })();
+
     const activeResults = document.getElementById('document-results');
     const resolvedResults = document.querySelector('.resolved-list-container .document-results');
 
@@ -315,6 +390,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     data-payment-amount="${paymentAmount}"
                     data-refund-status="${refundStatus}"
                     data-refund-amount="${refundAmount}"
+                    data-receipt-code="${data.receipt_code || ''}"
+                    data-receipt-screenshot-url="${data.receipt_screenshot_url || ''}"
                 >View Details</button>
             </div>
         `;
@@ -2628,7 +2705,9 @@ if (addPrinterForm) {
                 data-gcash-number="${ticket.gcash_number || ''}"
                 data-payment-amount="${ticket.payment_amount || ''}"
                 data-refund-status="${ticket.refund_status || 'none'}"
-                data-refund-amount="${ticket.refund_amount || ''}">Verify</button>
+                data-refund-amount="${ticket.refund_amount || ''}"
+                data-receipt-code="${ticket.receipt_code || ''}"
+                data-receipt-screenshot-url="${ticket.receipt_screenshot_url || ''}">Verify</button>
             <button class="refund-btn" type="button" data-action="refund" data-ticket-id="${ticket.id}">Refund</button>
         `;
 
@@ -2682,7 +2761,9 @@ if (addPrinterForm) {
                         data-gcash-number="${ticket.gcash_number || ''}"
                         data-payment-amount="${ticket.payment_amount || ''}"
                         data-refund-status="${ticket.refund_status || 'none'}"
-                        data-refund-amount="${ticket.refund_amount || ''}">View Details</button>
+                        data-refund-amount="${ticket.refund_amount || ''}"
+                        data-receipt-code="${ticket.receipt_code || ''}"
+                        data-receipt-screenshot-url="${ticket.receipt_screenshot_url || ''}">View Details</button>
                 </div>
             </div>
         `;
@@ -2909,8 +2990,62 @@ if (addPrinterForm) {
                     }
                 }
 
+                // Receipt proof section
+                var receiptCodeEl = document.getElementById('modal-receipt-code');
+                var receiptImgContainer = document.getElementById('modal-receipt-image-container');
+                var receiptNone = document.getElementById('modal-receipt-none');
+                var receiptImg = document.getElementById('modal-receipt-img');
+                var receiptBtn = document.getElementById('modal-receipt-btn');
+                var receiptCode = this.getAttribute('data-receipt-code') || '';
+                var receiptUrl = this.getAttribute('data-receipt-screenshot-url') || '';
+                if (receiptCodeEl) receiptCodeEl.textContent = receiptCode || '—';
+                if (receiptUrl) {
+                    if (receiptImg) receiptImg.src = receiptUrl;
+                    if (receiptImgContainer) receiptImgContainer.style.display = 'block';
+                    if (receiptNone) receiptNone.style.display = 'none';
+                    if (receiptBtn) {
+                        receiptBtn.onclick = function() {
+                            var overlay = document.getElementById('receipt-image-overlay');
+                            var overlayImg = document.getElementById('receipt-overlay-img');
+                            if (overlay && overlayImg) {
+                                overlayImg.src = receiptUrl;
+                                overlay.style.display = 'flex';
+                                overlay.setAttribute('aria-hidden', 'false');
+                            }
+                        };
+                    }
+                } else {
+                    if (receiptImgContainer) receiptImgContainer.style.display = 'none';
+                    if (receiptNone) receiptNone.style.display = 'block';
+                }
+
                 // Fetch audit log
                 if (typeof window.fetchAuditLog === 'function') window.fetchAuditLog(ticketId);
+
+                // Download logs button
+                var downloadBtn = document.getElementById('modal-download-logs-btn');
+                if (downloadBtn) {
+                    var self = this;
+                    downloadBtn.onclick = function() {
+                        var logContainer = document.getElementById('modal-audit-log');
+                        var ticketNum = self.getAttribute('data-ticket-number') || 'ticket';
+                        var lines = ['Audit Log for ' + ticketNum, ''];
+                        if (logContainer) {
+                            logContainer.querySelectorAll('div[style*="border-bottom"]').forEach(function(entry) {
+                                var text = entry.textContent.trim().replace(/\s+/g, ' ');
+                                lines.push(text);
+                            });
+                        }
+                        if (lines.length <= 2) lines.push('No audit log entries.');
+                        var blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+                        var url = URL.createObjectURL(blob);
+                        var a = document.createElement('a');
+                        a.href = url;
+                        a.download = ticketNum.replace('#', '') + '_audit_log.txt';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    };
+                }
 
                 const modal = document.getElementById('ticket-modal');
                 modal.classList.add('is-open');
