@@ -6935,13 +6935,41 @@ input:focus::placeholder {
 /* Mobile top bar — hidden on desktop */
 /* iPad landscape / smaller desktops - prevent overflow */
 @media (max-width: 1400px) {
+    .dashboard-layout {
+        overflow: hidden;
+    }
+
     .main-content {
         min-width: 0;
+        overflow-y: auto;
+        flex: 1;
     }
 
     .vertical-navbar {
-        min-width: 200px;
-        padding: 15px;
+        min-width: 160px;
+        max-width: 160px;
+        padding: 12px;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+
+    .vertical-navbar .navbar-logo img {
+        width: 80px;
+        margin-bottom: 10px;
+    }
+
+    .vertical-navbar .brand-title {
+        font-size: 1.3rem;
+        line-height: 1.3rem;
+    }
+
+    .vertical-navbar .brand-subtitle {
+        font-size: 0.6rem;
+    }
+
+    .navbar-item {
+        font-size: 0.85rem;
+        padding: 8px 12px;
     }
 
     .stat-card {
