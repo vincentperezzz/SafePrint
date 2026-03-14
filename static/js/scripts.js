@@ -1170,6 +1170,11 @@ let previousDocStatuses = {}; // Track previous statuses by doc_id
 const printCompleteAudio = new Audio('/static/sounds/chime.mp3');
 const rerouteAlertAudio = new Audio('/static/sounds/rerouted.mp3');
 
+// Request browser notification permission on confirmation page
+if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+}
+
 // Fetch configured customer sounds from server
 (function loadCustomerSoundPrefs() {
     fetch('/api/get-customer-sound-prefs/')
@@ -1243,8 +1248,23 @@ function checkForNewCompletions(documents) {
     if (newlyFinished > 0) {
         playPrintCompleteSound();
         showPrintCompleteToast();
+        // Show browser notification (works even when tab is in background)
+        if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("SafePrint — Print Complete!", {
+                body: newlyFinished === 1
+                    ? "Your document is ready for pickup!"
+                    : newlyFinished + " documents are ready for pickup!",
+                icon: "/static/assets/safeprint-logo.png"
+            });
+        }
     } else if (newlyRerouted > 0) {
         playRerouteSound();
+        if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("SafePrint — Print Rerouted", {
+                body: "Your document has been rerouted to another printer.",
+                icon: "/static/assets/safeprint-logo.png"
+            });
+        }
     }
 
     // Count total finished (not picked up) for title flash
