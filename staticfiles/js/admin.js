@@ -2046,11 +2046,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 console.log('SSE connection opened successfully');
             };
 
-            evtSource.onerror = function (err) {
-                console.error('SSE connection error:', err);
-                evtSource.close();
-                // Reconnect after a delay (re-attaches all handlers)
-                setTimeout(setupPrinterSSE, 5000);
+            evtSource.onerror = function () {
+                // SSE auto-reconnects; only close and retry if connection is fully closed
+                if (evtSource.readyState === EventSource.CLOSED) {
+                    console.warn('SSE connection closed, reconnecting in 5s...');
+                    evtSource.close();
+                    setTimeout(setupPrinterSSE, 5000);
+                }
             };
 
             evtSource.onmessage = function (event) {
@@ -2249,11 +2251,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 console.log('Dashboard SSE connection established');
             };
 
-            evtSourceDash.onerror = function (err) {
-                console.error('Dashboard SSE connection error:', err);
-                evtSourceDash.close();
-                // Reconnect after a delay (re-attaches all handlers)
-                setTimeout(setupDashboardSSE, 5000);
+            evtSourceDash.onerror = function () {
+                // SSE auto-reconnects; only close and retry if connection is fully closed
+                if (evtSourceDash.readyState === EventSource.CLOSED) {
+                    console.warn('Dashboard SSE connection closed, reconnecting in 5s...');
+                    evtSourceDash.close();
+                    setTimeout(setupDashboardSSE, 5000);
+                }
             };
 
             let sseFirstMessage = true; // Skip sound on first SSE message (page load)
