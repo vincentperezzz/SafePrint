@@ -5781,7 +5781,7 @@ input:focus::placeholder {
     display: none !important;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     .login-container {
         height: auto;
         padding: 20px;
@@ -6899,7 +6899,14 @@ input:focus::placeholder {
     display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
+    /* --- Alert messages full width on mobile --- */
+    #pageMessages {
+        width: calc(100% - 24px);
+        left: 12px;
+        right: 12px;
+    }
+
     /* --- Mobile Top Bar --- */
     .mobile-topbar {
         display: flex;
