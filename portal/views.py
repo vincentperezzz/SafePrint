@@ -962,6 +962,9 @@ def update_printer_field(request):
             # Handle tray_capacity as integer
             if field == 'tray_capacity':
                 value = int(value) if value else None
+                # When setting tray capacity, also initialize tray_current_count if not tracked yet
+                if value is not None and printer.tray_current_count is None:
+                    printer.tray_current_count = value
             setattr(printer, field, value)
             printer.save()
             return JsonResponse({'success': True})
@@ -975,17 +978,19 @@ def update_printer_field(request):
 
 
 def mark_printer_refilled(request):
-    """Mark a printer as refilled - sets tray_level to Full and updates last_refill_time"""
+    """Mark a printer as refilled - sets tray_level to Full, resets tray_current_count, and updates last_refill_time"""
     if request.method == "POST":
         printer_id = request.POST.get('printer_id')
         try:
             printer = Printer.objects.get(id=printer_id)
             printer.tray_level = 'Full'
+            printer.tray_current_count = printer.tray_capacity
             printer.last_refill_time = timezone.now()
             printer.save()
             return JsonResponse({
                 'success': True,
                 'tray_level': printer.tray_level,
+                'tray_current_count': printer.tray_current_count,
                 'last_refill_time': printer.last_refill_time.isoformat()
             })
         except Printer.DoesNotExist:
@@ -2125,6 +2130,24 @@ def print_page(document, page_num):
     # Mark page as printed in DB only after successful print and status transitions
     document.mark_page_printed(page_num)
     print(f"[MARKED] Page {page_num} of document {document.doc_id} marked as printed.")
+
+    # Subtract 1 sheet from the printer's tray and update tray level
+    printer.refresh_from_db()
+    if printer.tray_current_count is not None:
+        printer.tray_current_count = max(0, printer.tray_current_count - 1)
+        if printer.tray_capacity and printer.tray_capacity > 0:
+            pct = printer.tray_current_count / printer.tray_capacity
+            if pct <= 0:
+                printer.tray_level = 'Needs Refill'
+            elif pct <= 0.2:
+                printer.tray_level = 'Low'
+            else:
+                printer.tray_level = 'Full'
+        elif printer.tray_current_count <= 0:
+            printer.tray_level = 'Needs Refill'
+        printer.save(update_fields=['tray_current_count', 'tray_level'])
+        print(f"[PAPER] Printer {printer.printer_name}: {printer.tray_current_count} sheets remaining ({printer.tray_level})")
+
     # If all pages printed, set status to Finished and update printed_at to last printer
     if len(document.get_remaining_pages()) == 0:
         document.doc_status = 'Finished'

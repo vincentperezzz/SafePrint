@@ -160,6 +160,7 @@ Printer Status
                 <div>Printer Name</div>
                 <div>Paper Assigned</div>
                 <div>Tray Capacity</div>
+                <div>Remaining</div>
                 <div>Tray Level</div>
                 <div>Last Refill Time</div>
                 <div>Refill Action</div>
@@ -180,7 +181,17 @@ Printer Status
                 <div>{% if printer.paper_assigned %}{{ printer.paper_assigned }}{% else %}None{% endif %}</div>
                 <div class="tray-capacity-cell">
                     <span class="tray-capacity-display" data-printer-id="{{ printer.id }}">{% if printer.tray_capacity %}{{ printer.tray_capacity }} sheets{% else %}Not set{% endif %}</span>
+                    <button class="tray-edit-btn" data-printer-id="{{ printer.id }}" title="Edit paper amount">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
                     <input type="number" class="tray-capacity-input" data-printer-id="{{ printer.id }}" value="{{ printer.tray_capacity|default:'' }}" style="display:none; width: 80px; text-align: center;">
+                </div>
+                <div class="tray-remaining-cell" data-printer-id="{{ printer.id }}">
+                    {% if printer.tray_current_count is not None %}
+                        {{ printer.tray_current_count }} sheets
+                    {% else %}
+                        Not tracked
+                    {% endif %}
                 </div>
                 <div>
                     <span class="status-dot {% if printer.tray_level == 'Full' %}ok{% elif printer.tray_level == 'Low' %}low{% else %}danger{% endif %}"></span>

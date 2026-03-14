@@ -4666,11 +4666,11 @@ input:focus::placeholder {
 }
 
 .paper-refill-table .printer-table-header {
-    grid-template-columns: 1.8fr 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr auto;
+    grid-template-columns: 1.8fr 1fr 1fr 1fr 1fr 1.2fr 1.2fr auto;
 }
 
 .paper-refill-table .printer-table-row {
-    grid-template-columns: 1.8fr 1.2fr 1.2fr 1.2fr 1.2fr 1.4fr;
+    grid-template-columns: 1.8fr 1fr 1fr 1fr 1fr 1.2fr 1.4fr;
 }
 
 .printer-table-header {
@@ -4745,6 +4745,28 @@ input:focus::placeholder {
 .refill-btn:active {
     transform: translateY(2px);
     box-shadow: 0px 2px 0px 0px #18191F;
+}
+
+.tray-capacity-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tray-edit-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px;
+    color: #18191F;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    display: inline-flex;
+    align-items: center;
+}
+
+.tray-edit-btn:hover {
+    opacity: 1;
 }
 
 .printer-name{
