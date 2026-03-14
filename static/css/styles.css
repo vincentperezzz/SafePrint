@@ -5680,6 +5680,7 @@ input:focus::placeholder {
     text-align: center;
     line-height: 1.5;
     font-size: 1rem;
+    margin-bottom: 1.5em;
 }
 
 .popup-done-btn:hover {
