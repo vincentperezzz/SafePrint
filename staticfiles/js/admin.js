@@ -1983,6 +1983,7 @@ document.addEventListener('DOMContentLoaded', function () {
         let baseTitle = document.title;
         let titleFlashInterval = null;
         let previousCompletedCount = 0; // Track previous count to detect changes
+        let previousActiveTicketCount = null; // Track ticket count for sound on all pages
 
         // Create notification audio element
         const notificationAudio = new Audio();
@@ -2161,6 +2162,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 setTimeout(setupDashboardSSE, 5000);
             };
 
+            let sseFirstMessage = true; // Skip sound on first SSE message (page load)
+
             evtSourceDash.onmessage = function (event) {
             try {
                 const stats = JSON.parse(event.data);
@@ -2188,7 +2191,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 const activeCount = parseInt(String(stats.active_tickets_count || 0), 10) || 0;
 
                 // If there are any new document IDs AND there are active tickets, play the notification
-                if (newDocIds.length > 0 && activeCount > 0) {
+                // Skip on first SSE message to avoid sound on every page load
+                if (!sseFirstMessage && newDocIds.length > 0 && activeCount > 0) {
                     console.log("New completed jobs detected:", newDocIds.length);
                     playNotificationSound();
 
@@ -2208,6 +2212,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (newDocIds.length > 0) {
                     sessionStorage.setItem('seenDocIds', JSON.stringify(currentDocIds));
                 }
+
+                // Update notification bell badge on ALL pages
+                const bellBadge = document.getElementById('notification-count');
+                if (bellBadge) bellBadge.textContent = String(activeCount);
+
+                // Play sound when ticket count increases (on any page)
+                if (previousActiveTicketCount !== null && activeCount > previousActiveTicketCount) {
+                    playNotificationSound();
+                    if ("Notification" in window && Notification.permission === "granted") {
+                        new Notification("SafePrint", {
+                            body: `New support ticket — ${activeCount} active ticket${activeCount > 1 ? 's' : ''}`,
+                            icon: "/static/assets/favicon.ico"
+                        });
+                    }
+                }
+                previousActiveTicketCount = activeCount;
 
                 // Use active tickets for title flashing instead of completed jobs
                 if (activeCount > 0) {
@@ -2295,6 +2315,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         }
                     }
                 }
+                sseFirstMessage = false;
             } catch (e) {
                 console.error('Dashboard SSE parse error:', e);
             }
@@ -2872,13 +2893,9 @@ if (addPrinterForm) {
                     updateActiveTickets(data.active_tickets);
                     updateResolvedTickets(data.resolved_tickets);
 
-                    // Play notification sound on initial load if there are active tickets,
-                    // or when the active ticket count increases thereafter.
-                    if (lastActiveCount === null) {
-                        if (activeCount > 0) {
-                            playNotificationSound();
-                        }
-                    } else if (activeCount > lastActiveCount) {
+                    // Play notification sound only when ticket count INCREASES
+                    // (skip initial load — don't play just because there are existing tickets)
+                    if (lastActiveCount !== null && activeCount > lastActiveCount) {
                         playNotificationSound();
                     }
 
@@ -2952,18 +2969,84 @@ if (addPrinterForm) {
     setInterval(refreshTickets, 5000); // Poll every 5 seconds
 })();
 
-// Notification bell interactions and sound enable prompt
+// Notification bell interactions — works on all admin pages
 (function(){
-    // Toggle notification panel when bell clicked
     const bell = document.getElementById('notification-bell');
-    if (bell) {
-        bell.addEventListener('click', function(e){
-            e.preventDefault();
-            const panel = document.getElementById('notification-panel');
-            if (!panel) return;
-            panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
-        });
+    if (!bell) return;
+
+    // Create notification dropdown panel dynamically
+    const bellParent = bell.closest('div[style*="position:relative"]') || bell.parentElement;
+    let panel = document.getElementById('notification-panel');
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'notification-panel';
+        panel.style.cssText = 'display:none; position:absolute; top:100%; right:0; width:320px; max-height:400px; overflow-y:auto; background:#fff; border:2px solid #18191F; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:2000; font-family:Montserrat,sans-serif;';
+        panel.innerHTML = '<div id="notification-panel-list" style="padding:8px;"><div style="padding:8px;color:#666;">Loading...</div></div>';
+        bellParent.appendChild(panel);
     }
+    const panelList = document.getElementById('notification-panel-list');
+
+    function fetchAndPopulatePanel() {
+        if (!panelList) return;
+        panelList.innerHTML = '<div style="padding:8px;color:#666;">Loading...</div>';
+        fetch('/portal/api/get-active-tickets/')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                panelList.innerHTML = '';
+                if (data.success && Array.isArray(data.active_tickets) && data.active_tickets.length > 0) {
+                    data.active_tickets.slice(0, 20).forEach(function(t) {
+                        var item = document.createElement('div');
+                        item.className = 'notif-item';
+                        item.style.cssText = 'padding:8px; border-bottom:1px solid #f1f1f1; cursor:pointer;';
+                        item.innerHTML = '<div style="font-weight:600">' + (t.ticket_number || '') + '</div><div style="font-size:0.85rem;color:#666">' + (t.problem_type || '') + ' &bull; ' + (t.created_at || '') + '</div>';
+                        item.addEventListener('click', function() {
+                            // Try to open detailed ticket modal if on dashboard
+                            var modal = document.getElementById('ticket-modal');
+                            if (modal) {
+                                document.getElementById('modal-customer-id').textContent = t.customer_id || '';
+                                document.getElementById('modal-doc-id').textContent = t.doc_id || '';
+                                document.getElementById('modal-customer-name').textContent = t.customer_name || '';
+                                document.getElementById('modal-doc-name').textContent = t.document_name || '';
+                                document.getElementById('modal-email').textContent = t.email || '';
+                                document.getElementById('modal-problem-type').textContent = t.problem_type || '';
+                                document.getElementById('modal-phone').textContent = t.phone_number || '';
+                                document.getElementById('modal-reprinted').textContent = t.was_reprinted ? 'Yes' : 'No';
+                                document.getElementById('modal-issue').textContent = t.description || '';
+                                document.getElementById('ticket-modal-title').textContent = t.ticket_number || 'Ticket Details';
+                                modal.classList.add('is-open');
+                                modal.setAttribute('aria-hidden', 'false');
+                                document.body.style.overflow = 'hidden';
+                            } else {
+                                // Redirect to dashboard if not on dashboard
+                                window.location.href = '/portal/dashboard/';
+                            }
+                            panel.style.display = 'none';
+                        });
+                        panelList.appendChild(item);
+                    });
+                } else {
+                    panelList.innerHTML = '<div style="padding:8px;color:#666;">No active tickets</div>';
+                }
+            })
+            .catch(function() {
+                panelList.innerHTML = '<div style="padding:8px;color:#d9534f;">Failed to load tickets</div>';
+            });
+    }
+
+    bell.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var isOpen = panel.style.display === 'block';
+        panel.style.display = isOpen ? 'none' : 'block';
+        if (!isOpen) fetchAndPopulatePanel();
+    });
+
+    // Close panel when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!bell.contains(e.target) && !panel.contains(e.target)) {
+            panel.style.display = 'none';
+        }
+    });
 })();
 
 // Paper Refill - Tray Capacity editing and Mark as Refilled
