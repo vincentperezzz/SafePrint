@@ -6900,11 +6900,9 @@ input:focus::placeholder {
 }
 
 @media (max-width: 1024px) {
-    /* --- Alert messages full width on mobile --- */
+    /* --- Alert messages half-width on tablet --- */
     #pageMessages {
-        width: calc(100% - 24px);
-        left: 12px;
-        right: 12px;
+        width: 50%;
     }
 
     /* --- Mobile Top Bar --- */
@@ -7357,6 +7355,15 @@ input:focus::placeholder {
     /* --- Price display --- */
     .price-display p {
         font-size: 2rem;
+    }
+}
+
+/* Phone screens - full width alerts */
+@media (max-width: 768px) {
+    #pageMessages {
+        width: calc(100% - 24px);
+        left: 12px;
+        right: 12px;
     }
 }
 
