@@ -110,6 +110,10 @@ Dashboard
                                 data-issue="{{ ticket.description }}"
                                 data-problem-type="{{ ticket.get_problem_type_display }}"
                                 data-was-reprinted="{{ ticket.was_reprinted }}"
+                                data-gcash-number="{{ ticket.gcash_number }}"
+                                data-payment-amount="{{ ticket.payment_amount|default:'' }}"
+                                data-receipt-code="{{ ticket.receipt_code }}"
+                                data-receipt-screenshot-url="{% if ticket.receipt_screenshot %}{{ ticket.receipt_screenshot.url }}{% endif %}"
                             >Verify</button>
                             <button class="refund-btn" type="button" data-action="refund" data-ticket-id="{{ ticket.id }}">Refund</button>
                         </div>
@@ -176,6 +180,12 @@ Dashboard
                                 data-issue="{{ ticket.description }}"
                                 data-problem-type="{{ ticket.get_problem_type_display }}"
                                 data-was-reprinted="{{ ticket.was_reprinted }}"
+                                data-gcash-number="{{ ticket.gcash_number }}"
+                                data-payment-amount="{{ ticket.payment_amount|default:'' }}"
+                                data-refund-status="{{ ticket.refund_status }}"
+                                data-refund-amount="{{ ticket.refund_amount|default:'' }}"
+                                data-receipt-code="{{ ticket.receipt_code }}"
+                                data-receipt-screenshot-url="{% if ticket.receipt_screenshot %}{{ ticket.receipt_screenshot.url }}{% endif %}"
                             >View Details</button>
                         </div>
                     </div>
@@ -245,6 +255,24 @@ Dashboard
                 <p class="ticket-modal__label">Issue</p>
                 <p class="ticket-modal__value" id="modal-issue"></p>
             </div>
+            <!-- Receipt Proof section -->
+            <div id="modal-receipt-section" style="margin-top:16px;">
+                <p class="ticket-modal__label" style="margin-bottom:8px;">Receipt Proof</p>
+                <div style="display:flex; gap:12px; align-items:flex-start; font-family:Montserrat,sans-serif; font-size:0.9rem;">
+                    <div>
+                        <span style="color:#666;">Receipt Code:</span>
+                        <strong id="modal-receipt-code" style="margin-left:4px;">—</strong>
+                    </div>
+                </div>
+                <div id="modal-receipt-image-container" style="display:none; margin-top:10px;">
+                    <button id="modal-receipt-btn" type="button" style="background:none; border:2px solid #ddd; border-radius:8px; padding:4px; cursor:pointer; transition:border-color 0.2s;" title="Click to view full image">
+                        <img id="modal-receipt-img" src="" alt="Receipt Screenshot" style="max-width:120px; max-height:120px; border-radius:6px; display:block;">
+                    </button>
+                </div>
+                <div id="modal-receipt-none" style="display:none; color:#999; font-size:0.85rem; margin-top:6px; font-family:Montserrat,sans-serif;">
+                    No receipt screenshot uploaded.
+                </div>
+            </div>
             <!-- Refund completion section (shown for pending refunds) -->
             <div id="modal-refund-section" style="display:none; margin-top:16px; padding:16px; background:#f0f9ff; border-radius:12px; border:1px solid #bae6fd;">
                 <p style="font-weight:600; margin-bottom:8px; font-family:Montserrat,sans-serif;">Refund Pending</p>
@@ -262,8 +290,16 @@ Dashboard
                 <div id="modal-audit-log" style="max-height:200px; overflow-y:auto; font-size:0.85rem; font-family:Montserrat,sans-serif;"></div>
             </div>
         </div>
-        <button class="ticket-modal__download" type="button">Download System Logs</button>
+        <div style="display:flex; gap:8px; padding:0 20px 20px;">
+            <button class="ticket-modal__download" type="button" id="modal-download-logs-btn">Download Logs</button>
+        </div>
     </div>
+</div>
+
+<!-- Receipt Image Overlay -->
+<div id="receipt-image-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:10001; align-items:center; justify-content:center; cursor:pointer;" aria-hidden="true">
+    <button id="receipt-overlay-close" type="button" style="position:absolute; top:20px; right:20px; background:rgba(255,255,255,0.9); border:none; border-radius:50%; width:40px; height:40px; font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:10002;">&times;</button>
+    <img id="receipt-overlay-img" src="" alt="Receipt Screenshot" style="max-width:90%; max-height:90%; border-radius:12px; object-fit:contain;">
 </div>
 
 <script>

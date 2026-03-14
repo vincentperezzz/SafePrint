@@ -247,6 +247,8 @@ def get_active_tickets_api(request):
                 'was_reprinted': ticket.was_reprinted,
                 'doc_id': ticket.document.doc_id if ticket.document else '',
                 'gcash_number': ticket.gcash_number,
+                'receipt_code': ticket.receipt_code,
+                'receipt_screenshot_url': ticket.receipt_screenshot.url if ticket.receipt_screenshot else '',
             })
         
         resolved_tickets_data = []
@@ -278,6 +280,8 @@ def get_active_tickets_api(request):
                 'refund_status': ticket.refund_status,
                 'refund_reference': ticket.refund_reference,
                 'refund_completed_at': ticket.refund_completed_at.strftime('%Y-%m-%d %H:%M:%S') if ticket.refund_completed_at else None,
+                'receipt_code': ticket.receipt_code,
+                'receipt_screenshot_url': ticket.receipt_screenshot.url if ticket.receipt_screenshot else '',
             })
         
         return JsonResponse({
