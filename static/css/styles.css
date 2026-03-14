@@ -6933,6 +6933,114 @@ input:focus::placeholder {
    ============================================================ */
 
 /* Mobile top bar — hidden on desktop */
+/* iPad landscape / smaller desktops - prevent overflow */
+@media (max-width: 1400px) {
+    .main-content {
+        min-width: 0;
+    }
+
+    .vertical-navbar {
+        min-width: 200px;
+        padding: 15px;
+    }
+
+    .stat-card {
+        width: auto;
+        flex: 1;
+        min-width: 0;
+        font-size: 2rem;
+    }
+
+    .dashboard-stats {
+        flex-wrap: wrap;
+    }
+
+    .document-item .actions button {
+        padding: 6px 10px;
+        font-size: 0.85rem;
+    }
+
+    /* Printer Status: card layout for tablet */
+    .printer-status-card {
+        min-width: 0;
+    }
+
+    .printer-table-header {
+        display: none;
+    }
+
+    .printer-table-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        padding: 14px;
+        border: 2px solid #E7E7E7;
+        border-radius: 14px;
+        margin-bottom: 10px;
+        background: #fff;
+    }
+
+    .printer-table-row .printer-info {
+        grid-column: 1 / -1;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 8px;
+    }
+
+    .printer-table-row .printer-edit-btn-container {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+        display: flex;
+        gap: 8px;
+    }
+
+    .printer-table .dropdown {
+        max-width: none;
+    }
+
+    .paper-refill-table .printer-table-header {
+        display: none;
+    }
+
+    .paper-refill-table .printer-table-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        padding: 14px;
+        border: 2px solid #E7E7E7;
+        border-radius: 14px;
+        margin-bottom: 10px;
+        background: #fff;
+    }
+
+    .paper-refill-table .printer-table-row .printer-info {
+        grid-column: 1 / -1;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 8px;
+    }
+
+    .paper-refill-table .printer-table-row > div:last-child {
+        grid-column: 1 / -1;
+    }
+
+    .paper-refill-table .printer-table-row .refill-btn {
+        width: 100%;
+    }
+
+    /* Smaller fonts for tablet */
+    .dashboard-rows h1 {
+        font-size: 1.7rem;
+    }
+
+    .stat-card h3 {
+        font-size: 0.9rem;
+    }
+
+    .document-approvals h2,
+    .completed-jobs h2 {
+        font-size: 1.2rem;
+    }
+}
+
 .mobile-topbar {
     display: none;
 }
