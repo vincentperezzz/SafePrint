@@ -7051,6 +7051,12 @@ input:focus::placeholder {
         display: none;
     }
 
+    .document-list-container {
+        height: auto;
+        padding: 12px;
+        overflow: visible;
+    }
+
     .document-item {
         display: flex;
         flex-direction: column;
@@ -7059,6 +7065,8 @@ input:focus::placeholder {
         border: 1px solid #A19F9F;
         border-radius: 12px;
         background: #fff;
+        height: auto;
+        align-items: flex-start;
     }
 
     .document-item .ticket-cell {
@@ -7069,16 +7077,20 @@ input:focus::placeholder {
     .document-item .ticket-date,
     .document-item .ticket-issue {
         font-size: 14px;
+        text-align: left;
     }
 
     .document-item .actions {
         width: 100%;
         justify-content: stretch;
+        display: flex;
+        align-self: stretch;
     }
 
     .document-item .actions button {
-        flex: 1;
+        flex: 1 1 0;
         max-width: none;
+        min-width: 0;
         width: auto;
     }
 
