@@ -1,0 +1,115 @@
+{% extends "admin_layout.html" %}
+{% load static %}
+
+{% block title %}
+Voucher Management
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-rows">
+    <div class="header-left">
+        <h1>Vouchers</h1>
+    </div>
+    <div style="position:relative;">
+        <button id="notification-bell" class="notification-bell" aria-label="Notifications" style="background:transparent; border:none; padding:6px; cursor:pointer;">
+            <span style="position:relative; display:inline-block; width:34px; height:34px;">
+                <svg class="bell-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="50" height="50" fill="#000" stroke="none" aria-hidden="true">
+                    <path d="M12 2C10.343 2 9 3.343 9 5v1.07C6.163 7.165 4 9.97 4 13v3l-1 1v1h18v-1l-1-1v-3c0-3.03-2.163-5.835-5-6.93V5c0-1.657-1.343-3-3-3z" />
+                    <path d="M13.73 20a2 2 0 01-3.46 0" fill="#000" />
+                </svg>
+                <span id="notification-count" style="position:absolute; top:-4px; right:-16px; background:#d9534f; color:#fff; border-radius:50%; padding:4px 6px; font-size:0.75rem; min-width:20px; text-align:center; line-height:1; box-shadow:0 1px 0 rgba(0,0,0,0.2);">0</span>
+            </span>
+        </button>
+    </div>
+</div>
+
+<hr class="dashboard-divider">
+<div id="pageMessages"></div>
+
+<!-- Generate Voucher Section -->
+<div class="queue-header">
+    <h2 class="dashboard-section-header">Generate Voucher</h2>
+</div>
+<div class="printer-status-card" style="margin-bottom: 20px; padding: 0;">
+    <div class="voucher-generate-form">
+        <div class="voucher-form-row">
+            <label for="voucher-amount">Amount (₱)</label>
+            <input type="number" id="voucher-amount" min="1" max="10000" step="0.01" placeholder="e.g. 50.00" style="width: 130px; padding: 6px 10px; border: 2px solid #18191F; border-radius: 10px; font-size: 14px;">
+            <button id="generate-voucher-btn" class="refill-btn">Generate Voucher</button>
+        </div>
+        <div id="voucher-generate-result" style="margin-top: 8px; display: none;"></div>
+    </div>
+</div>
+
+<!-- Voucher List Section -->
+<div class="queue-header">
+    <h2 class="dashboard-section-header">All Vouchers</h2>
+</div>
+<div class="printer-status-card">
+    <div class="voucher-filters" style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap;">
+        <div class="queue-search-bar" style="flex: 1; min-width: 200px;">
+            <input type="text" id="voucher-search" placeholder="Search by code">
+            <span class="search-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M20.9999 21L16.6499 16.65" stroke="#18191F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </span>
+        </div>
+        <select id="voucher-status-filter" style="padding: 8px 12px; border: 2px solid #18191F; border-radius: 12px; font-size: 14px; cursor: pointer;">
+            <option value="all">All</option>
+            <option value="active">Active</option>
+            <option value="used">Used (₱0)</option>
+            <option value="expired">Expired</option>
+            <option value="inactive">Deactivated</option>
+        </select>
+    </div>
+    <div class="printer-table voucher-table">
+        <div class="printer-table-header">
+            <div>Code</div>
+            <div>Original</div>
+            <div>Remaining</div>
+            <div>Status</div>
+            <div>Created</div>
+            <div>Expires</div>
+            <div>Action</div>
+        </div>
+        <div id="voucher-table-body">
+            {% for voucher in vouchers %}
+            <div class="printer-table-row voucher-row" data-voucher-id="{{ voucher.id }}">
+                <div class="voucher-code-cell" data-label="Code"><strong>{{ voucher.code }}</strong></div>
+                <div data-label="Original">₱{{ voucher.original_amount }}</div>
+                <div data-label="Remaining">₱{{ voucher.remaining_balance }}</div>
+                <div data-label="Status">
+                    {% if not voucher.is_active %}
+                        <span class="status-dot danger"></span> Deactivated
+                    {% elif voucher.is_expired %}
+                        <span class="status-dot danger"></span> Expired
+                    {% elif voucher.remaining_balance <= 0 %}
+                        <span class="status-dot low"></span> Used
+                    {% else %}
+                        <span class="status-dot ok"></span> Active
+                    {% endif %}
+                </div>
+                <div data-label="Created">{{ voucher.created_at|date:"M d, Y" }}</div>
+                <div data-label="Expires">{{ voucher.expires_at|date:"M d, Y" }}</div>
+                <div class="voucher-actions-cell">
+                    <button class="voucher-toggle-btn" data-voucher-id="{{ voucher.id }}" data-active="{{ voucher.is_active|yesno:'true,false' }}">
+                        {% if voucher.is_active %}Deactivate{% else %}Activate{% endif %}
+                    </button>
+                    <button class="voucher-delete-btn" data-voucher-id="{{ voucher.id }}">Delete</button>
+                </div>
+            </div>
+            {% empty %}
+            <div class="printer-table-row">
+                <div style="grid-column: 1 / -1; text-align: center; padding: 24px;">No vouchers found.</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+    var csrfToken = "{{ csrf_token }}";
+</script>
+{% endblock %}

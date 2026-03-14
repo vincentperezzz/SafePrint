@@ -3514,3 +3514,175 @@ if (addPrinterForm) {
     updateRefillTimes();
     setInterval(updateRefillTimes, 60000);
 })();
+
+// Voucher Management
+(function() {
+    if (!window.location.pathname.includes('/portal/vouchers')) return;
+
+    const generateBtn = document.getElementById('generate-voucher-btn');
+    const amountInput = document.getElementById('voucher-amount');
+    const resultDiv = document.getElementById('voucher-generate-result');
+    const searchInput = document.getElementById('voucher-search');
+    const statusFilter = document.getElementById('voucher-status-filter');
+
+    // Generate voucher
+    if (generateBtn) {
+        generateBtn.addEventListener('click', function() {
+            const amount = parseFloat(amountInput.value);
+            if (!amount || amount <= 0) {
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = '<span style="color: #F33700;">Please enter a valid amount.</span>';
+                return;
+            }
+
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+
+            fetch('/portal/api/generate-voucher/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ amount: amount })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const v = data.voucher;
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = `
+                        <span style="color: #18191F;">Generated: </span>
+                        <span class="voucher-generated-code">${v.code}</span>
+                        <span style="margin-left: 12px;">₱${v.original_amount.toFixed(2)} — expires ${v.expires_at}</span>
+                    `;
+                    amountInput.value = '';
+                    // Reload voucher list
+                    loadVouchers();
+                } else {
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = `<span style="color: #F33700;">${data.error}</span>`;
+                }
+            })
+            .catch(err => {
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = '<span style="color: #F33700;">Error generating voucher.</span>';
+            })
+            .finally(() => {
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate Voucher';
+            });
+        });
+    }
+
+    // Load vouchers via API
+    function loadVouchers() {
+        const search = searchInput ? searchInput.value.trim() : '';
+        const status = statusFilter ? statusFilter.value : 'all';
+        const params = new URLSearchParams({ search, status });
+
+        fetch(`/portal/api/vouchers/?${params}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) return;
+                const tbody = document.getElementById('voucher-table-body');
+                if (!tbody) return;
+
+                if (data.vouchers.length === 0) {
+                    tbody.innerHTML = '<div class="printer-table-row"><div style="grid-column: 1 / -1; text-align: center; padding: 24px;">No vouchers found.</div></div>';
+                    return;
+                }
+
+                tbody.innerHTML = data.vouchers.map(v => {
+                    let statusHtml;
+                    if (!v.is_active) {
+                        statusHtml = '<span class="status-dot danger"></span> Deactivated';
+                    } else if (v.is_expired) {
+                        statusHtml = '<span class="status-dot danger"></span> Expired';
+                    } else if (v.remaining_balance <= 0) {
+                        statusHtml = '<span class="status-dot low"></span> Used';
+                    } else {
+                        statusHtml = '<span class="status-dot ok"></span> Active';
+                    }
+
+                    const btnText = v.is_active ? 'Deactivate' : 'Activate';
+
+                    return `
+                        <div class="printer-table-row voucher-row" data-voucher-id="${v.id}">
+                            <div class="voucher-code-cell" data-label="Code"><strong>${v.code}</strong></div>
+                            <div data-label="Original">₱${v.original_amount.toFixed(2)}</div>
+                            <div data-label="Remaining">₱${v.remaining_balance.toFixed(2)}</div>
+                            <div data-label="Status">${statusHtml}</div>
+                            <div data-label="Created">${v.created_at}</div>
+                            <div data-label="Expires">${v.expires_at}</div>
+                            <div class="voucher-actions-cell">
+                                <button class="voucher-toggle-btn" data-voucher-id="${v.id}" data-active="${v.is_active}">${btnText}</button>
+                                <button class="voucher-delete-btn" data-voucher-id="${v.id}">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                attachToggleHandlers();
+            });
+    }
+
+    // Toggle voucher active state and delete
+    function attachToggleHandlers() {
+        document.querySelectorAll('.voucher-toggle-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const voucherId = this.dataset.voucherId;
+                fetch('/portal/api/toggle-voucher/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ id: parseInt(voucherId, 10) })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        loadVouchers();
+                    }
+                });
+            });
+        });
+
+        document.querySelectorAll('.voucher-delete-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const voucherId = this.dataset.voucherId;
+                if (!confirm('Are you sure you want to delete this voucher?')) return;
+                fetch('/portal/api/delete-voucher/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ id: parseInt(voucherId, 10) })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        loadVouchers();
+                    }
+                });
+            });
+        });
+    }
+
+    // Search and filter
+    let searchTimeout;
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(loadVouchers, 300);
+        });
+    }
+    if (statusFilter) {
+        statusFilter.addEventListener('change', loadVouchers);
+    }
+
+    // Initial toggle handlers for server-rendered rows
+    attachToggleHandlers();
+})();

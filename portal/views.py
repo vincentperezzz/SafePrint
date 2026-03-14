@@ -154,6 +154,175 @@ XENDIT_MIN_AMOUNT = 5  # ₱5 minimum for Xendit transactions
 VOUCHER_CREDIT_EXPIRY_DAYS = 120  # Credits expire after 120 days
 
 
+def voucher_management(request):
+    """Admin page for viewing and managing voucher credits."""
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        raise Http404("User not found in session")
+    
+    from portal.models import VoucherCredit
+    vouchers = VoucherCredit.objects.all().order_by('-created_at')
+    
+    return render(request, 'vouchers.html', {
+        'vouchers': vouchers,
+    })
+
+
+def voucher_list_api(request):
+    """API to list all vouchers with filtering."""
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=403)
+    
+    from portal.models import VoucherCredit
+    status_filter = request.GET.get('status', 'all')
+    search = request.GET.get('search', '').strip()
+    
+    vouchers = VoucherCredit.objects.all()
+    
+    if status_filter == 'active':
+        vouchers = vouchers.filter(is_active=True, expires_at__gt=timezone.now(), remaining_balance__gt=0)
+    elif status_filter == 'expired':
+        vouchers = vouchers.filter(expires_at__lte=timezone.now())
+    elif status_filter == 'used':
+        vouchers = vouchers.filter(remaining_balance__lte=0)
+    elif status_filter == 'inactive':
+        vouchers = vouchers.filter(is_active=False)
+    
+    if search:
+        vouchers = vouchers.filter(Q(code__icontains=search) | Q(last_customer_id__icontains=search))
+    
+    vouchers = vouchers.order_by('-created_at')[:200]
+    
+    data = []
+    for v in vouchers:
+        data.append({
+            'id': v.id,
+            'code': v.code,
+            'original_amount': float(v.original_amount),
+            'remaining_balance': float(v.remaining_balance),
+            'is_active': v.is_active,
+            'is_expired': v.is_expired,
+            'is_usable': v.is_usable,
+            'last_customer_id': v.last_customer_id or '',
+            'created_at': localtime(v.created_at).strftime('%b %d, %Y %I:%M %p'),
+            'expires_at': localtime(v.expires_at).strftime('%b %d, %Y'),
+            'last_used_at': localtime(v.last_used_at).strftime('%b %d, %Y %I:%M %p') if v.last_used_at else 'Never',
+        })
+    
+    return JsonResponse({'success': True, 'vouchers': data})
+
+
+def generate_voucher_api(request):
+    """API to generate a new voucher code with a specified amount."""
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST required'})
+    
+    import secrets
+    import string
+    from portal.models import VoucherCredit
+    
+    try:
+        data = json.loads(request.body)
+        amount = data.get('amount')
+        
+        if amount is None:
+            return JsonResponse({'success': False, 'error': 'Amount is required'})
+        
+        amount = float(amount)
+        if amount <= 0 or amount > 10000:
+            return JsonResponse({'success': False, 'error': 'Amount must be between ₱0.01 and ₱10,000'})
+        
+        # Generate unique voucher code (8 chars, alphanumeric uppercase)
+        for _ in range(10):
+            code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+            if not VoucherCredit.objects.filter(code=code).exists():
+                break
+        else:
+            return JsonResponse({'success': False, 'error': 'Failed to generate unique code'})
+        
+        from datetime import timedelta
+        voucher = VoucherCredit.objects.create(
+            code=code,
+            original_amount=amount,
+            remaining_balance=amount,
+            is_active=True,
+            expires_at=timezone.now() + timedelta(days=VOUCHER_CREDIT_EXPIRY_DAYS),
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'voucher': {
+                'id': voucher.id,
+                'code': voucher.code,
+                'original_amount': float(voucher.original_amount),
+                'remaining_balance': float(voucher.remaining_balance),
+                'is_active': True,
+                'is_expired': False,
+                'is_usable': True,
+                'last_customer_id': '',
+                'created_at': localtime(voucher.created_at).strftime('%b %d, %Y %I:%M %p'),
+                'expires_at': localtime(voucher.expires_at).strftime('%b %d, %Y'),
+                'last_used_at': 'Never',
+            }
+        })
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Invalid amount'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+def toggle_voucher_api(request):
+    """API to activate/deactivate a voucher."""
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST required'})
+    
+    from portal.models import VoucherCredit
+    
+    try:
+        data = json.loads(request.body)
+        voucher_id = data.get('id')
+        voucher = VoucherCredit.objects.get(id=voucher_id)
+        voucher.is_active = not voucher.is_active
+        voucher.save(update_fields=['is_active'])
+        
+        return JsonResponse({
+            'success': True,
+            'is_active': voucher.is_active,
+        })
+    except VoucherCredit.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Voucher not found'})
+
+
+def delete_voucher_api(request):
+    """API to delete a voucher."""
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST required'})
+    
+    from portal.models import VoucherCredit
+    
+    try:
+        data = json.loads(request.body)
+        voucher_id = data.get('id')
+        voucher = VoucherCredit.objects.get(id=voucher_id)
+        voucher.delete()
+        return JsonResponse({'success': True})
+    except VoucherCredit.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Voucher not found'})
+
+
 @csrf_exempt
 def check_voucher_api(request):
     """
