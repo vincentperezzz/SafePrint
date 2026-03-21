@@ -40,11 +40,11 @@ def dashboard(request):
     # Ticket queries
     active_tickets = list(SupportTicket.objects.filter(
         status__in=['open', 'in-progress']
-    ).select_related('document').order_by('-created_at'))
+    ).select_related('document').prefetch_related('proof_images').order_by('-created_at'))
     
     resolved_tickets = list(SupportTicket.objects.filter(
         status__in=['resolved', 'closed', 'voided', 'refunded']
-    ).select_related('document').order_by('-resolved_at', '-updated_at'))
+    ).select_related('document').prefetch_related('proof_images').order_by('-resolved_at', '-updated_at'))
     
     # Attach payment amount to each ticket via its document
     for ticket in active_tickets:

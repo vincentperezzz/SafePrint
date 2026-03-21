@@ -1791,6 +1791,19 @@ function resetFormFields() {
 
     const specificPagesInput = document.getElementById('specific-pages-input');
     if (specificPagesInput) specificPagesInput.disabled = true;
+
+    // Clear proof photos
+    var proofInput = document.getElementById('ticket-proof-photos');
+    if (proofInput) proofInput.value = '';
+    var proofPreview = document.getElementById('proof-photos-preview');
+    if (proofPreview) proofPreview.innerHTML = '';
+    var proofLabel = document.getElementById('proof-photos-name');
+    if (proofLabel) proofLabel.textContent = 'No files chosen';
+    // Clear receipt screenshot
+    var receiptInput = document.getElementById('ticket-receipt-screenshot');
+    if (receiptInput) receiptInput.value = '';
+    var receiptLabel = document.getElementById('receipt-file-name');
+    if (receiptLabel) receiptLabel.textContent = 'No file chosen';
 }
 
 // Update popup title
@@ -2270,6 +2283,11 @@ function nextTicketStep(fromStep) {
             alert('Please upload a screenshot of your payment receipt.');
             return;
         }
+        var proofFiles = document.getElementById('ticket-proof-photos').files;
+        if (!proofFiles || proofFiles.length === 0) {
+            alert('Please upload at least one proof photo of the issue.');
+            return;
+        }
         // Skip description step if already captured from problem type (e.g. "Other")
         var state = window.problemReportState;
         if (state.description) {
@@ -2374,6 +2392,10 @@ function submitTicketForm() {
     formData.append('reprinted', state.hasReprinted ? 'true' : 'false');
     formData.append('receipt_code', receiptCode);
     formData.append('receipt_screenshot', receiptFile);
+    var proofPhotos = document.getElementById('ticket-proof-photos').files;
+    for (var i = 0; i < proofPhotos.length; i++) {
+        formData.append('proof_photos', proofPhotos[i]);
+    }
     var gcashNumber = document.getElementById('ticket-gcash-number');
     if (gcashNumber && gcashNumber.value.trim()) {
         formData.append('gcash_number', gcashNumber.value.trim());
@@ -2766,6 +2788,31 @@ document.addEventListener('change', function(e) {
         const label = document.getElementById('receipt-file-name');
         if (label) {
             label.textContent = e.target.files.length > 0 ? e.target.files[0].name : 'No file chosen';
+        }
+    }
+    // Proof photos file input: show count and thumbnail previews
+    if (e.target && e.target.id === 'ticket-proof-photos') {
+        const label = document.getElementById('proof-photos-name');
+        const preview = document.getElementById('proof-photos-preview');
+        const files = e.target.files;
+        if (label) {
+            label.textContent = files.length > 0 ? files.length + ' file(s) selected' : 'No files chosen';
+        }
+        if (preview) {
+            preview.innerHTML = '';
+            for (var i = 0; i < files.length; i++) {
+                (function(file, idx) {
+                    var thumb = document.createElement('div');
+                    thumb.className = 'proof-thumb';
+                    var img = document.createElement('img');
+                    img.alt = 'Proof ' + (idx + 1);
+                    var reader = new FileReader();
+                    reader.onload = function(ev) { img.src = ev.target.result; };
+                    reader.readAsDataURL(file);
+                    thumb.appendChild(img);
+                    preview.appendChild(thumb);
+                })(files[i], i);
+            }
         }
     }
     // GCash "Same as Contact Number" checkbox

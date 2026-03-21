@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction, VoucherCredit, SiteSetting, TicketAuditLog, DocumentReprintLog, PrinterStatusLog, DocumentLifecycleLog
+from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction, VoucherCredit, SiteSetting, TicketAuditLog, DocumentReprintLog, PrinterStatusLog, DocumentLifecycleLog, TicketProofImage
 import os
 
 admin.site.register(AdminUser)
@@ -87,3 +87,10 @@ class DocumentLifecycleLogAdmin(admin.ModelAdmin):
     list_filter = ('event',)
     search_fields = ('doc_id', 'customer_id', 'doc_name')
     readonly_fields = ('doc_id', 'customer_id', 'doc_name', 'event', 'printer_name', 'details', 'timestamp')
+
+
+@admin.register(TicketProofImage)
+class TicketProofImageAdmin(admin.ModelAdmin):
+    list_display = ('ticket', 'uploaded_at')
+    list_filter = ('uploaded_at',)
+    readonly_fields = ('ticket', 'image', 'uploaded_at')
