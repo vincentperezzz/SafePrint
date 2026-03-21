@@ -79,29 +79,42 @@ This document describes the API endpoints required for the Print Error Report fe
 
 **Purpose:** Create a support ticket for unresolved printing issues.
 
-**Request Body:**
-```json
-{
-    "customer_id": "string",
-    "document_id": "string",
-    "document_name": "string",
-    "documents": [{"doc_id": "string", "doc_name": "string"}] (optional - for multiple docs),
-    "customer_name": "string",
-    "email": "string",
-    "phone_number": "string (optional)",
-    "problem_type": "quality" | "missing-pages" | "no-print" | "other",
-    "description": "string",
-    "page_range": "all" | "specific",
-    "specific_pages": "string",
-    "reprinted": true | false
-}
-```
+**Content-Type:** `multipart/form-data` (required for file uploads)
+
+**Request Fields (FormData):**
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `customer_id` | string | Yes | Customer ID |
+| `document_id` | string | Yes | Primary document ID |
+| `document_name` | string | Yes | Document filename |
+| `documents` | JSON string | No | Array of `{doc_id, doc_name}` for batch tickets |
+| `customer_name` | string | Yes | |
+| `email` | string | Yes | Valid email |
+| `phone_number` | string | No | PH mobile format (09XXXXXXXXX) |
+| `problem_type` | string | Yes | `quality` / `missing-pages` / `no-print` / `other` |
+| `description` | string | Yes | Issue description |
+| `page_range` | string | No | `all` or `specific` |
+| `specific_pages` | string | No | e.g., "1-5, 7" |
+| `reprinted` | string | No | `true` / `false` |
+| `receipt_code` | string | Yes | Code from payment receipt |
+| `receipt_screenshot` | file | Yes | Image of payment receipt |
+| `proof_photos` | file(s) | Yes | One or more photos of the issue (multiple files) |
+| `gcash_number` | string | No | Customer GCash number |
 
 **Response (Success):**
 ```json
 {
     "success": true,
-    "ticket_number": "#TKT-12345"
+    "ticket_number": "#TKT-260315-4821"
+}
+```
+
+**Response (Duplicate Detected):**
+```json
+{
+    "success": false,
+    "error": "You already have an active ticket (#TKT-260315-1234) for this document. Please wait for it to be resolved."
 }
 ```
 
@@ -114,10 +127,15 @@ This document describes the API endpoints required for the Print Error Report fe
 ```
 
 **Logic:**
-- Create ticket record in DB
-- Generate unique ticket number
-- Send confirmation email to customer
-- Return ticket number
+1. Validate required fields (customer_id, document_id, receipt_code, receipt_screenshot, proof_photos)
+2. **Duplicate detection:** Check if an active ticket (`open`/`in-progress`) exists for the same `document_id` + `customer_id`. If found, return error with existing ticket number.
+3. Create SupportTicket record with generated ticket number (`#TKT-YYMMDD-XXXX`)
+4. For batch tickets (multiple docs): store all doc IDs in `related_doc_ids` (JSON), set `document_name` to "N documents: doc1, doc2..."
+5. Save receipt screenshot to `receipt_screenshots/` media directory
+6. Create `TicketProofImage` record for each uploaded proof photo
+7. Create audit log entry
+8. Send email notification to admins
+9. Return ticket number
 
 ---
 
@@ -128,18 +146,27 @@ This document describes the API endpoints required for the Print Error Report fe
 class SupportTicket(models.Model):
     ticket_number = models.CharField(max_length=20, unique=True)
     customer_id = models.CharField(max_length=100)
-    document_id = models.CharField(max_length=100)
+    document = models.ForeignKey(Document, on_delete=SET_NULL, null=True, blank=True)
     document_name = models.CharField(max_length=255)
     customer_name = models.CharField(max_length=255)
     email = models.EmailField()
+    phone_number = models.CharField(max_length=20, blank=True)
     problem_type = models.CharField(max_length=50)  # quality, missing-pages, no-print, other
     description = models.TextField()
     page_range = models.CharField(max_length=20, blank=True)
     specific_pages = models.CharField(max_length=100, blank=True)
     was_reprinted = models.BooleanField(default=False)
-    status = models.CharField(max_length=50, default='open')  # open, in-progress, resolved
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    receipt_code = models.CharField(max_length=100, blank=True)
+    receipt_screenshot = models.ImageField(upload_to='receipt_screenshots/', blank=True, null=True)
+    gcash_number = models.CharField(max_length=20, blank=True)
+    related_doc_ids = models.TextField(blank=True)  # JSON array of doc IDs for batch tickets
+    status = models.CharField(max_length=50, default='open')
+    # ... refund fields, timestamps, etc.
+
+class TicketProofImage(models.Model):
+    ticket = models.ForeignKey(SupportTicket, on_delete=CASCADE, related_name='proof_images')
+    image = models.ImageField(upload_to='receipt_screenshots/proofs/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
 ```
 
 ### Document Reprint Flag

@@ -98,17 +98,25 @@ The customer accesses the problem report form from the **confirmation page** (af
 | Email | Yes | Valid email format |
 | Phone Number | Yes | PH mobile format (09XXXXXXXXX) |
 
-#### Sub-step 2 — Payment Proof
+#### Sub-step 2 — Payment Proof & Evidence
 | Field | Required | Notes |
 |-------|----------|-------|
 | Receipt Code | Yes | From payment receipt |
-| Receipt Screenshot | Yes | File upload (image) |
+| Receipt Screenshot | Yes | File upload (image) — screenshot of the payment receipt |
+| Proof Photos | Yes | Multiple file upload (images) — photo(s) of the actual issue (e.g., damaged print, blank pages, printer error screen) |
 
 #### Sub-step 3 — Description
 - Description textarea (required)
 - **Skipped** if description was already captured from the problem type step (e.g., "Other" or "Low Quality")
 
-### Step 6: Ticket Submitted
+### Step 6: Duplicate Detection
+
+Before creating the ticket, the system checks if the customer already has an active ticket (status: `open` or `in-progress`) for the same primary document. If a duplicate is found:
+- The submission is **blocked**
+- Customer sees: *"You already have an active ticket ([ticket number]) for this document. Please wait for it to be resolved."*
+- No new ticket is created
+
+### Step 7: Ticket Submitted
 
 - Displays ticket number (format: `#TKT-YYMMDD-XXXX`, e.g. `#TKT-260315-4821`)
 - Message: *"Expect an update from the SafePrint team in both email and kiosk in about 5-10 business days."*
@@ -153,6 +161,16 @@ Opens a full ticket detail modal with comprehensive information:
 **Receipt Proof:**
 - Receipt Code
 - Receipt Screenshot (clickable thumbnail → full-size overlay)
+
+**Proof Photos:**
+- All proof photos uploaded by the customer displayed as clickable thumbnails
+- Clicking any photo opens it in the full-size image overlay
+- Shows "No proof photos uploaded" if none were submitted (legacy tickets before this feature)
+
+**Related Documents (Batch Ticket):**
+- Shown only for batch tickets (multiple documents reported under one ticket)
+- Displays comma-separated list of all related document IDs
+- Allows admin to verify all affected documents in one view
 
 **Activity Log (3 tabs):**
 | Tab | Content | Purpose |
@@ -244,6 +262,7 @@ Opens a full ticket detail modal with comprehensive information:
   - `refund_status` is NOT `pending` (won't purge while refund is outstanding)
 - Calls `purge_pii()` which:
   - Deletes receipt screenshot file from disk
+  - Deletes all proof photo files from disk (via `TicketProofImage` records)
   - Clears: `phone_number`, `gcash_number`, `receipt_code`, `description`, `email`, `customer_name`
   - Replaces with `[Purged]` / `[Data purged]`
   - Sets `data_purged = True`
@@ -266,7 +285,8 @@ Admin can also manually purge a ticket's PII data:
 | Status | Receipt code → cleared |
 | Resolution timestamps | Description → `[Data purged]` |
 | Audit log entries | Receipt screenshot → deleted from disk |
-| Refund reference | |
+| Refund reference | Proof photos → all deleted from disk |
+| Related doc IDs | |
 
 ---
 
@@ -433,7 +453,29 @@ Admin can also manually purge a ticket's PII data:
 
 These are potential improvements identified during system analysis:
 
-### 6.1 Partial Refund
+### ~~6.1 Duplicate Ticket Detection~~ ✅ IMPLEMENTED
+
+Duplicate detection is now active. When a customer submits a ticket, the system checks if they already have an active ticket (`open` or `in-progress`) for the same `document_id`. If found, submission is blocked with a message showing the existing ticket number.
+
+### ~~6.2 Batch Ticket for Multi-Document Issues~~ ✅ IMPLEMENTED
+
+Batch tickets are now supported. When a customer selects multiple documents with the same issue:
+- A single ticket is created with the primary document set as the FK
+- All related document IDs are stored in `related_doc_ids` (JSON array)
+- `document_name` displays: *"N documents: doc1, doc2..."*
+- Admin modal shows the "Related Documents (Batch Ticket)" section with all doc IDs
+
+### ~~6.3 Mandatory Proof Photos~~ ✅ IMPLEMENTED
+
+Proof photos are now mandatory for all ticket submissions:
+- Stored via `TicketProofImage` model (FK to SupportTicket, ImageField)
+- Multiple photos can be uploaded per ticket
+- Displayed as clickable thumbnails in the admin ticket modal
+- Auto-deleted during PII purge
+
+---
+
+### 6.4 Partial Refund
 
 **Current limitation:** Refund is always the full payment amount.
 
@@ -443,7 +485,7 @@ These are potential improvements identified during system analysis:
 
 ---
 
-### 6.2 Voucher Credit as Alternative to GCash Refund
+### 6.5 Voucher Credit as Alternative to GCash Refund
 
 **Current limitation:** Refunds require manual GCash transfer, which is slow and error-prone.
 
@@ -453,7 +495,7 @@ These are potential improvements identified during system analysis:
 
 ---
 
-### 6.3 Escalation Path
+### 6.6 Escalation Path
 
 **Current limitation:** No priority system or escalation workflow.
 
@@ -463,7 +505,7 @@ These are potential improvements identified during system analysis:
 
 ---
 
-### 6.4 Customer Follow-up / Communication
+### 6.7 Customer Follow-up / Communication
 
 **Current limitation:** No way for admin to send a response back to the customer through the system. The customer's only message is *"Expect an update in 5-10 business days."*
 
@@ -477,33 +519,13 @@ These are potential improvements identified during system analysis:
 
 ---
 
-### 6.5 Duplicate Ticket Detection
-
-**Current limitation:** No warning when the same customer files multiple tickets for the same document.
-
-**Scenario:** Customer files a ticket, doesn't hear back, files another one for the same document. Admin accidentally refunds both → double refund.
-
-**Suggestion:** When a ticket is submitted, check if another active ticket exists for the same `document_id`. If so, show a warning to the customer (*"You already have an open ticket for this document"*) and alert the admin in the ticket modal.
-
----
-
-### 6.6 Ticket Reopening
+### 6.8 Ticket Reopening
 
 **Current limitation:** Once a ticket is voided or resolved, it cannot be reopened. Customer must file a brand new ticket.
 
 **Scenario:** Admin voids a ticket after initial review. Later, new evidence surfaces (e.g., other customers report the same printer issue). Admin wants to reopen and refund.
 
 **Suggestion:** Add a "Reopen" button on resolved/voided tickets that sets the status back to `open` and creates an audit log entry. This preserves the original ticket history instead of creating a disconnected new ticket.
-
----
-
-### 6.7 Bulk Print Failure — Batch Refund
-
-**Current limitation:** Each document gets its own ticket. If a customer printed 5 documents and all failed, they potentially need to file 5 separate tickets.
-
-**Scenario:** Customer uploads and pays for multiple documents. All printers go offline. All documents get cancelled. Customer faces filing multiple identical tickets.
-
-**Suggestion:** The multi-document selection already exists in the problem report form, but each creates a separate ticket per doc. Consider a "batch ticket" that covers all documents with a single refund for the total payment amount. The admin could then process one refund instead of multiple.
 
 ---
 
