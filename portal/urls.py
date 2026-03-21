@@ -53,4 +53,5 @@ urlpatterns = [
     path('api/complete-refund/', views.complete_refund, name='complete_refund'),
     path('api/purge-ticket-data/', views.purge_ticket_data, name='purge_ticket_data'),
     path('api/ticket-audit-log/', views.get_ticket_audit_log, name='get_ticket_audit_log'),
+    path('api/printer-status-history/', views.get_printer_status_history, name='printer_status_history'),
 ]

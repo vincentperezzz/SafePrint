@@ -45,7 +45,7 @@ Dashboard
         <h3>Active <br>Tickets</h3>
         <p id="active-tickets-count">{{ active_tickets_count }}</p>
     </div>
-    <div class="stat-card red" id="stat-printer-errors">
+    <div class="stat-card red" id="stat-printer-errors" style="cursor:pointer;" title="View Printer History" onclick="document.getElementById('printer-history-modal') && openPrinterHistoryModal()">
         <h3>Printer <br>Errors</h3>
         <p id="printer-errors-count">{{ printer_errors_count }}</p>
     </div>
@@ -339,6 +339,53 @@ Dashboard
 <div id="receipt-image-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:10001; align-items:center; justify-content:center; cursor:pointer;" aria-hidden="true">
     <button id="receipt-overlay-close" type="button" style="position:absolute; top:20px; right:20px; background:rgba(255,255,255,0.9); border:none; border-radius:50%; width:40px; height:40px; font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:10002;">&times;</button>
     <img id="receipt-overlay-img" src="" alt="Receipt Screenshot" style="max-width:90%; max-height:90%; border-radius:12px; object-fit:contain;">
+</div>
+
+<!-- Printer History Modal -->
+<div id="printer-history-modal" class="ticket-modal" aria-hidden="true">
+    <div class="ticket-modal__backdrop" data-close-printer-history></div>
+    <div class="ticket-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="printer-history-title" style="max-width:800px;">
+        <div class="ticket-modal__header">
+            <h3 id="printer-history-title">Printer Status History</h3>
+            <button class="ticket-modal__done" type="button" data-close-printer-history>Done</button>
+        </div>
+        <div class="ticket-modal__card">
+            <!-- Filters -->
+            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
+                <select id="ph-printer-filter" style="padding:6px 10px; border-radius:8px; border:1.5px solid #18191F; font-family:Montserrat,sans-serif; font-size:0.8rem;">
+                    <option value="">All Printers</option>
+                </select>
+                <select id="ph-status-filter" style="padding:6px 10px; border-radius:8px; border:1.5px solid #18191F; font-family:Montserrat,sans-serif; font-size:0.8rem;">
+                    <option value="">All Statuses</option>
+                    <option value="Paper Jam">Paper Jam</option>
+                    <option value="Error">Error</option>
+                    <option value="Offline">Offline</option>
+                    <option value="Ready">Ready</option>
+                    <option value="Printing">Printing</option>
+                    <option value="Sleep">Sleep</option>
+                </select>
+                <input type="date" id="ph-date-from" style="padding:5px 8px; border-radius:8px; border:1.5px solid #18191F; font-family:Montserrat,sans-serif; font-size:0.8rem;" title="From date">
+                <input type="date" id="ph-date-to" style="padding:5px 8px; border-radius:8px; border:1.5px solid #18191F; font-family:Montserrat,sans-serif; font-size:0.8rem;" title="To date">
+                <button id="ph-apply-filter" class="approve-btn" type="button" style="padding:6px 14px; font-size:0.8rem;">Filter</button>
+            </div>
+            <!-- Table -->
+            <div style="overflow-x:auto;">
+                <table id="ph-table" style="width:100%; border-collapse:collapse; font-size:0.8rem; font-family:Montserrat,sans-serif;">
+                    <thead>
+                        <tr style="border-bottom:2px solid #18191F; text-align:left;">
+                            <th style="padding:6px 8px; cursor:pointer;" data-ph-sort="timestamp">Date/Time ▼</th>
+                            <th style="padding:6px 8px;">Printer</th>
+                            <th style="padding:6px 8px;">Status</th>
+                            <th style="padding:6px 8px;">Ink</th>
+                            <th style="padding:6px 8px;">Paper</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ph-tbody"></tbody>
+                </table>
+            </div>
+            <div id="ph-pagination" class="pagination-controls" style="margin-top:8px;"></div>
+        </div>
+    </div>
 </div>
 
 <script>

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction, VoucherCredit, SiteSetting, TicketAuditLog, DocumentReprintLog
+from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction, VoucherCredit, SiteSetting, TicketAuditLog, DocumentReprintLog, PrinterStatusLog
 import os
 
 admin.site.register(AdminUser)
@@ -71,3 +71,11 @@ class DocumentReprintLogAdmin(admin.ModelAdmin):
     list_filter = ('reason', 'success')
     search_fields = ('document__doc_id', 'description')
     readonly_fields = ('reprinted_at',)
+
+
+@admin.register(PrinterStatusLog)
+class PrinterStatusLogAdmin(admin.ModelAdmin):
+    list_display = ('printer', 'status', 'ink_status', 'paper_level', 'timestamp')
+    list_filter = ('status', 'printer')
+    search_fields = ('printer__name', 'status')
+    readonly_fields = ('printer', 'status', 'ink_status', 'paper_level', 'timestamp')
