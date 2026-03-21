@@ -591,3 +591,27 @@ class DocumentReprintLog(models.Model):
     class Meta:
         db_table = 'document_reprint_logs'
         ordering = ['-reprinted_at']
+
+
+class PrinterStatusLog(models.Model):
+    """Track historical printer status changes for audit/verification."""
+    printer = models.ForeignKey(
+        Printer,
+        on_delete=models.CASCADE,
+        related_name='status_logs'
+    )
+    status = models.CharField(max_length=50)
+    ink_status = models.CharField(max_length=50, blank=True, default='')
+    paper_level = models.CharField(max_length=20, blank=True, default='')
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.printer.printer_name} — {self.status} at {self.timestamp}"
+
+    class Meta:
+        db_table = 'printer_status_logs'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['-timestamp']),
+            models.Index(fields=['printer', '-timestamp']),
+        ]

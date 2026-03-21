@@ -456,6 +456,157 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ── Printer History Modal ───────────────────────────────────────
+    var phModal = document.getElementById('printer-history-modal');
+    var phPage = 1;
+
+    window.openPrinterHistoryModal = function() {
+        if (!phModal) return;
+        phPage = 1;
+        // Populate printer dropdown from status page printers (fetch from API)
+        fetchPrinterHistory();
+        phModal.classList.add('is-open');
+        phModal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+    };
+
+    function closePrinterHistoryModal() {
+        if (!phModal) return;
+        phModal.classList.remove('is-open');
+        phModal.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+    }
+
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('[data-close-printer-history]')) {
+            closePrinterHistoryModal();
+        }
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && phModal && phModal.classList.contains('is-open')) {
+            closePrinterHistoryModal();
+        }
+    });
+
+    function fetchPrinterHistory() {
+        var tbody = document.getElementById('ph-tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="5" style="color:#999; padding:10px;">Loading...</td></tr>';
+
+        var printerId = document.getElementById('ph-printer-filter') ? document.getElementById('ph-printer-filter').value : '';
+        var statusFilter = document.getElementById('ph-status-filter') ? document.getElementById('ph-status-filter').value : '';
+        var dateFrom = document.getElementById('ph-date-from') ? document.getElementById('ph-date-from').value : '';
+        var dateTo = document.getElementById('ph-date-to') ? document.getElementById('ph-date-to').value : '';
+
+        var payload = { page: phPage, page_size: 15 };
+        if (printerId) payload.printer_id = parseInt(printerId, 10);
+        if (statusFilter) payload.status_filter = statusFilter;
+        if (dateFrom) payload.date_from = dateFrom + 'T00:00:00';
+        if (dateTo) payload.date_to = dateTo + 'T23:59:59';
+
+        fetch('/portal/api/printer-status-history/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify(payload)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success && data.logs && data.logs.length > 0) {
+                renderPrinterHistory(data.logs);
+                renderPhPagination(data.page, data.total_pages);
+                if (data.printers) populatePrinterDropdown(data.printers);
+            } else if (data.success) {
+                tbody.innerHTML = '<tr><td colspan="5" style="color:#999; padding:10px;">No printer status history found.</td></tr>';
+                var pgDiv = document.getElementById('ph-pagination');
+                if (pgDiv) pgDiv.innerHTML = '';
+                if (data.printers) populatePrinterDropdown(data.printers);
+            } else {
+                tbody.innerHTML = '<tr><td colspan="5" style="color:#999; padding:10px;">No printer status history found.</td></tr>';
+                var pgDiv = document.getElementById('ph-pagination');
+                if (pgDiv) pgDiv.innerHTML = '';
+            }
+        })
+        .catch(function() {
+            tbody.innerHTML = '<tr><td colspan="5" style="color:#d9534f; padding:10px;">Failed to load printer history.</td></tr>';
+        });
+    }
+
+    function renderPrinterHistory(logs) {
+        var tbody = document.getElementById('ph-tbody');
+        if (!tbody) return;
+        tbody.innerHTML = logs.map(function(log) {
+            var statusClass = '';
+            var statusLower = (log.status || '').toLowerCase();
+            if (statusLower.indexOf('jam') !== -1 || statusLower.indexOf('error') !== -1) {
+                statusClass = 'color:#d9534f; font-weight:700;';
+            } else if (statusLower === 'offline') {
+                statusClass = 'color:#f0ad4e; font-weight:600;';
+            } else if (statusLower === 'ready' || statusLower === 'printing') {
+                statusClass = 'color:#5cb85c;';
+            }
+            var escapedPrinter = (log.printer_name || '').replace(/</g, '&lt;');
+            var escapedStatus = (log.status || '').replace(/</g, '&lt;');
+            var escapedInk = (log.ink_status || '—').replace(/</g, '&lt;');
+            var escapedPaper = (log.paper_level || '—').replace(/</g, '&lt;');
+            return '<tr style="border-bottom:1px solid #f0f0f0;">'
+                + '<td style="padding:6px 8px; white-space:nowrap; font-size:0.75rem; color:#888;">' + log.timestamp + '</td>'
+                + '<td style="padding:6px 8px; font-weight:600;">' + escapedPrinter + '</td>'
+                + '<td style="padding:6px 8px; ' + statusClass + '">' + escapedStatus + '</td>'
+                + '<td style="padding:6px 8px; color:#555;">' + escapedInk + '</td>'
+                + '<td style="padding:6px 8px; color:#555;">' + escapedPaper + '</td>'
+                + '</tr>';
+        }).join('');
+    }
+
+    function renderPhPagination(currentPage, totalPages) {
+        var pgDiv = document.getElementById('ph-pagination');
+        if (!pgDiv || totalPages <= 1) {
+            if (pgDiv) pgDiv.innerHTML = '';
+            return;
+        }
+        var html = '';
+        for (var p = 1; p <= totalPages; p++) {
+            html += '<button class="pg-btn' + (p === currentPage ? ' pg-active' : '') + '" data-ph-pg="' + p + '">' + p + '</button>';
+        }
+        pgDiv.innerHTML = html;
+    }
+
+    var phPgDiv = document.getElementById('ph-pagination');
+    if (phPgDiv) {
+        phPgDiv.addEventListener('click', function(e) {
+            var btn = e.target.closest('[data-ph-pg]');
+            if (btn) {
+                phPage = parseInt(btn.dataset.phPg, 10);
+                fetchPrinterHistory();
+            }
+        });
+    }
+
+    var phApplyBtn = document.getElementById('ph-apply-filter');
+    if (phApplyBtn) {
+        phApplyBtn.addEventListener('click', function() {
+            phPage = 1;
+            fetchPrinterHistory();
+        });
+    }
+
+    var _phPrintersPopulated = false;
+    function populatePrinterDropdown(printers) {
+        if (_phPrintersPopulated) return;
+        var select = document.getElementById('ph-printer-filter');
+        if (!select) return;
+        printers.forEach(function(p) {
+            var opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name;
+            select.appendChild(opt);
+        });
+        _phPrintersPopulated = true;
+    }
+
+    // ── End Printer History Modal ───────────────────────────────────
+
     const closeTicketModal = () => {
         if (!ticketModal) return;
         ticketModal.classList.remove('is-open');

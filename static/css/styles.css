@@ -2094,11 +2094,12 @@ input:focus::placeholder {
 .document-item {
     display: flex;
     background: var(--White, #FFFFFF);
-    height: 72px;
+    min-height: 72px;
     padding: 0px 16px;
     flex-direction: row;
     border-radius: 16px;
     justify-content: space-between;
+    align-items: center;
     border: 1px solid var(--Accent-Mid-Gray, #A19F9F);
 }
 
@@ -2138,6 +2139,9 @@ input:focus::placeholder {
     font-size: 14px;
     font-weight: 600;
     color:#7e7e7e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Amount Section */
@@ -2167,6 +2171,11 @@ input:focus::placeholder {
     font-size: 1rem;
     font-weight: 600;
     text-align: right;
+    flex-shrink: 0;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
 }
 
 .card-payment-details {
@@ -3672,7 +3681,7 @@ input:focus::placeholder {
     padding-left: 0;
 }
 
-.document-item {
+.dashboard-left .document-item {
     display: grid;
     grid-template-columns: 1.3fr 1.6fr 1.2fr 1fr auto;
     align-items: center;

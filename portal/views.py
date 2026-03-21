@@ -1802,7 +1802,9 @@ def printer_status_stream(request):
 
 def printer_status_event_stream():
     from django.db import close_old_connections
+    from portal.models import PrinterStatusLog
     last_data = None
+    last_printer_states = {}  # {printer_id: (status, ink_status, tray_level)}
     try:
         while True:
             close_old_connections()
@@ -1833,7 +1835,23 @@ def printer_status_event_stream():
                             ink_status = ','.join(low_ink_colors)
                         else:
                             ink_status = "OK"
-                    
+
+                # Log status change if different from last known state
+                tray_level = getattr(printer, 'tray_level', '')
+                current_state = (printer.printer_status, ink_status, tray_level)
+                prev_state = last_printer_states.get(printer.id)
+                if prev_state is not None and current_state != prev_state:
+                    try:
+                        PrinterStatusLog.objects.create(
+                            printer=printer,
+                            status=printer.printer_status,
+                            ink_status=ink_status,
+                            paper_level=tray_level,
+                        )
+                    except Exception:
+                        pass
+                last_printer_states[printer.id] = current_state
+
                 data.append({
                     'id': printer.id,
                     'printer_name': printer.printer_name,
@@ -3091,6 +3109,71 @@ def get_ticket_audit_log(request):
         return JsonResponse({
             'success': True,
             'audit_logs': logs_data,
+        })
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def get_printer_status_history(request):
+    """
+    Return printer status history with optional filters.
+    Supports: printer_id, date_from, date_to, status_filter, page, page_size.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        printer_id = data.get('printer_id')
+        date_from = data.get('date_from')
+        date_to = data.get('date_to')
+        status_filter = data.get('status_filter')  # e.g. 'Paper Jam', 'Error', etc.
+        page = int(data.get('page', 1))
+        page_size = int(data.get('page_size', 15))
+
+        from .models import PrinterStatusLog
+
+        qs = PrinterStatusLog.objects.select_related('printer').order_by('-timestamp')
+
+        if printer_id:
+            qs = qs.filter(printer_id=printer_id)
+        if date_from:
+            qs = qs.filter(timestamp__gte=date_from)
+        if date_to:
+            qs = qs.filter(timestamp__lte=date_to)
+        if status_filter:
+            qs = qs.filter(status__icontains=status_filter)
+
+        total = qs.count()
+        start = (page - 1) * page_size
+        end = start + page_size
+        logs = qs[start:end]
+
+        logs_data = []
+        for log in logs:
+            logs_data.append({
+                'id': log.id,
+                'printer_name': log.printer.name if log.printer else 'Unknown',
+                'printer_id': log.printer_id,
+                'status': log.status,
+                'ink_status': log.ink_status,
+                'paper_level': log.paper_level,
+                'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            })
+
+        # Get all printers for dropdown
+        printers_list = [{'id': p.id, 'name': p.name} for p in Printer.objects.all().order_by('name')]
+
+        return JsonResponse({
+            'success': True,
+            'logs': logs_data,
+            'printers': printers_list,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (total + page_size - 1) // page_size if total > 0 else 1,
         })
 
     except Exception as e:
