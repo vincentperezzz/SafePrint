@@ -298,16 +298,7 @@ SafePrint
 <div class="feedback-container">
     <div class="form-container">
     <form action="{% url 'feedback' %}" method="post" class="feedback-form">            {% csrf_token %}
-            <div class="form-category">
-                <label>
-                    <input type="radio" name="category" value="Comment" required>
-                    <span>Comment</span>
-                </label>
-                <label>
-                    <input type="radio" name="category" value="Report a Problem" required>
-                    <span>Report a Problem</span>
-                </label>
-            </div>
+            <input type="hidden" name="category" value="Comment">
         
             <label for="name">Name (optional)</label>
             <input type="text" id="name" name="name"placeholder="Name">
