@@ -55,4 +55,5 @@ urlpatterns = [
     path('api/ticket-audit-log/', views.get_ticket_audit_log, name='get_ticket_audit_log'),
     path('api/printer-status-history/', views.get_printer_status_history, name='printer_status_history'),
     path('api/ticket-verification-data/', views.get_ticket_verification_data, name='ticket_verification_data'),
+    path('api/check-printer-availability/', views.check_printer_availability, name='check_printer_availability'),
 ]

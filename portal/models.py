@@ -65,6 +65,10 @@ class SiteSetting(models.Model):
         default=10,
         help_text='Time window (minutes) around ticket creation for printer status verification'
     )
+    auto_ticket_timeout_minutes = models.IntegerField(
+        default=5,
+        help_text='Minutes a document stays Queued with empty queue before auto-triggering ticket popup'
+    )
 
     class Meta:
         db_table = 'site_settings'

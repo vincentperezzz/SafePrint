@@ -600,7 +600,21 @@ def payment(request):
                         'success': False,
                         'error': 'No documents specified'
                     })
-                
+
+                # ─── Check printer availability before proceeding ───
+                pending_docs = Document.objects.filter(doc_id__in=documents_ids, doc_status='Pending')
+                for doc in pending_docs:
+                    matching_printers = Printer.objects.filter(
+                        paper_assigned=doc.paper_size,
+                        paper_quality=doc.paper_quality,
+                        printer_status__in=['Ready', 'Printing', 'Sleep']
+                    )
+                    if not matching_printers.exists():
+                        return JsonResponse({
+                            'success': False,
+                            'error': f'No available printer for {doc.paper_size} {doc.paper_quality} GSM. All matching printers are currently offline or unavailable. Please try again later.'
+                        })
+
                 # Calculate total price from Payment records
                 total_price = 0.0
                 for doc_id in documents_ids:
@@ -2614,6 +2628,7 @@ def customer_documents_event_stream(customer_id):
                 'total_pages': total_pages,
                 'reroute_history': reroute_history,
                 'time_submitted': doc.time_submitted.isoformat() if doc.time_submitted else None,
+                'status_updated_at': doc.status_updated_at.isoformat() if doc.status_updated_at else None,
                 'has_ticket': has_ticket,
                 'ticket_number': ticket_number,
                 # Extra info for problem report form
@@ -2626,9 +2641,21 @@ def customer_documents_event_stream(customer_id):
             }
             docs_data.append(doc_data)
 
+        # Count OTHER customers' documents that are Queued or Printing
+        other_queue_count = Document.objects.exclude(
+            customer_id=customer_id
+        ).filter(
+            doc_status__in=['Queued', 'Printing']
+        ).count()
+
+        # Get auto-ticket timeout setting
+        auto_ticket_timeout = SiteSetting.load().auto_ticket_timeout_minutes
+
         data = {
             'documents': docs_data,
             'all_done': all_finished_or_picked_up and len(docs_data) > 0,
+            'other_queue_count': other_queue_count,
+            'auto_ticket_timeout': auto_ticket_timeout,
         }
 
         json_data = json.dumps(data)
@@ -3275,3 +3302,53 @@ def get_ticket_verification_data(request):
         return JsonResponse({'success': False, 'error': 'Ticket not found'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def check_printer_availability(request):
+    """
+    Check if at least one operational printer is available for the given documents.
+    Used by payment page to block payment when no matching printers are active.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        doc_ids = data.get('doc_ids', [])
+
+        if not doc_ids:
+            return JsonResponse({'available': True, 'all_offline': False, 'unavailable_docs': []})
+
+        docs = Document.objects.filter(doc_id__in=doc_ids, doc_status='Pending')
+
+        if not docs.exists():
+            return JsonResponse({'available': True, 'all_offline': False, 'unavailable_docs': []})
+
+        # Check each document's paper requirements against available printers
+        unavailable_docs = []
+        for doc in docs:
+            matching_printers = Printer.objects.filter(
+                paper_assigned=doc.paper_size,
+                paper_quality=doc.paper_quality,
+                printer_status__in=['Ready', 'Printing', 'Sleep']
+            )
+            if not matching_printers.exists():
+                unavailable_docs.append({
+                    'doc_id': doc.doc_id,
+                    'filename': doc.filename,
+                    'paper_size': doc.paper_size,
+                    'paper_quality': f'{doc.paper_quality} GSM' if doc.paper_quality else '',
+                })
+
+        all_printers_status = list(Printer.objects.values_list('printer_status', flat=True))
+        all_offline = all(s in ('Offline', 'Error', '') for s in all_printers_status) if all_printers_status else True
+
+        return JsonResponse({
+            'available': len(unavailable_docs) == 0,
+            'all_offline': all_offline,
+            'unavailable_docs': unavailable_docs,
+        })
+
+    except Exception as e:
+        return JsonResponse({'available': False, 'all_offline': True, 'unavailable_docs': [], 'error': str(e)})

@@ -2501,6 +2501,20 @@ input:focus::placeholder {
     margin: 0;
 }
 
+.printer-unavailable-banner {
+    background: #fff1f0;
+    border: 1px solid #ff4d4f;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    color: #a8071a;
+    line-height: 1.5;
+    text-align: center;
+}
+
 /* Coupon/Ticket Banner - Confirmation Page */
 .coupon-banner {
     display: flex;
