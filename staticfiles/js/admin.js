@@ -416,6 +416,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function openAuditLogModal() {
         if (!auditModal || !window._currentTicketId) return;
+        // Reset to Ticket Log tab
+        switchAuditMainTab('ticket');
         // Reset filters
         var auditFilterBtns = auditModal.querySelectorAll('.audit-filter-btn');
         auditFilterBtns.forEach(function(b) {
@@ -438,6 +440,125 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!auditModal) return;
         auditModal.classList.remove('is-open');
         auditModal.setAttribute('aria-hidden', 'true');
+    }
+
+    // Main tab switching (Ticket Log | Printer Status | Document History)
+    function switchAuditMainTab(tab) {
+        document.querySelectorAll('.audit-main-tab').forEach(function(b) {
+            b.classList.remove('active');
+            b.style.background = '#f0f0f0';
+            b.style.color = '#18191F';
+        });
+        var activeBtn = document.querySelector('.audit-main-tab[data-main-tab="' + tab + '"]');
+        if (activeBtn) {
+            activeBtn.classList.add('active');
+            activeBtn.style.background = '#18191F';
+            activeBtn.style.color = '#fff';
+        }
+        document.querySelectorAll('.audit-tab-panel').forEach(function(p) { p.style.display = 'none'; });
+        var panel = document.getElementById('audit-tab-' + tab);
+        if (panel) panel.style.display = '';
+
+        // Fetch verification data when switching to printer or document tabs
+        if ((tab === 'printer' || tab === 'document') && window._currentTicketId) {
+            fetchVerificationData();
+        }
+    }
+
+    document.addEventListener('click', function(e) {
+        var tab = e.target.closest('.audit-main-tab');
+        if (tab && tab.dataset.mainTab) {
+            switchAuditMainTab(tab.dataset.mainTab);
+        }
+    });
+
+    function fetchVerificationData() {
+        var printerTbody = document.getElementById('audit-printer-tbody');
+        var docTbody = document.getElementById('audit-doc-tbody');
+        var timeLabel = document.getElementById('audit-ticket-time');
+        var windowSelect = document.getElementById('audit-time-window');
+        var timeWindow = windowSelect ? parseInt(windowSelect.value, 10) : 10;
+
+        if (printerTbody) printerTbody.innerHTML = '<tr><td colspan="5" style="color:#999; padding:10px;">Loading...</td></tr>';
+        if (docTbody) docTbody.innerHTML = '<tr><td colspan="4" style="color:#999; padding:10px;">Loading...</td></tr>';
+
+        fetch('/portal/api/ticket-verification-data/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ ticket_id: window._currentTicketId, time_window: timeWindow })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.success) {
+                if (printerTbody) printerTbody.innerHTML = '<tr><td colspan="5" style="color:#d9534f; padding:10px;">' + (data.error || 'Error') + '</td></tr>';
+                return;
+            }
+
+            if (timeLabel) timeLabel.textContent = 'Ticket created: ' + data.ticket_created_at;
+
+            // Render printer logs
+            if (printerTbody) {
+                if (data.printer_logs && data.printer_logs.length > 0) {
+                    printerTbody.innerHTML = data.printer_logs.map(function(log) {
+                        var statusStyle = '';
+                        var s = (log.status || '').toLowerCase();
+                        if (s.indexOf('jam') !== -1 || s.indexOf('error') !== -1) {
+                            statusStyle = 'color:#d9534f; font-weight:700;';
+                        } else if (s === 'offline') {
+                            statusStyle = 'color:#f0ad4e; font-weight:600;';
+                        } else if (s === 'ready' || s === 'printing') {
+                            statusStyle = 'color:#5cb85c;';
+                        }
+                        return '<tr style="border-bottom:1px solid #f0f0f0;">'
+                            + '<td style="padding:6px 8px; white-space:nowrap; font-size:0.75rem; color:#888;">' + log.timestamp + '</td>'
+                            + '<td style="padding:6px 8px; font-weight:600;">' + (log.printer_name || '').replace(/</g, '&lt;') + '</td>'
+                            + '<td style="padding:6px 8px; ' + statusStyle + '">' + (log.status || '').replace(/</g, '&lt;') + '</td>'
+                            + '<td style="padding:6px 8px; color:#555;">' + (log.ink_status || '—').replace(/</g, '&lt;') + '</td>'
+                            + '<td style="padding:6px 8px; color:#555;">' + (log.paper_level || '—').replace(/</g, '&lt;') + '</td>'
+                            + '</tr>';
+                    }).join('');
+                } else {
+                    printerTbody.innerHTML = '<tr><td colspan="5" style="color:#999; padding:10px;">No printer status changes in this time window.</td></tr>';
+                }
+            }
+
+            // Render document lifecycle logs
+            if (docTbody) {
+                if (data.document_logs && data.document_logs.length > 0) {
+                    docTbody.innerHTML = data.document_logs.map(function(log) {
+                        var eventStyle = '';
+                        var ev = (log.event || '').toLowerCase();
+                        if (ev === 'cancelled' || ev === 'denied' || ev === 'deleted') {
+                            eventStyle = 'color:#d9534f; font-weight:600;';
+                        } else if (ev === 'finished' || ev === 'picked up') {
+                            eventStyle = 'color:#5cb85c; font-weight:600;';
+                        } else if (ev === 'printing' || ev === 'reprinted') {
+                            eventStyle = 'color:#337ab7; font-weight:600;';
+                        } else if (ev === 'rerouted') {
+                            eventStyle = 'color:#f0ad4e; font-weight:600;';
+                        }
+                        return '<tr style="border-bottom:1px solid #f0f0f0;">'
+                            + '<td style="padding:6px 8px; white-space:nowrap; font-size:0.75rem; color:#888;">' + log.timestamp + '</td>'
+                            + '<td style="padding:6px 8px; ' + eventStyle + '">' + (log.event || '').replace(/</g, '&lt;') + '</td>'
+                            + '<td style="padding:6px 8px; color:#555;">' + (log.details || '—').replace(/</g, '&lt;') + '</td>'
+                            + '<td style="padding:6px 8px; color:#888;">' + (log.printer_name || '—').replace(/</g, '&lt;') + '</td>'
+                            + '</tr>';
+                    }).join('');
+                } else {
+                    docTbody.innerHTML = '<tr><td colspan="4" style="color:#999; padding:10px;">No document lifecycle records found.</td></tr>';
+                }
+            }
+        })
+        .catch(function() {
+            if (printerTbody) printerTbody.innerHTML = '<tr><td colspan="5" style="color:#d9534f; padding:10px;">Failed to load data.</td></tr>';
+            if (docTbody) docTbody.innerHTML = '<tr><td colspan="4" style="color:#d9534f; padding:10px;">Failed to load data.</td></tr>';
+        });
+    }
+
+    // Refresh button for printer status tab
+    var refreshPrinterBtn = document.getElementById('audit-refresh-printer');
+    if (refreshPrinterBtn) {
+        refreshPrinterBtn.addEventListener('click', fetchVerificationData);
     }
 
     if (openAuditBtn) {

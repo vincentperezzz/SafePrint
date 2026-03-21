@@ -10,6 +10,9 @@ PATH=/usr/local/bin:/usr/bin:/bin:/home/safeprint/dev/SafePrint/venv/bin
 # Delete stale documents every 10 minutes
 */10 * * * * safeprint cd /home/safeprint/dev/SafePrint && /home/safeprint/dev/SafePrint/venv/bin/python manage.py delete_stale_docs >> /home/safeprint/dev/SafePrint/logs/cron_delete_stale_docs.log 2>&1
 
+# Purge expired ticket PII daily at 12 PM
+0 12 * * * safeprint cd /home/safeprint/dev/SafePrint && /home/safeprint/dev/SafePrint/venv/bin/python manage.py purge_expired_ticket_data >> /home/safeprint/dev/SafePrint/logs/cron_purge_tickets.log 2>&1
+
 # Restart printer polling daemon on reboot and hourly (failsafe)
 @reboot safeprint /home/safeprint/dev/SafePrint/scripts/poll_printers_daemon.sh
 @hourly safeprint /home/safeprint/dev/SafePrint/scripts/poll_printers_daemon.sh

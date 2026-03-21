@@ -305,32 +305,89 @@ Dashboard
 <!-- Activity Log Modal -->
 <div id="audit-log-modal" class="ticket-modal" aria-hidden="true">
     <div class="ticket-modal__backdrop" data-close-audit-modal></div>
-    <div class="ticket-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="audit-modal-title" style="max-width:650px;">
+    <div class="ticket-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="audit-modal-title" style="max-width:750px;">
         <div class="ticket-modal__header">
             <h3 id="audit-modal-title">Activity Log</h3>
             <button class="ticket-modal__done" type="button" data-close-audit-modal>Done</button>
         </div>
         <div class="ticket-modal__card">
-            <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
-                <button class="audit-filter-btn active" type="button" data-filter="all" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#18191F; color:#fff; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">All</button>
-                <button class="audit-filter-btn" type="button" data-filter="status" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#fff; color:#18191F; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">Status Changes</button>
-                <button class="audit-filter-btn" type="button" data-filter="refund" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#fff; color:#18191F; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">Refunds</button>
-                <button class="audit-filter-btn" type="button" data-filter="admin" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#fff; color:#18191F; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">Admin Actions</button>
+            <!-- Main tabs: Ticket Log | Printer Status | Document History -->
+            <div id="audit-main-tabs" style="display:flex; gap:0; margin-bottom:12px; border-bottom:2px solid #18191F;">
+                <button class="audit-main-tab active" type="button" data-main-tab="ticket" style="padding:8px 16px; border:none; background:#18191F; color:#fff; font-size:0.8rem; font-family:Montserrat,sans-serif; font-weight:600; cursor:pointer; border-radius:8px 8px 0 0;">Ticket Log</button>
+                <button class="audit-main-tab" type="button" data-main-tab="printer" style="padding:8px 16px; border:none; background:#f0f0f0; color:#18191F; font-size:0.8rem; font-family:Montserrat,sans-serif; font-weight:600; cursor:pointer; border-radius:8px 8px 0 0;">Printer Status</button>
+                <button class="audit-main-tab" type="button" data-main-tab="document" style="padding:8px 16px; border:none; background:#f0f0f0; color:#18191F; font-size:0.8rem; font-family:Montserrat,sans-serif; font-weight:600; cursor:pointer; border-radius:8px 8px 0 0;">Document History</button>
             </div>
-            <div id="modal-audit-log" style="font-size:0.85rem; font-family:Montserrat,sans-serif;">
-                <table id="audit-log-table" style="width:100%; border-collapse:collapse; font-size:0.8rem;">
-                    <thead>
-                        <tr style="border-bottom:2px solid #18191F; text-align:left;">
-                            <th style="padding:6px 8px;">Action</th>
-                            <th style="padding:6px 8px;">Details</th>
-                            <th style="padding:6px 8px;">By</th>
-                            <th style="padding:6px 8px;">Date</th>
-                        </tr>
-                    </thead>
-                    <tbody id="audit-log-tbody"></tbody>
-                </table>
+
+            <!-- TAB 1: Ticket Log (existing) -->
+            <div id="audit-tab-ticket" class="audit-tab-panel">
+                <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+                    <button class="audit-filter-btn active" type="button" data-filter="all" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#18191F; color:#fff; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">All</button>
+                    <button class="audit-filter-btn" type="button" data-filter="status" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#fff; color:#18191F; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">Status Changes</button>
+                    <button class="audit-filter-btn" type="button" data-filter="refund" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#fff; color:#18191F; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">Refunds</button>
+                    <button class="audit-filter-btn" type="button" data-filter="admin" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#fff; color:#18191F; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">Admin Actions</button>
+                </div>
+                <div id="modal-audit-log" style="font-size:0.85rem; font-family:Montserrat,sans-serif;">
+                    <table id="audit-log-table" style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #18191F; text-align:left;">
+                                <th style="padding:6px 8px;">Action</th>
+                                <th style="padding:6px 8px;">Details</th>
+                                <th style="padding:6px 8px;">By</th>
+                                <th style="padding:6px 8px;">Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-log-tbody"></tbody>
+                    </table>
+                </div>
+                <div id="audit-log-pagination" class="pagination-controls"></div>
             </div>
-            <div id="audit-log-pagination" class="pagination-controls"></div>
+
+            <!-- TAB 2: Printer Status (auto-filtered ±N min around ticket time) -->
+            <div id="audit-tab-printer" class="audit-tab-panel" style="display:none;">
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+                    <span style="font-size:0.8rem; font-family:Montserrat,sans-serif; color:#555;">Window:</span>
+                    <select id="audit-time-window" style="padding:4px 8px; border-radius:6px; border:1.5px solid #18191F; font-family:Montserrat,sans-serif; font-size:0.75rem;">
+                        <option value="5">± 5 min</option>
+                        <option value="10" selected>± 10 min</option>
+                        <option value="15">± 15 min</option>
+                        <option value="30">± 30 min</option>
+                        <option value="60">± 1 hour</option>
+                    </select>
+                    <button id="audit-refresh-printer" class="approve-btn" type="button" style="padding:4px 12px; font-size:0.75rem;">Refresh</button>
+                    <span id="audit-ticket-time" style="font-size:0.7rem; color:#888; font-family:Montserrat,sans-serif; margin-left:auto;"></span>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.8rem; font-family:Montserrat,sans-serif;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #18191F; text-align:left;">
+                                <th style="padding:6px 8px;">Date/Time</th>
+                                <th style="padding:6px 8px;">Printer</th>
+                                <th style="padding:6px 8px;">Status</th>
+                                <th style="padding:6px 8px;">Ink</th>
+                                <th style="padding:6px 8px;">Paper</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-printer-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 3: Document History (lifecycle) -->
+            <div id="audit-tab-document" class="audit-tab-panel" style="display:none;">
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.8rem; font-family:Montserrat,sans-serif;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #18191F; text-align:left;">
+                                <th style="padding:6px 8px;">Date/Time</th>
+                                <th style="padding:6px 8px;">Event</th>
+                                <th style="padding:6px 8px;">Details</th>
+                                <th style="padding:6px 8px;">Printer</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-doc-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>

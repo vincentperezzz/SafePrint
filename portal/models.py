@@ -61,6 +61,10 @@ class SiteSetting(models.Model):
         NotificationSound, null=True, blank=True,
         on_delete=models.SET_NULL, related_name='+'
     )
+    verification_time_window = models.IntegerField(
+        default=10,
+        help_text='Time window (minutes) around ticket creation for printer status verification'
+    )
 
     class Meta:
         db_table = 'site_settings'
@@ -236,12 +240,55 @@ class Document(models.Model):
         return sorted(list(set(pages)))  # Remove duplicates and sort
 
     def save(self, *args, **kwargs):
+        old_status = None
         if self.pk and Document.objects.filter(pk=self.pk).exists():
             orig = Document.objects.get(pk=self.pk)
+            old_status = orig.doc_status
             if orig.doc_status != self.doc_status:
                 from django.utils import timezone
                 self.status_updated_at = timezone.now()
         super().save(*args, **kwargs)
+
+        # Log lifecycle event on status change
+        new_status = self.doc_status
+        if old_status != new_status:
+            event_map = {
+                'Pending': 'pending',
+                'Queued': 'queued',
+                'Printing': 'printing',
+                'Finished': 'finished',
+                'Cancelled': 'cancelled',
+                'Picked Up': 'picked_up',
+                'Denied': 'denied',
+            }
+            event = event_map.get(new_status)
+            if event:
+                printer_name = ''
+                if self.printer_assigned:
+                    printer_name = self.printer_assigned.name
+                elif self.printed_at:
+                    printer_name = self.printed_at.name
+                DocumentLifecycleLog.objects.create(
+                    doc_id=self.doc_id,
+                    customer_id=self.customer_id,
+                    doc_name=self.original_name or self.filename or '',
+                    event=event,
+                    printer_name=printer_name,
+                    details=f'{old_status or "New"} → {new_status}',
+                )
+
+    def delete(self, *args, **kwargs):
+        # Log deletion before removing the record
+        DocumentLifecycleLog.objects.create(
+            doc_id=self.doc_id,
+            customer_id=self.customer_id,
+            doc_name=self.original_name or self.filename or '',
+            event='deleted',
+            printer_name=(self.printer_assigned.name if self.printer_assigned else
+                          self.printed_at.name if self.printed_at else ''),
+            details=f'Document deleted (was {self.doc_status})',
+        )
+        super().delete(*args, **kwargs)
 
     def __str__(self):
         return f"{self.doc_id} - {self.filename}"
@@ -614,4 +661,42 @@ class PrinterStatusLog(models.Model):
         indexes = [
             models.Index(fields=['-timestamp']),
             models.Index(fields=['printer', '-timestamp']),
+        ]
+
+
+class DocumentLifecycleLog(models.Model):
+    """
+    Permanent record of document state changes for verification.
+    Survives document deletion — used by admins to verify refund claims.
+    """
+    EVENT_CHOICES = [
+        ('uploaded', 'Uploaded'),
+        ('pending', 'Pending'),
+        ('queued', 'Queued'),
+        ('printing', 'Printing'),
+        ('finished', 'Finished'),
+        ('cancelled', 'Cancelled'),
+        ('picked_up', 'Picked Up'),
+        ('deleted', 'Deleted'),
+        ('denied', 'Denied'),
+        ('reprinted', 'Reprinted'),
+    ]
+
+    doc_id = models.CharField(max_length=255, db_index=True)
+    customer_id = models.CharField(max_length=255, db_index=True)
+    doc_name = models.CharField(max_length=255, blank=True, default='')
+    event = models.CharField(max_length=20, choices=EVENT_CHOICES)
+    printer_name = models.CharField(max_length=100, blank=True, default='')
+    details = models.TextField(blank=True, default='')
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.doc_id} — {self.event} at {self.timestamp}"
+
+    class Meta:
+        db_table = 'document_lifecycle_logs'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['doc_id', '-timestamp']),
+            models.Index(fields=['customer_id', '-timestamp']),
         ]
