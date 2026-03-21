@@ -1295,6 +1295,44 @@ function checkForTimeoutCancellations(documents) {
     });
 }
 
+// Track whether auto-ticket popup has already been triggered this page load
+var _autoTicketTriggered = false;
+
+function checkForAutoTicketTrigger(data) {
+    if (_autoTicketTriggered) return;
+    var documents = data.documents || [];
+    var otherQueueCount = data.other_queue_count || 0;
+    var timeoutMinutes = data.auto_ticket_timeout || 5;
+
+    // Only trigger if no other customers' docs are in queue
+    if (otherQueueCount > 0) return;
+
+    // Check if any of THIS customer's docs have been Queued beyond the timeout
+    var now = new Date();
+    var hasQueuedTimeout = false;
+
+    for (var i = 0; i < documents.length; i++) {
+        var doc = documents[i];
+        if (doc.doc_status === 'Queued' && doc.status_updated_at) {
+            var queuedSince = new Date(doc.status_updated_at);
+            var elapsedMs = now.getTime() - queuedSince.getTime();
+            var elapsedMin = elapsedMs / 60000;
+            if (elapsedMin >= timeoutMinutes) {
+                hasQueuedTimeout = true;
+                break;
+            }
+        }
+    }
+
+    if (hasQueuedTimeout) {
+        _autoTicketTriggered = true;
+        console.log('[AUTO-TICKET] Document queued for >' + timeoutMinutes + ' min with empty queue. Triggering problem report.');
+        if (typeof showProblemReportOverlay === 'function') {
+            showProblemReportOverlay();
+        }
+    }
+}
+
 // --- End print completion sound & tab title flash ---
 
 // --- Toast notification ---
@@ -1349,6 +1387,7 @@ function initConfirmationSSE() {
             window.customerDocuments = data.documents || [];
             checkForNewCompletions(data.documents || []);
             checkForTimeoutCancellations(data.documents || []);
+            checkForAutoTicketTrigger(data);
             renderDocumentRows(data.documents);
             updateConfirmationUI(data);
         } catch (e) {
@@ -3164,6 +3203,59 @@ document.addEventListener('input', function(e) {
 
     // Clean up polling on page unload
     window.addEventListener('beforeunload', stopAutoPolling);
+
+    // ── Printer availability check ──
+    let printersAvailable = true;
+    let printerCheckInterval = null;
+
+    async function checkPrinterAvailability() {
+        try {
+            const response = await fetch('/portal/api/check-printer-availability/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({ doc_ids: PAYMENT.docIds }),
+            });
+            const data = await response.json();
+            const banner = document.getElementById('printer-unavailable-banner');
+            const payBtn = document.getElementById('pay-now-btn');
+
+            if (!data.available) {
+                printersAvailable = false;
+                if (payBtn) payBtn.disabled = true;
+                if (banner) {
+                    let msg = '';
+                    if (data.all_offline) {
+                        msg = 'All printers are currently offline. Payment is temporarily unavailable. Please try again later.';
+                    } else if (data.unavailable_docs && data.unavailable_docs.length > 0) {
+                        const specs = data.unavailable_docs.map(function(d) {
+                            return d.paper_size + (d.paper_quality ? ' ' + d.paper_quality : '');
+                        });
+                        msg = 'No available printer for: ' + specs.join(', ') + '. Please try again later.';
+                    } else {
+                        msg = 'No available printers at this time. Please try again later.';
+                    }
+                    banner.textContent = msg;
+                    banner.style.display = 'block';
+                }
+            } else {
+                printersAvailable = true;
+                if (payBtn && !payBtn.classList.contains('processing')) payBtn.disabled = false;
+                if (banner) banner.style.display = 'none';
+            }
+        } catch (e) {
+            // On error, allow payment (don't block on network glitch)
+        }
+    }
+
+    // Check immediately and poll every 10 seconds
+    checkPrinterAvailability();
+    printerCheckInterval = setInterval(checkPrinterAvailability, 10000);
+    window.addEventListener('beforeunload', function() {
+        if (printerCheckInterval) clearInterval(printerCheckInterval);
+    });
 
     // ── Initialize: show ₱5 minimum disclaimer if applicable ──
     if (PAYMENT.totalPrice < XENDIT_MIN) {

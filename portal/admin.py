@@ -54,7 +54,7 @@ class VoucherCreditAdmin(admin.ModelAdmin):
 
 @admin.register(SiteSetting)
 class SiteSettingAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'customer_completion_sound', 'customer_reroute_sound', 'verification_time_window')
+    list_display = ('__str__', 'customer_completion_sound', 'customer_reroute_sound', 'verification_time_window', 'auto_ticket_timeout_minutes')
 
 
 @admin.register(TicketAuditLog)
