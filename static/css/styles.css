@@ -3524,6 +3524,10 @@ input:focus::placeholder {
     grid-template-columns: 0.6fr 0.55fr 0.6fr 0.4fr 0.4fr auto;
 }
 
+.dashboard-left .document-item.resolved-row {
+    grid-template-columns: 0.6fr 0.55fr 0.6fr 0.4fr 0.4fr auto;
+}
+
 .resolved-customer,
 .resolved-email,
 .resolved-verifier,
@@ -7682,16 +7686,36 @@ input:focus::placeholder {
         padding: 8px 10px;
     }
 
+    /* Override the grid layout for active ticket cards on mobile */
+    .dashboard-left .document-item {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
     /* --- Resolved ticket rows --- */
     .document-item-title.resolved-header {
         display: none;
     }
 
     .document-item.resolved-row {
-        display: flex;
+        display: flex !important;
         flex-direction: column;
         gap: 8px;
         padding: 12px;
+    }
+
+    .document-item.resolved-row .resolved-details {
+        width: 100%;
+        display: flex;
+        gap: 8px;
+    }
+
+    .document-item.resolved-row .resolved-details button {
+        flex: 1 !important;
+        width: auto !important;
+        font-size: 1rem;
+        padding: 8px 10px !important;
     }
 
     /* --- Queue rows (Print Queue page) --- */
