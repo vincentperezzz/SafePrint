@@ -252,8 +252,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Fetch audit log
-            fetchAuditLog(ticketId);
+            // Store ticket ID for audit log button
+            window._currentTicketId = ticketId;
 
             // Receipt proof section
             var receiptCodeEl = document.getElementById('modal-receipt-code');
@@ -282,19 +282,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 if (receiptImgContainer) receiptImgContainer.style.display = 'none';
                 if (receiptNone) receiptNone.style.display = 'block';
-            }
-
-            // Audit filter buttons
-            document.querySelectorAll('.audit-filter-btn').forEach(function(fbtn) {
-                fbtn.classList.remove('active');
-                fbtn.style.background = '#fff';
-                fbtn.style.color = '#18191F';
-            });
-            var allBtn = document.querySelector('.audit-filter-btn[data-filter="all"]');
-            if (allBtn) {
-                allBtn.classList.add('active');
-                allBtn.style.background = '#18191F';
-                allBtn.style.color = '#fff';
             }
         }
 
@@ -348,20 +335,60 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (filtered.length === 0) {
             logTbody.innerHTML = '<tr><td colspan="4" style="color:#999; padding:10px;">No entries for this filter.</td></tr>';
+            var pgDiv = document.getElementById('audit-log-pagination');
+            if (pgDiv) pgDiv.innerHTML = '';
             return;
         }
 
+        // Render all rows then paginate
         logTbody.innerHTML = filtered.map(function(log) {
             var escapedDetails = (log.details || '—').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             var escapedBy = (log.performed_by || '—').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             var escapedAction = (log.action || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            return '<tr style="border-bottom:1px solid #f0f0f0;">'
+            return '<tr class="audit-log-row" style="border-bottom:1px solid #f0f0f0;">'
                 + '<td style="padding:6px 8px; font-weight:600; white-space:nowrap;">' + escapedAction + '</td>'
                 + '<td style="padding:6px 8px; color:#555;">' + escapedDetails + '</td>'
                 + '<td style="padding:6px 8px; color:#888;">' + escapedBy + '</td>'
                 + '<td style="padding:6px 8px; color:#888; white-space:nowrap; font-size:0.75rem;">' + log.timestamp + '</td>'
                 + '</tr>';
         }).join('');
+
+        // Setup pagination (10 per page)
+        var rows = logTbody.querySelectorAll('.audit-log-row');
+        var perPage = 10;
+        var pgDiv = document.getElementById('audit-log-pagination');
+        if (rows.length <= perPage) {
+            if (pgDiv) pgDiv.innerHTML = '';
+            return;
+        }
+        var totalPages = Math.ceil(rows.length / perPage);
+        var currentPage = 1;
+
+        function showPage(page) {
+            currentPage = page;
+            rows.forEach(function(row, i) {
+                row.style.display = (i >= (page - 1) * perPage && i < page * perPage) ? '' : 'none';
+            });
+            renderPgBtns();
+        }
+
+        function renderPgBtns() {
+            if (!pgDiv) return;
+            var html = '';
+            for (var p = 1; p <= totalPages; p++) {
+                html += '<button class="pg-btn' + (p === currentPage ? ' pg-active' : '') + '" data-audit-pg="' + p + '">' + p + '</button>';
+            }
+            pgDiv.innerHTML = html;
+        }
+
+        if (pgDiv) {
+            pgDiv.addEventListener('click', function(e) {
+                var btn = e.target.closest('[data-audit-pg]');
+                if (btn) showPage(parseInt(btn.dataset.auditPg, 10));
+            });
+        }
+
+        showPage(1);
     }
 
     // Audit filter button clicks
@@ -382,6 +409,52 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     window.fetchAuditLog = fetchAuditLog;
+
+    // Activity Log modal
+    var auditModal = document.getElementById('audit-log-modal');
+    var openAuditBtn = document.getElementById('open-audit-log-btn');
+
+    function openAuditLogModal() {
+        if (!auditModal || !window._currentTicketId) return;
+        // Reset filters
+        var auditFilterBtns = auditModal.querySelectorAll('.audit-filter-btn');
+        auditFilterBtns.forEach(function(b) {
+            b.classList.remove('active');
+            b.style.background = '#fff';
+            b.style.color = '#18191F';
+        });
+        var allBtn = auditModal.querySelector('.audit-filter-btn[data-filter="all"]');
+        if (allBtn) {
+            allBtn.classList.add('active');
+            allBtn.style.background = '#18191F';
+            allBtn.style.color = '#fff';
+        }
+        fetchAuditLog(window._currentTicketId);
+        auditModal.classList.add('is-open');
+        auditModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeAuditLogModal() {
+        if (!auditModal) return;
+        auditModal.classList.remove('is-open');
+        auditModal.setAttribute('aria-hidden', 'true');
+    }
+
+    if (openAuditBtn) {
+        openAuditBtn.addEventListener('click', openAuditLogModal);
+    }
+
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('[data-close-audit-modal]')) {
+            closeAuditLogModal();
+        }
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && auditModal && auditModal.classList.contains('is-open')) {
+            closeAuditLogModal();
+        }
+    });
 
     const closeTicketModal = () => {
         if (!ticketModal) return;
@@ -3162,21 +3235,8 @@ if (addPrinterForm) {
                     if (receiptNone) receiptNone.style.display = 'block';
                 }
 
-                // Fetch audit log
-                if (typeof window.fetchAuditLog === 'function') window.fetchAuditLog(ticketId);
-
-                // Reset audit filter buttons
-                document.querySelectorAll('.audit-filter-btn').forEach(function(fbtn) {
-                    fbtn.classList.remove('active');
-                    fbtn.style.background = '#fff';
-                    fbtn.style.color = '#18191F';
-                });
-                var allBtn = document.querySelector('.audit-filter-btn[data-filter="all"]');
-                if (allBtn) {
-                    allBtn.classList.add('active');
-                    allBtn.style.background = '#18191F';
-                    allBtn.style.color = '#fff';
-                }
+                // Store ticket ID for audit log button
+                window._currentTicketId = ticketId;
 
                 const modal = document.getElementById('ticket-modal');
                 modal.classList.add('is-open');
