@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction, VoucherCredit
+from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction, VoucherCredit, SiteSetting, TicketAuditLog, DocumentReprintLog
 import os
 
 admin.site.register(AdminUser)
@@ -50,3 +50,24 @@ class VoucherCreditAdmin(admin.ModelAdmin):
     list_filter = ('is_active',)
     search_fields = ('code', 'last_customer_id')
     readonly_fields = ('created_at',)
+
+
+@admin.register(SiteSetting)
+class SiteSettingAdmin(admin.ModelAdmin):
+    list_display = ('__str__', 'customer_completion_sound', 'customer_reroute_sound')
+
+
+@admin.register(TicketAuditLog)
+class TicketAuditLogAdmin(admin.ModelAdmin):
+    list_display = ('ticket', 'action', 'performed_by', 'timestamp')
+    list_filter = ('action',)
+    search_fields = ('ticket__ticket_number', 'performed_by', 'details')
+    readonly_fields = ('ticket', 'action', 'old_status', 'new_status', 'performed_by', 'details', 'timestamp')
+
+
+@admin.register(DocumentReprintLog)
+class DocumentReprintLogAdmin(admin.ModelAdmin):
+    list_display = ('document', 'reason', 'printer_used', 'success', 'reprinted_at')
+    list_filter = ('reason', 'success')
+    search_fields = ('document__doc_id', 'description')
+    readonly_fields = ('reprinted_at',)
