@@ -3178,3 +3178,100 @@ def get_printer_status_history(request):
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def get_ticket_verification_data(request):
+    """
+    Return printer status and document lifecycle data around a ticket's creation time.
+    Used by Activity Log modal to help admin verify refund claims.
+    Accepts: ticket_id, time_window (optional override, in minutes)
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        ticket_id = data.get('ticket_id')
+
+        if not ticket_id:
+            return JsonResponse({'success': False, 'error': 'ticket_id is required'})
+
+        ticket = SupportTicket.objects.get(id=ticket_id)
+
+        # Get time window setting
+        time_window = data.get('time_window')
+        if time_window is None:
+            time_window = SiteSetting.load().verification_time_window
+        time_window = int(time_window)
+
+        from datetime import timedelta
+        from .models import PrinterStatusLog, DocumentLifecycleLog
+
+        window_start = ticket.created_at - timedelta(minutes=time_window)
+        window_end = ticket.created_at + timedelta(minutes=time_window)
+
+        # Get printer status logs in the time window
+        printer_logs = PrinterStatusLog.objects.select_related('printer').filter(
+            timestamp__gte=window_start,
+            timestamp__lte=window_end,
+        ).order_by('-timestamp')
+
+        printer_data = []
+        for log in printer_logs:
+            printer_data.append({
+                'printer_name': log.printer.name if log.printer else 'Unknown',
+                'status': log.status,
+                'ink_status': log.ink_status,
+                'paper_level': log.paper_level,
+                'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            })
+
+        # Get document lifecycle logs for this document
+        doc_logs = DocumentLifecycleLog.objects.filter(
+            doc_id=ticket.document_id
+        ).order_by('-timestamp') if ticket.document_id else []
+
+        doc_data = []
+        for log in doc_logs:
+            doc_data.append({
+                'doc_id': log.doc_id,
+                'customer_id': log.customer_id,
+                'doc_name': log.doc_name,
+                'event': log.get_event_display(),
+                'printer_name': log.printer_name,
+                'details': log.details,
+                'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            })
+
+        # Get reroute history for this document
+        if ticket.document_id:
+            from .models import RerouteHistory
+            reroutes = RerouteHistory.objects.select_related('printer').filter(
+                document_id=ticket.document_id
+            ).order_by('-timestamp')
+            for rr in reroutes:
+                doc_data.append({
+                    'doc_id': ticket.document_id,
+                    'customer_id': ticket.customer_id,
+                    'doc_name': ticket.document_name or '',
+                    'event': 'Rerouted',
+                    'printer_name': rr.printer.name if rr.printer else '—',
+                    'details': f'Rerouted ({rr.status})',
+                    'timestamp': rr.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                })
+            # Sort all doc events by timestamp descending
+            doc_data.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        return JsonResponse({
+            'success': True,
+            'ticket_created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'time_window': time_window,
+            'printer_logs': printer_data,
+            'document_logs': doc_data,
+        })
+
+    except SupportTicket.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Ticket not found'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})

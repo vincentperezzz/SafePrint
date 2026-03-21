@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction, VoucherCredit, SiteSetting, TicketAuditLog, DocumentReprintLog, PrinterStatusLog
+from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction, VoucherCredit, SiteSetting, TicketAuditLog, DocumentReprintLog, PrinterStatusLog, DocumentLifecycleLog
 import os
 
 admin.site.register(AdminUser)
@@ -54,7 +54,7 @@ class VoucherCreditAdmin(admin.ModelAdmin):
 
 @admin.register(SiteSetting)
 class SiteSettingAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'customer_completion_sound', 'customer_reroute_sound')
+    list_display = ('__str__', 'customer_completion_sound', 'customer_reroute_sound', 'verification_time_window')
 
 
 @admin.register(TicketAuditLog)
@@ -79,3 +79,11 @@ class PrinterStatusLogAdmin(admin.ModelAdmin):
     list_filter = ('status', 'printer')
     search_fields = ('printer__name', 'status')
     readonly_fields = ('printer', 'status', 'ink_status', 'paper_level', 'timestamp')
+
+
+@admin.register(DocumentLifecycleLog)
+class DocumentLifecycleLogAdmin(admin.ModelAdmin):
+    list_display = ('doc_id', 'customer_id', 'doc_name', 'event', 'printer_name', 'timestamp')
+    list_filter = ('event',)
+    search_fields = ('doc_id', 'customer_id', 'doc_name')
+    readonly_fields = ('doc_id', 'customer_id', 'doc_name', 'event', 'printer_name', 'details', 'timestamp')

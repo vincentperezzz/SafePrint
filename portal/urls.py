@@ -54,4 +54,5 @@ urlpatterns = [
     path('api/purge-ticket-data/', views.purge_ticket_data, name='purge_ticket_data'),
     path('api/ticket-audit-log/', views.get_ticket_audit_log, name='get_ticket_audit_log'),
     path('api/printer-status-history/', views.get_printer_status_history, name='printer_status_history'),
+    path('api/ticket-verification-data/', views.get_ticket_verification_data, name='ticket_verification_data'),
 ]
