@@ -3449,6 +3449,26 @@ input:focus::placeholder {
     margin: 0;
 }
 
+.toggle-resolved-btn {
+    background: transparent;
+    border: 2px solid #18191F;
+    border-radius: 8px;
+    padding: 4px 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.toggle-resolved-btn:hover {
+    background: #f0f0f0;
+}
+
+.toggle-resolved-btn[aria-expanded="true"] svg {
+    transform: rotate(180deg);
+}
+
 .resolved-list-container {
     background-color: #E9FEE4;
     border-color: #18191F;
@@ -4812,9 +4832,88 @@ input:focus::placeholder {
     transition: background-color 0.2s;
     min-width: 85px;
     text-align: center;
+    display: none;
+}
+
+.voucher-actions-cell .switch-input-blue:checked + .switch-label-blue {
+    background: #B9FF66;
+}
+
+.voucher-switch {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 26px;
+    flex-shrink: 0;
+}
+
+.voucher-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.voucher-switch .switch-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    border-radius: 26px;
+    border: 1.5px solid #18191F;
+    transition: background-color 0.3s;
+}
+
+.voucher-switch .switch-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 2.5px;
+    background-color: #fff;
+    border-radius: 50%;
+    border: 1px solid #18191F;
+    transition: transform 0.3s;
+}
+
+.voucher-switch input:checked + .switch-slider {
+    background-color: #B9FF66;
+}
+
+.voucher-switch input:checked + .switch-slider:before {
+    transform: translateX(20px);
+}
+
+.voucher-switch-label {
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'Montserrat', sans-serif;
+    min-width: 55px;
+    text-align: center;
 }
 
 .voucher-toggle-btn:hover {
+    background: #e5a217;
+}
+
+.voucher-toggle-btn.btn-activate {
+    background: #B9FF66;
+    color: #18191F;
+}
+
+.voucher-toggle-btn.btn-activate:hover {
+    background: #a3e85a;
+}
+
+.voucher-toggle-btn.btn-deactivate {
+    background: #FBB41D;
+    color: #18191F;
+}
+
+.voucher-toggle-btn.btn-deactivate:hover {
     background: #e5a217;
 }
 
@@ -4846,6 +4945,44 @@ input:focus::placeholder {
     font-size: 18px;
     font-weight: 700;
     letter-spacing: 2px;
+}
+
+/* Pagination controls */
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 12px 0;
+    font-family: 'Montserrat', sans-serif;
+}
+
+.pg-btn {
+    background: #fff;
+    border: 1.5px solid #18191F;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    min-width: 32px;
+    text-align: center;
+    transition: background 0.2s;
+    font-family: 'Montserrat', sans-serif;
+}
+
+.pg-btn:hover:not(:disabled) {
+    background: #f0f0f0;
+}
+
+.pg-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.pg-btn.pg-active {
+    background: #18191F;
+    color: #fff;
 }
 
 .printer-name{

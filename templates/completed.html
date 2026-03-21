@@ -37,7 +37,7 @@ Print Completed
                 <div class="completed-col doc-action"></div>
             </div>
             
-            <div class="completed-rows-scroll">
+            <div class="completed-rows-scroll" id="completed-scroll-{{ forloop.counter }}">
             {% if printer.documents %}
                 {% for document in printer.documents %}
                 <div class="completed-row" data-doc-id="{{ document.doc_id }}">
@@ -66,6 +66,7 @@ Print Completed
                 </div>
             {% endif %}
             </div>
+            <div id="completed-pagination-{{ forloop.counter }}" class="pagination-controls"></div>
         </div>
         {% empty %}
         <div class="completed-printer-card">

@@ -53,7 +53,7 @@ Printing Queue
                     </div>
                 </div>
 
-                <div class="on-queue-rows-scroll">
+                <div class="on-queue-rows-scroll" id="queue-rows-container">
                 {% for doc in on_queue_documents %}
                     <div class="on-queue-row" id="onqueue-doc-{{ doc.doc_id }}">
                         <div class="queue-col doc-name">
@@ -91,6 +91,7 @@ Printing Queue
                         </div>
                     {% endfor %}
                 </div>
+                <div id="queue-pagination" class="pagination-controls"></div>
             </div>
         </div>
     </div>
