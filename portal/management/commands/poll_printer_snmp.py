@@ -117,8 +117,18 @@ class Command(BaseCommand):
                         current_printer.last_checked = timezone.now()
                         current_printer.save()
                         self.stdout.write(self.style.WARNING(f"Printer at {ip_address} is Offline."))
-                        # Alert only on transition to Offline
+                        # Log status change to PrinterStatusLog
                         if prev_status != 'Offline':
+                            try:
+                                from portal.models import PrinterStatusLog
+                                PrinterStatusLog.objects.create(
+                                    printer=current_printer,
+                                    status='Offline',
+                                    ink_status=current_printer.ink_status or '',
+                                    paper_level=current_printer.tray_level or '',
+                                )
+                            except Exception:
+                                pass
                             from portal.services.email_notify import alert_printer_offline
                             _send_alert_safe(alert_printer_offline, current_printer.printer_name, ip_address)
                         # Alert on paper tray needing refill
@@ -153,6 +163,18 @@ class Command(BaseCommand):
                         current_printer.last_checked = timezone.now()
                         current_printer.save()
                         self.stdout.write(self.style.SUCCESS(f"Printer info updated in database for {ip_address}. Ink status: {ink_status}"))
+                        # Log status change to PrinterStatusLog
+                        if status_val != prev_status or ink_status != prev_ink or current_printer.tray_level != prev_tray:
+                            try:
+                                from portal.models import PrinterStatusLog
+                                PrinterStatusLog.objects.create(
+                                    printer=current_printer,
+                                    status=status_val,
+                                    ink_status=ink_status,
+                                    paper_level=current_printer.tray_level or '',
+                                )
+                            except Exception:
+                                pass
                         # Alert on ink transitioning from OK to low
                         if ink_status != 'OK' and prev_ink == 'OK':
                             from portal.services.email_notify import alert_ink_low

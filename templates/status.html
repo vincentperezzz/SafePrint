@@ -136,7 +136,10 @@ Printer Status
         </div>
         {% endfor %}
     </div>
-    <button class="add-printer-btn" onclick="openAddPrinterPopup()">Configure to Add Printer</button>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin:10px 0;">
+        <button class="add-printer-btn" onclick="openAddPrinterPopup()" style="flex:1; margin:0;">Configure to Add Printer</button>
+        <button class="add-printer-btn" onclick="openPrinterHistoryModal()" style="flex:1; margin:0;">View Printer History</button>
+    </div>
 </div>
 
     <div class="queue-header">
@@ -260,5 +263,52 @@ Printer Status
       <button class="delete-cancel-btn" onclick="hidePopupOverlay('deletePrinterOverlay')">Cancel</button>
     </div>
   </div>
+</div>
+
+<!-- Printer History Modal -->
+<div id="printer-history-modal" class="ticket-modal" aria-hidden="true">
+    <div class="ticket-modal__backdrop" data-close-printer-history></div>
+    <div class="ticket-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="printer-history-title" style="max-width:800px;">
+        <div class="ticket-modal__header">
+            <h3 id="printer-history-title">Printer Status History</h3>
+            <button class="ticket-modal__done" type="button" data-close-printer-history>Done</button>
+        </div>
+        <div class="ticket-modal__card">
+            <!-- Filters -->
+            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
+                <select id="ph-printer-filter" style="padding:6px 10px; border-radius:8px; border:1.5px solid #18191F; font-family:Montserrat,sans-serif; font-size:0.8rem;">
+                    <option value="">All Printers</option>
+                </select>
+                <select id="ph-status-filter" style="padding:6px 10px; border-radius:8px; border:1.5px solid #18191F; font-family:Montserrat,sans-serif; font-size:0.8rem;">
+                    <option value="">All Statuses</option>
+                    <option value="Paper Jam">Paper Jam</option>
+                    <option value="Error">Error</option>
+                    <option value="Offline">Offline</option>
+                    <option value="Ready">Ready</option>
+                    <option value="Printing">Printing</option>
+                    <option value="Sleep">Sleep</option>
+                </select>
+                <input type="date" id="ph-date-from" style="padding:5px 8px; border-radius:8px; border:1.5px solid #18191F; font-family:Montserrat,sans-serif; font-size:0.8rem;" title="From date">
+                <input type="date" id="ph-date-to" style="padding:5px 8px; border-radius:8px; border:1.5px solid #18191F; font-family:Montserrat,sans-serif; font-size:0.8rem;" title="To date">
+                <button id="ph-apply-filter" class="approve-btn" type="button" style="padding:6px 14px; font-size:0.8rem;">Filter</button>
+            </div>
+            <!-- Table -->
+            <div style="overflow-x:auto;">
+                <table id="ph-table" style="width:100%; border-collapse:collapse; font-size:0.8rem; font-family:Montserrat,sans-serif;">
+                    <thead>
+                        <tr style="border-bottom:2px solid #18191F; text-align:left;">
+                            <th style="padding:6px 8px;">Date/Time</th>
+                            <th style="padding:6px 8px;">Printer</th>
+                            <th style="padding:6px 8px;">Status</th>
+                            <th style="padding:6px 8px;">Ink</th>
+                            <th style="padding:6px 8px;">Paper</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ph-tbody"></tbody>
+                </table>
+            </div>
+            <div id="ph-pagination" class="pagination-controls" style="margin-top:8px;"></div>
+        </div>
+    </div>
 </div>
 {% endblock %}
