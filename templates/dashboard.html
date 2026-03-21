@@ -120,16 +120,22 @@ Dashboard
                         <p style="margin: 0; font-family: 'Montserrat', sans-serif;">No active tickets.</p>
                     </div>
                     {% endfor %}
-                </div>  
+                </div>
+                <div id="active-tickets-pagination" class="pagination-controls"></div>
             </div>
         </div>
 
         <div class="document-approvals">
-            <div class="document-approvals-header">
+            <div class="document-approvals-header" style="display:flex; align-items:center; justify-content:space-between;">
                 <h2>Resolved Tickets</h2>
+                <button id="toggle-resolved" type="button" class="toggle-resolved-btn" aria-expanded="false" title="Show/Hide resolved tickets">
+                    <svg id="toggle-resolved-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.3s;">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </button>
             </div>
 
-            <div class="document-list-container resolved-list-container">
+            <div class="document-list-container resolved-list-container" id="resolved-list-container" style="display:none;">
                 <div class="document-results">
                     <div class="list-header">
                         <div class="search-bar">
@@ -184,6 +190,11 @@ Dashboard
                                 data-receipt-code="{{ ticket.receipt_code }}"
                                 data-receipt-screenshot-url="{% if ticket.receipt_screenshot %}{{ ticket.receipt_screenshot.url }}{% endif %}"
                             >View Details</button>
+                            {% if not ticket.data_purged %}
+                            <button class="deny-btn purge-ticket-btn" type="button" data-ticket-id="{{ ticket.id }}" title="Permanently delete customer data">Delete Data</button>
+                            {% else %}
+                            <span style="font-size:0.75rem; color:#999; font-family:Montserrat,sans-serif;">Purged</span>
+                            {% endif %}
                         </div>
                     </div>
                     {% empty %}
@@ -192,6 +203,7 @@ Dashboard
                     </div>
                     {% endfor %}
                 </div>
+                <div id="resolved-tickets-pagination" class="pagination-controls"></div>
             </div>
         </div>
     </div>
@@ -284,11 +296,27 @@ Dashboard
             <!-- Audit log section -->
             <div style="margin-top:16px;">
                 <p class="ticket-modal__label" style="margin-bottom:8px;">Activity Log</p>
-                <div id="modal-audit-log" style="max-height:200px; overflow-y:auto; font-size:0.85rem; font-family:Montserrat,sans-serif;"></div>
+                <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+                    <button class="audit-filter-btn active" type="button" data-filter="all" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#18191F; color:#fff; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">All</button>
+                    <button class="audit-filter-btn" type="button" data-filter="status" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#fff; color:#18191F; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">Status Changes</button>
+                    <button class="audit-filter-btn" type="button" data-filter="refund" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#fff; color:#18191F; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">Refunds</button>
+                    <button class="audit-filter-btn" type="button" data-filter="admin" style="padding:4px 10px; border-radius:6px; border:1.5px solid #18191F; background:#fff; color:#18191F; font-size:0.75rem; font-family:Montserrat,sans-serif; cursor:pointer;">Admin Actions</button>
+                </div>
+                <div id="modal-audit-log" style="max-height:280px; overflow-y:auto; font-size:0.85rem; font-family:Montserrat,sans-serif;">
+                    <table id="audit-log-table" style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #18191F; text-align:left;">
+                                <th style="padding:6px 8px;">Action</th>
+                                <th style="padding:6px 8px;">Details</th>
+                                <th style="padding:6px 8px;">By</th>
+                                <th style="padding:6px 8px;">Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-log-tbody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
-        <div style="display:flex; gap:8px; padding:0 20px 20px;">
-            <button class="ticket-modal__download" type="button" id="modal-download-logs-btn">Download Logs</button>
         </div>
     </div>
 </div>

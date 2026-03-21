@@ -2780,6 +2780,7 @@ def void_ticket(request):
         ticket.status = 'voided'
         ticket.resolved_by = admin_name
         ticket.resolved_at = timezone.now()
+        ticket.data_retention_expires = timezone.now() + timezone.timedelta(days=30)
         ticket.admin_notes = (ticket.admin_notes + '\nVoided by ' + admin_name).strip()
         ticket.save()
 
@@ -2957,6 +2958,7 @@ def complete_refund(request):
         ticket.refund_status = 'completed'
         ticket.refund_completed_at = timezone.now()
         ticket.refund_reference = refund_reference
+        ticket.data_retention_expires = timezone.now() + timezone.timedelta(days=30)
         ticket.admin_notes = (ticket.admin_notes + f'\nRefund completed by {admin_name}. Ref: {refund_reference}').strip()
         ticket.save()
 
@@ -2978,6 +2980,65 @@ def complete_refund(request):
             'refund_status': 'completed',
             'refund_reference': refund_reference,
             'refund_completed_at': ticket.refund_completed_at.strftime('%Y-%m-%d %H:%M:%S'),
+        })
+
+    except SupportTicket.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Ticket not found'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def purge_ticket_data(request):
+    """
+    Immediately purge PII from a resolved/voided ticket.
+    The dashboard record remains but sensitive data is cleared.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        ticket_id = data.get('ticket_id')
+
+        if not ticket_id:
+            return JsonResponse({'success': False, 'error': 'ticket_id is required'})
+
+        ticket = SupportTicket.objects.get(id=ticket_id)
+
+        if ticket.status not in ['resolved', 'closed', 'voided', 'refunded']:
+            return JsonResponse({'success': False, 'error': 'Can only purge data from resolved/voided tickets'})
+
+        if ticket.refund_status == 'pending':
+            return JsonResponse({'success': False, 'error': 'Cannot purge data while refund is pending'})
+
+        if ticket.data_purged:
+            return JsonResponse({'success': False, 'error': 'Data already purged'})
+
+        admin_user_id = request.session.get('admin_user_id')
+        admin_name = ''
+        if admin_user_id:
+            try:
+                admin = AdminUser.objects.get(id=admin_user_id)
+                admin_name = admin.name
+            except AdminUser.DoesNotExist:
+                pass
+
+        ticket.purge_pii()
+
+        TicketAuditLog.objects.create(
+            ticket=ticket,
+            action='data_purged',
+            old_status=ticket.status,
+            new_status=ticket.status,
+            performed_by=admin_name,
+            details='PII data manually purged by admin.'
+        )
+
+        return JsonResponse({
+            'success': True,
+            'ticket_id': ticket.id,
+            'ticket_number': ticket.ticket_number,
         })
 
     except SupportTicket.DoesNotExist:

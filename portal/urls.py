@@ -51,5 +51,6 @@ urlpatterns = [
     path('api/void-ticket/', views.void_ticket, name='void_ticket'),
     path('api/refund-ticket/', views.refund_ticket, name='refund_ticket'),
     path('api/complete-refund/', views.complete_refund, name='complete_refund'),
+    path('api/purge-ticket-data/', views.purge_ticket_data, name='purge_ticket_data'),
     path('api/ticket-audit-log/', views.get_ticket_audit_log, name='get_ticket_audit_log'),
 ]

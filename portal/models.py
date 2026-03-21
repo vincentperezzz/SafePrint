@@ -459,6 +459,10 @@ class SupportTicket(models.Model):
     # Notes for admin
     admin_notes = models.TextField(blank=True, default="")
     
+    # Privacy: 30-day data retention after resolution
+    data_retention_expires = models.DateTimeField(null=True, blank=True)
+    data_purged = models.BooleanField(default=False)
+    
     def save(self, *args, **kwargs):
         if not self.ticket_number:
             # Generate ticket number
@@ -493,6 +497,27 @@ class SupportTicket(models.Model):
                 pass
         super().delete(*args, **kwargs)
     
+    def purge_pii(self):
+        """Remove PII fields but keep the dashboard-visible record."""
+        import os
+        # Delete receipt file from disk
+        if self.receipt_screenshot:
+            try:
+                if os.path.isfile(self.receipt_screenshot.path):
+                    os.remove(self.receipt_screenshot.path)
+            except Exception:
+                pass
+            self.receipt_screenshot = None
+        # Clear PII fields
+        self.phone_number = ''
+        self.gcash_number = ''
+        self.receipt_code = ''
+        self.description = '[Data purged]'
+        self.email = ''
+        self.customer_name = '[Purged]'
+        self.data_purged = True
+        self.save()
+    
     def __str__(self):
         return f"{self.ticket_number} - {self.customer_name}"
     
@@ -514,6 +539,7 @@ class TicketAuditLog(models.Model):
         ('voided', 'Ticket Voided'),
         ('note_added', 'Note Added'),
         ('verified', 'Ticket Verified'),
+        ('data_purged', 'Data Purged'),
     ]
 
     ticket = models.ForeignKey(

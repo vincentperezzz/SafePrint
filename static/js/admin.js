@@ -123,6 +123,60 @@ window.onload = function () {
 
 let selectedIds = [];
 
+// --- Reusable client-side pagination ---
+function setupPagination(containerId, rowSelector, controlsId, perPage) {
+    perPage = perPage || 10;
+    var container = document.getElementById(containerId);
+    if (!container) return null;
+    var state = { page: 1, perPage: perPage, containerId: containerId, rowSelector: rowSelector, controlsId: controlsId };
+
+    function getRows() {
+        return Array.from(container.querySelectorAll(rowSelector)).filter(function(r) {
+            return !r.classList.contains('empty-row') && r.style.display !== 'none-by-search';
+        });
+    }
+
+    function render() {
+        var rows = getRows();
+        var total = rows.length;
+        var totalPages = Math.max(1, Math.ceil(total / state.perPage));
+        if (state.page > totalPages) state.page = totalPages;
+        var start = (state.page - 1) * state.perPage;
+        var end = start + state.perPage;
+        rows.forEach(function(row, i) {
+            row.style.display = (i >= start && i < end) ? '' : 'none';
+        });
+        var controls = document.getElementById(state.controlsId);
+        if (!controls) return;
+        if (total <= state.perPage) {
+            controls.style.display = 'none';
+            return;
+        }
+        controls.style.display = 'flex';
+        var html = '<button class="pg-btn pg-prev" ' + (state.page <= 1 ? 'disabled' : '') + '>&laquo;</button>';
+        for (var p = 1; p <= totalPages; p++) {
+            html += '<button class="pg-btn' + (p === state.page ? ' pg-active' : '') + '" data-pg="' + p + '">' + p + '</button>';
+        }
+        html += '<button class="pg-btn pg-next" ' + (state.page >= totalPages ? 'disabled' : '') + '>&raquo;</button>';
+        controls.innerHTML = html;
+    }
+
+    var controls = document.getElementById(state.controlsId);
+    if (controls) {
+        controls.addEventListener('click', function(e) {
+            var btn = e.target.closest('.pg-btn');
+            if (!btn || btn.disabled) return;
+            if (btn.classList.contains('pg-prev')) state.page--;
+            else if (btn.classList.contains('pg-next')) state.page++;
+            else if (btn.dataset.pg) state.page = parseInt(btn.dataset.pg, 10);
+            render();
+        });
+    }
+
+    render();
+    return { render: render, state: state };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const ticketModal = document.getElementById('ticket-modal');
     const openTicketButtons = document.querySelectorAll('[data-open-ticket-modal]');
@@ -230,28 +284,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (receiptNone) receiptNone.style.display = 'block';
             }
 
-            // Download logs button
-            var downloadBtn = document.getElementById('modal-download-logs-btn');
-            if (downloadBtn) {
-                downloadBtn.onclick = function() {
-                    var logContainer = document.getElementById('modal-audit-log');
-                    var ticketNum = button.getAttribute('data-ticket-number') || 'ticket';
-                    var lines = ['Audit Log for ' + ticketNum, ''];
-                    if (logContainer) {
-                        logContainer.querySelectorAll('div[style*="border-bottom"]').forEach(function(entry) {
-                            var text = entry.textContent.trim().replace(/\s+/g, ' ');
-                            lines.push(text);
-                        });
-                    }
-                    if (lines.length <= 2) lines.push('No audit log entries.');
-                    var blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-                    var url = URL.createObjectURL(blob);
-                    var a = document.createElement('a');
-                    a.href = url;
-                    a.download = ticketNum.replace('#', '') + '_audit_log.txt';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                };
+            // Audit filter buttons
+            document.querySelectorAll('.audit-filter-btn').forEach(function(fbtn) {
+                fbtn.classList.remove('active');
+                fbtn.style.background = '#fff';
+                fbtn.style.color = '#18191F';
+            });
+            var allBtn = document.querySelector('.audit-filter-btn[data-filter="all"]');
+            if (allBtn) {
+                allBtn.classList.add('active');
+                allBtn.style.background = '#18191F';
+                allBtn.style.color = '#fff';
             }
         }
 
@@ -261,9 +304,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function fetchAuditLog(ticketId) {
-        var logContainer = document.getElementById('modal-audit-log');
-        if (!logContainer || !ticketId) return;
-        logContainer.innerHTML = '<div style="color:#999;">Loading...</div>';
+        var logTbody = document.getElementById('audit-log-tbody');
+        if (!logTbody || !ticketId) return;
+        logTbody.innerHTML = '<tr><td colspan="4" style="color:#999; padding:10px;">Loading...</td></tr>';
         fetch('/portal/api/ticket-audit-log/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
@@ -272,21 +315,72 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.success && data.audit_logs && data.audit_logs.length > 0) {
-                logContainer.innerHTML = data.audit_logs.map(function(log) {
-                    return '<div style="padding:6px 0; border-bottom:1px solid #f0f0f0;">'
-                        + '<div style="display:flex;justify-content:space-between;"><strong>' + log.action + '</strong><span style="color:#888;font-size:0.8rem;">' + log.timestamp + '</span></div>'
-                        + '<div style="color:#555;">' + log.details + '</div>'
-                        + (log.performed_by ? '<div style="color:#999;font-size:0.8rem;">by ' + log.performed_by + '</div>' : '')
-                        + '</div>';
-                }).join('');
+                window._auditLogs = data.audit_logs;
+                renderAuditTable(data.audit_logs, 'all');
             } else {
-                logContainer.innerHTML = '<div style="color:#999;">No activity log yet.</div>';
+                logTbody.innerHTML = '<tr><td colspan="4" style="color:#999; padding:10px;">No activity log yet.</td></tr>';
+                window._auditLogs = [];
             }
         })
         .catch(function() {
-            logContainer.innerHTML = '<div style="color:#d9534f;">Failed to load audit log.</div>';
+            logTbody.innerHTML = '<tr><td colspan="4" style="color:#d9534f; padding:10px;">Failed to load audit log.</td></tr>';
         });
     }
+
+    function renderAuditTable(logs, filter) {
+        var logTbody = document.getElementById('audit-log-tbody');
+        if (!logTbody) return;
+
+        var filtered = logs;
+        if (filter === 'status') {
+            filtered = logs.filter(function(l) {
+                return ['Ticket Created', 'Status Changed', 'Ticket Voided', 'Ticket Verified'].indexOf(l.action) !== -1;
+            });
+        } else if (filter === 'refund') {
+            filtered = logs.filter(function(l) {
+                return ['Refund Approved', 'Refund Completed', 'Refund Rejected'].indexOf(l.action) !== -1;
+            });
+        } else if (filter === 'admin') {
+            filtered = logs.filter(function(l) {
+                return ['Note Added', 'Data Purged'].indexOf(l.action) !== -1 || l.performed_by;
+            });
+        }
+
+        if (filtered.length === 0) {
+            logTbody.innerHTML = '<tr><td colspan="4" style="color:#999; padding:10px;">No entries for this filter.</td></tr>';
+            return;
+        }
+
+        logTbody.innerHTML = filtered.map(function(log) {
+            var escapedDetails = (log.details || '—').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            var escapedBy = (log.performed_by || '—').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            var escapedAction = (log.action || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return '<tr style="border-bottom:1px solid #f0f0f0;">'
+                + '<td style="padding:6px 8px; font-weight:600; white-space:nowrap;">' + escapedAction + '</td>'
+                + '<td style="padding:6px 8px; color:#555;">' + escapedDetails + '</td>'
+                + '<td style="padding:6px 8px; color:#888;">' + escapedBy + '</td>'
+                + '<td style="padding:6px 8px; color:#888; white-space:nowrap; font-size:0.75rem;">' + log.timestamp + '</td>'
+                + '</tr>';
+        }).join('');
+    }
+
+    // Audit filter button clicks
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.audit-filter-btn');
+        if (!btn) return;
+        document.querySelectorAll('.audit-filter-btn').forEach(function(b) {
+            b.classList.remove('active');
+            b.style.background = '#fff';
+            b.style.color = '#18191F';
+        });
+        btn.classList.add('active');
+        btn.style.background = '#18191F';
+        btn.style.color = '#fff';
+        if (window._auditLogs) {
+            renderAuditTable(window._auditLogs, btn.dataset.filter);
+        }
+    });
+
     window.fetchAuditLog = fetchAuditLog;
 
     const closeTicketModal = () => {
@@ -1413,35 +1507,99 @@ document.addEventListener('DOMContentLoaded', () => {
     // Printer Search Functionality
     const printerSearchInput = document.getElementById('printer-search');
     const tableRows = document.querySelectorAll('.printer-table-row');
-    if (!printerSearchInput || !tableRows.length) return;
+    if (printerSearchInput && tableRows.length) {
+        // Optional: Add a "no match" row if not present
+        let printerNoMatchRow = document.getElementById('no-printer-match-row');
+        if (!printerNoMatchRow) {
+            printerNoMatchRow = document.createElement('div');
+            printerNoMatchRow.className = 'printer-table-row';
+            printerNoMatchRow.id = 'no-printer-match-row';
+            printerNoMatchRow.style.display = 'none';
+            printerNoMatchRow.innerHTML = `<div style="width: 100%; text-align: center; grid-column: 1 / -1;">No match found.</div>`;
+            document.querySelector('.printer-table').appendChild(printerNoMatchRow);
+        }
 
-    // Optional: Add a "no match" row if not present
-    let printerNoMatchRow = document.getElementById('no-printer-match-row');
-    if (!printerNoMatchRow) {
-        printerNoMatchRow = document.createElement('div');
-        printerNoMatchRow.className = 'printer-table-row';
-        printerNoMatchRow.id = 'no-printer-match-row';
-        printerNoMatchRow.style.display = 'none';
-        printerNoMatchRow.innerHTML = `<div style="width: 100%; text-align: center; grid-column: 1 / -1;">No match found.</div>`;
-        document.querySelector('.printer-table').appendChild(printerNoMatchRow);
+        printerSearchInput.addEventListener('input', function () {
+            const query = this.value.trim().toLowerCase();
+            let anyVisible = false;
+            tableRows.forEach(row => {
+                const name = row.querySelector('.printer-name')?.textContent.toLowerCase() || '';
+                const serial = row.children[1]?.textContent.toLowerCase() || '';
+                if (name.includes(query) || serial.includes(query)) {
+                    row.style.display = '';
+                    anyVisible = true;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+            printerNoMatchRow.style.display = (query && !anyVisible) ? '' : 'none';
+        });
     }
 
-    printerSearchInput.addEventListener('input', function () {
-        const query = this.value.trim().toLowerCase();
-        let anyVisible = false;
-        tableRows.forEach(row => {
-            const name = row.querySelector('.printer-name')?.textContent.toLowerCase() || '';
-            const serial = row.children[1]?.textContent.toLowerCase() || '';
-            if (name.includes(query) || serial.includes(query)) {
-                row.style.display = '';
-                anyVisible = true;
-            } else {
-                row.style.display = 'none';
-            }
+    // --- Resolved tickets toggle ---
+    const toggleBtn = document.getElementById('toggle-resolved');
+    const resolvedContainer = document.getElementById('resolved-list-container');
+    if (toggleBtn && resolvedContainer) {
+        toggleBtn.addEventListener('click', function() {
+            const expanded = this.getAttribute('aria-expanded') === 'true';
+            this.setAttribute('aria-expanded', !expanded);
+            resolvedContainer.style.display = expanded ? 'none' : '';
         });
-        printerNoMatchRow.style.display = (query && !anyVisible) ? '' : 'none';
+    }
+
+    // --- Purge ticket data button ---
+    document.querySelectorAll('.purge-ticket-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const ticketId = this.dataset.ticketId;
+            if (!confirm('Permanently delete all customer data for this ticket? This cannot be undone.')) return;
+            fetch('/portal/api/purge-ticket-data/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': typeof csrfToken !== 'undefined' ? csrfToken : ''
+                },
+                body: JSON.stringify({ ticket_id: parseInt(ticketId, 10) })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const row = this.closest('.resolved-row');
+                    if (row) {
+                        row.querySelector('.resolved-customer').textContent = '[Purged]';
+                        row.querySelector('.resolved-email').textContent = '';
+                    }
+                    this.replaceWith(Object.assign(document.createElement('span'), {
+                        textContent: 'Purged',
+                        style: 'font-size:0.75rem; color:#999; font-family:Montserrat,sans-serif;'
+                    }));
+                } else {
+                    alert(data.error || 'Failed to purge data');
+                }
+            });
+        });
     });
 
+    // --- Initialize pagination for dashboard tables ---
+    setupPagination('document-results', '.document-item:not(.empty-row)', 'active-tickets-pagination', 5);
+    // Resolved tickets pagination works when container is shown
+    var resolvedPg = setupPagination('resolved-list-container', '.resolved-row', 'resolved-tickets-pagination', 5);
+    if (resolvedPg && toggleBtn) {
+        var origClick = toggleBtn.onclick;
+        toggleBtn.addEventListener('click', function() {
+            setTimeout(function() { if (resolvedPg) resolvedPg.render(); }, 50);
+        });
+    }
+
+    // --- Queue page pagination ---
+    if (document.getElementById('queue-rows-container')) {
+        setupPagination('queue-rows-container', '.on-queue-row:not(.on-queue-empty)', 'queue-pagination', 5);
+    }
+
+    // --- Completed page pagination (per printer card) ---
+    document.querySelectorAll('[id^="completed-scroll-"]').forEach(function(el) {
+        var idx = el.id.replace('completed-scroll-', '');
+        setupPagination(el.id, '.completed-row:not(.completed-empty)', 'completed-pagination-' + idx, 5);
+    });
 
 }); // End of DOMContentLoaded event listener
 
@@ -2998,29 +3156,17 @@ if (addPrinterForm) {
                 // Fetch audit log
                 if (typeof window.fetchAuditLog === 'function') window.fetchAuditLog(ticketId);
 
-                // Download logs button
-                var downloadBtn = document.getElementById('modal-download-logs-btn');
-                if (downloadBtn) {
-                    var self = this;
-                    downloadBtn.onclick = function() {
-                        var logContainer = document.getElementById('modal-audit-log');
-                        var ticketNum = self.getAttribute('data-ticket-number') || 'ticket';
-                        var lines = ['Audit Log for ' + ticketNum, ''];
-                        if (logContainer) {
-                            logContainer.querySelectorAll('div[style*="border-bottom"]').forEach(function(entry) {
-                                var text = entry.textContent.trim().replace(/\s+/g, ' ');
-                                lines.push(text);
-                            });
-                        }
-                        if (lines.length <= 2) lines.push('No audit log entries.');
-                        var blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-                        var url = URL.createObjectURL(blob);
-                        var a = document.createElement('a');
-                        a.href = url;
-                        a.download = ticketNum.replace('#', '') + '_audit_log.txt';
-                        a.click();
-                        URL.revokeObjectURL(url);
-                    };
+                // Reset audit filter buttons
+                document.querySelectorAll('.audit-filter-btn').forEach(function(fbtn) {
+                    fbtn.classList.remove('active');
+                    fbtn.style.background = '#fff';
+                    fbtn.style.color = '#18191F';
+                });
+                var allBtn = document.querySelector('.audit-filter-btn[data-filter="all"]');
+                if (allBtn) {
+                    allBtn.classList.add('active');
+                    allBtn.style.background = '#18191F';
+                    allBtn.style.color = '#fff';
                 }
 
                 const modal = document.getElementById('ticket-modal');
@@ -3606,6 +3752,9 @@ if (addPrinterForm) {
                     }
 
                     const btnText = v.is_active ? 'Deactivate' : 'Activate';
+                    const btnClass = v.is_active ? 'btn-deactivate' : 'btn-activate';
+                    const switchLabel = v.is_active ? 'Active' : 'Off';
+                    const switchChecked = v.is_active ? 'checked' : '';
 
                     return `
                         <div class="printer-table-row voucher-row" data-voucher-id="${v.id}">
@@ -3615,8 +3764,19 @@ if (addPrinterForm) {
                             <div data-label="Status">${statusHtml}</div>
                             <div data-label="Created">${v.created_at}</div>
                             <div data-label="Expires">${v.expires_at}</div>
-                            <div class="voucher-actions-cell">
-                                <button class="voucher-toggle-btn" data-voucher-id="${v.id}" data-active="${v.is_active}">${btnText}</button>
+                            <div class="voucher-actions-cell" style="display:flex; align-items:center; gap:8px;">
+                                <div class="switch">
+                                    <input type="checkbox" class="switch-input-blue voucher-switch-input" id="voucher-switch-${v.id}" data-voucher-id="${v.id}" ${switchChecked}>
+                                    <label class="switch-label-blue" for="voucher-switch-${v.id}">
+                                        <span class="switch-circle">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none">
+                                                <rect x="1" y="1" width="34" height="34" rx="17" fill="white" stroke="#18191F" stroke-width="2"/>
+                                                <rect x="11" y="11" width="14" height="14" rx="7" stroke="#18191F" stroke-width="2"/>
+                                            </svg>
+                                        </span>
+                                    </label>
+                                </div>
+                                <span class="voucher-switch-label">${switchLabel}</span>
                                 <button class="voucher-delete-btn" data-voucher-id="${v.id}">Delete</button>
                             </div>
                         </div>
@@ -3624,11 +3784,36 @@ if (addPrinterForm) {
                 }).join('');
 
                 attachToggleHandlers();
+                if (typeof setupPagination === 'function') {
+                    setupPagination('voucher-table-body', '.voucher-row', 'voucher-pagination', 5);
+                }
             });
     }
 
     // Toggle voucher active state and delete
     function attachToggleHandlers() {
+        // Switch toggle handler
+        document.querySelectorAll('.voucher-switch-input').forEach(input => {
+            input.addEventListener('change', function() {
+                const voucherId = this.dataset.voucherId;
+                fetch('/portal/api/toggle-voucher/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ id: parseInt(voucherId, 10) })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        loadVouchers();
+                    }
+                });
+            });
+        });
+
+        // Legacy button handler (fallback)
         document.querySelectorAll('.voucher-toggle-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 const voucherId = this.dataset.voucherId;
@@ -3685,4 +3870,7 @@ if (addPrinterForm) {
 
     // Initial toggle handlers for server-rendered rows
     attachToggleHandlers();
+    if (typeof setupPagination === 'function') {
+        setupPagination('voucher-table-body', '.voucher-row', 'voucher-pagination', 5);
+    }
 })();
