@@ -111,6 +111,8 @@ Dashboard
                                 data-payment-amount="{{ ticket.payment_amount|default:'' }}"
                                 data-receipt-code="{{ ticket.receipt_code }}"
                                 data-receipt-screenshot-url="{% if ticket.receipt_screenshot %}{{ ticket.receipt_screenshot.url }}{% endif %}"
+                                data-proof-photos="{% for img in ticket.proof_images.all %}{{ img.image.url }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                                data-related-doc-ids="{{ ticket.related_doc_ids|default:'' }}"
                             >Verify</button>
                             <button class="refund-btn" type="button" data-action="refund" data-ticket-id="{{ ticket.id }}">Refund</button>
                         </div>
@@ -189,6 +191,8 @@ Dashboard
                                 data-refund-amount="{{ ticket.refund_amount|default:'' }}"
                                 data-receipt-code="{{ ticket.receipt_code }}"
                                 data-receipt-screenshot-url="{% if ticket.receipt_screenshot %}{{ ticket.receipt_screenshot.url }}{% endif %}"
+                                data-proof-photos="{% for img in ticket.proof_images.all %}{{ img.image.url }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                                data-related-doc-ids="{{ ticket.related_doc_ids|default:'' }}"
                             >View Details</button>
                             {% if not ticket.data_purged %}
                             <button class="deny-btn purge-ticket-btn" type="button" data-ticket-id="{{ ticket.id }}" title="Permanently delete customer data">Delete Data</button>
@@ -281,6 +285,19 @@ Dashboard
                 <div id="modal-receipt-none" style="display:none; color:#999; font-size:0.85rem; margin-top:6px; font-family:Montserrat,sans-serif;">
                     No receipt screenshot uploaded.
                 </div>
+            </div>
+            <!-- Proof Photos section -->
+            <div id="modal-proof-section" style="margin-top:16px;">
+                <p class="ticket-modal__label" style="margin-bottom:8px;">Proof Photos</p>
+                <div id="modal-proof-photos" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                <div id="modal-proof-none" style="display:none; color:#999; font-size:0.85rem; margin-top:6px; font-family:Montserrat,sans-serif;">
+                    No proof photos uploaded.
+                </div>
+            </div>
+            <!-- Related Documents section -->
+            <div id="modal-related-docs-section" style="display:none; margin-top:16px;">
+                <p class="ticket-modal__label" style="margin-bottom:8px;">Related Documents (Batch Ticket)</p>
+                <p class="ticket-modal__value" id="modal-related-docs" style="font-size:0.85rem;"></p>
             </div>
             <!-- Refund completion section (shown for pending refunds) -->
             <div id="modal-refund-section" style="display:none; margin-top:16px; padding:16px; background:#f0f9ff; border-radius:12px; border:1px solid #bae6fd;">

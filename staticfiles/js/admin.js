@@ -283,6 +283,67 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (receiptImgContainer) receiptImgContainer.style.display = 'none';
                 if (receiptNone) receiptNone.style.display = 'block';
             }
+
+            // Proof Photos section
+            var proofPhotosStr = button.getAttribute('data-proof-photos') || '';
+            var proofContainer = document.getElementById('modal-proof-photos');
+            var proofNone = document.getElementById('modal-proof-none');
+            if (proofContainer) {
+                proofContainer.innerHTML = '';
+                if (proofPhotosStr) {
+                    var proofUrls = proofPhotosStr.split(',').filter(function(u) { return u.trim(); });
+                    if (proofUrls.length > 0) {
+                        proofUrls.forEach(function(url) {
+                            var btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.style.cssText = 'background:none; border:2px solid #ddd; border-radius:8px; padding:4px; cursor:pointer; transition:border-color 0.2s;';
+                            btn.title = 'Click to view full image';
+                            var img = document.createElement('img');
+                            img.src = url.trim();
+                            img.alt = 'Proof Photo';
+                            img.style.cssText = 'max-width:120px; max-height:120px; border-radius:6px; display:block;';
+                            btn.appendChild(img);
+                            btn.onclick = function() {
+                                var overlay = document.getElementById('receipt-image-overlay');
+                                var overlayImg = document.getElementById('receipt-overlay-img');
+                                if (overlay && overlayImg) {
+                                    overlayImg.src = url.trim();
+                                    overlay.style.display = 'flex';
+                                    overlay.setAttribute('aria-hidden', 'false');
+                                }
+                            };
+                            proofContainer.appendChild(btn);
+                        });
+                        if (proofNone) proofNone.style.display = 'none';
+                    } else {
+                        if (proofNone) proofNone.style.display = 'block';
+                    }
+                } else {
+                    if (proofNone) proofNone.style.display = 'block';
+                }
+            }
+
+            // Related Documents (batch ticket) section
+            var relatedDocIds = button.getAttribute('data-related-doc-ids') || '';
+            var relatedSection = document.getElementById('modal-related-docs-section');
+            var relatedDocsEl = document.getElementById('modal-related-docs');
+            if (relatedSection && relatedDocsEl) {
+                if (relatedDocIds) {
+                    try {
+                        var docIds = JSON.parse(relatedDocIds);
+                        if (Array.isArray(docIds) && docIds.length > 1) {
+                            relatedDocsEl.textContent = docIds.join(', ');
+                            relatedSection.style.display = 'block';
+                        } else {
+                            relatedSection.style.display = 'none';
+                        }
+                    } catch(e) {
+                        relatedSection.style.display = 'none';
+                    }
+                } else {
+                    relatedSection.style.display = 'none';
+                }
+            }
         }
 
         ticketModal.classList.add('is-open');

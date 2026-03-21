@@ -237,13 +237,14 @@ def submit_ticket(request):
     
     POST /api/submit-ticket/
     
-    Accepts both JSON and multipart/form-data (for file uploads).
+    Accepts multipart/form-data (for file uploads).
     
     Fields:
         customer_id, document_id, document_name, customer_name,
         email, phone_number, problem_type, description,
         page_range, specific_pages, reprinted,
-        receipt_code, receipt_screenshot (file)
+        receipt_code, receipt_screenshot (file),
+        proof_photos (multiple files), documents (JSON for batch)
     """
     try:
         content_type = request.content_type or ''
@@ -276,7 +277,7 @@ def submit_ticket(request):
         receipt_code = data.get('receipt_code', '').strip()
         gcash_number = data.get('gcash_number', '').strip()
         
-        # Handle documents list (for multi-doc mode)
+        # Handle documents list (for multi-doc batch mode)
         documents_list = data.get('documents')
         if documents_list and isinstance(documents_list, str):
             import json as json_module
@@ -284,6 +285,9 @@ def submit_ticket(request):
                 documents_list = json_module.loads(documents_list)
             except (json_module.JSONDecodeError, TypeError):
                 documents_list = None
+        
+        # Proof photos (multiple files)
+        proof_photos = request.FILES.getlist('proof_photos') if 'multipart/form-data' in content_type else []
         
         # Validation
         if not customer_name:
@@ -304,6 +308,38 @@ def submit_ticket(request):
                 'error': 'Issue description is required'
             })
         
+        # Require at least one proof photo
+        if not proof_photos:
+            return JsonResponse({
+                'success': False,
+                'error': 'Please upload at least one photo as proof of the issue.'
+            })
+        
+        # Duplicate ticket detection: check if an active ticket already exists
+        # for the same document_id from the same customer
+        if document_id:
+            existing_ticket = SupportTicket.objects.filter(
+                document_id=document_id,
+                customer_id=customer_id,
+                status__in=['open', 'in-progress']
+            ).first()
+            if existing_ticket:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'You already have an open ticket ({existing_ticket.ticket_number}) for this document. Please wait for it to be resolved.'
+                })
+        
+        # Build related_doc_ids for batch tickets
+        related_doc_ids_json = ''
+        if documents_list and len(documents_list) > 1:
+            import json as json_module
+            all_doc_ids = [d.get('doc_id', '') for d in documents_list if d.get('doc_id')]
+            related_doc_ids_json = json_module.dumps(all_doc_ids)
+            # Set document_name to indicate batch
+            document_name = f"{len(documents_list)} documents: " + ', '.join(
+                d.get('doc_name', d.get('doc_id', '')) for d in documents_list
+            )
+        
         # Get document if exists
         document = None
         if document_id:
@@ -313,6 +349,7 @@ def submit_ticket(request):
                 pass  # Document might have been deleted
         
         # Create the ticket
+        from portal.models import TicketProofImage
         ticket = SupportTicket.objects.create(
             customer_id=customer_id,
             document=document,
@@ -328,17 +365,26 @@ def submit_ticket(request):
             receipt_code=receipt_code,
             receipt_screenshot=receipt_screenshot,
             gcash_number=gcash_number,
+            related_doc_ids=related_doc_ids_json,
         )
         
-        logger.info(f"Support ticket created: {ticket.ticket_number} for customer {customer_name}")
+        # Save proof images
+        for photo in proof_photos:
+            TicketProofImage.objects.create(
+                ticket=ticket,
+                image=photo,
+            )
+        
+        logger.info(f"Support ticket created: {ticket.ticket_number} for customer {customer_name} with {len(proof_photos)} proof photos")
         
         # Create audit log entry for ticket creation
+        batch_note = f" Batch: {len(documents_list)} documents." if documents_list and len(documents_list) > 1 else ""
         TicketAuditLog.objects.create(
             ticket=ticket,
             action='created',
             new_status='open',
             performed_by=customer_name,
-            details=f"Ticket submitted by {customer_name}. Problem: {ticket.get_problem_type_display()}."
+            details=f"Ticket submitted by {customer_name}. Problem: {ticket.get_problem_type_display()}. {len(proof_photos)} proof photo(s).{batch_note}"
         )
         
         # Send email alert to admins

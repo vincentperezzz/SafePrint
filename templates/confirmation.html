@@ -433,6 +433,19 @@ SafePrint
                     <small style="color: #999; margin-top: 4px; display: block;">Please upload a screenshot of your payment receipt</small>
                 </div>
 
+                <div class="ticket-field full-width">
+                    <label>Proof Photos <span class="required">*</span></label>
+                    <div class="receipt-upload-area">
+                        <input type="file" id="ticket-proof-photos" accept="image/*" multiple required style="display:none;">
+                        <button type="button" class="browse-btn receipt-browse-btn" onclick="document.getElementById('ticket-proof-photos').click()">
+                            Browse Photos
+                        </button>
+                        <span class="receipt-file-name" id="proof-photos-name">No files chosen</span>
+                    </div>
+                    <small style="color: #999; margin-top: 4px; display: block;">Upload photo(s) of the issue (e.g., damaged print, blank pages, etc.)</small>
+                    <div id="proof-photos-preview" class="proof-photos-preview"></div>
+                </div>
+
                 <div class="popup-bottom-actions">
                     <button class="popup-cancel-btn" onclick="prevTicketStep(2)">Previous</button>
                     <button class="popup-next-btn" onclick="nextTicketStep(2)">Next</button>

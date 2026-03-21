@@ -513,6 +513,9 @@ class SupportTicket(models.Model):
     # Privacy: 30-day data retention after resolution
     data_retention_expires = models.DateTimeField(null=True, blank=True)
     data_purged = models.BooleanField(default=False)
+
+    # Batch ticket: JSON list of all doc IDs when multiple docs share the same issue
+    related_doc_ids = models.TextField(blank=True, default="")
     
     def save(self, *args, **kwargs):
         if not self.ticket_number:
@@ -559,6 +562,9 @@ class SupportTicket(models.Model):
             except Exception:
                 pass
             self.receipt_screenshot = None
+        # Delete proof images from disk
+        for proof in self.proof_images.all():
+            proof.delete()
         # Clear PII fields
         self.phone_number = ''
         self.gcash_number = ''
@@ -575,6 +581,44 @@ class SupportTicket(models.Model):
     class Meta:
         db_table = 'support_tickets'
         ordering = ['-created_at']
+
+
+def proof_image_upload_path(instance, filename):
+    """Upload proof images to a subfolder per ticket."""
+    import os
+    ext = os.path.splitext(filename)[1]
+    ticket_num = ''
+    if instance.ticket and instance.ticket.ticket_number:
+        ticket_num = instance.ticket.ticket_number.replace('#', '')
+    return f"receipt_screenshots/{ticket_num}/proof_{instance.pk or 'new'}{ext}"
+
+
+class TicketProofImage(models.Model):
+    """Photos uploaded by the customer as proof of the printing issue."""
+    ticket = models.ForeignKey(
+        SupportTicket,
+        on_delete=models.CASCADE,
+        related_name='proof_images'
+    )
+    image = models.ImageField(upload_to='receipt_screenshots/proofs/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'ticket_proof_images'
+        ordering = ['uploaded_at']
+
+    def delete(self, *args, **kwargs):
+        import os
+        if self.image:
+            try:
+                if os.path.isfile(self.image.path):
+                    os.remove(self.image.path)
+            except Exception:
+                pass
+        super().delete(*args, **kwargs)
+
+    def __str__(self):
+        return f"Proof image for {self.ticket.ticket_number}"
 
 
 class TicketAuditLog(models.Model):
