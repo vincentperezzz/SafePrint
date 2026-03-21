@@ -18,6 +18,25 @@ The ticket refund auditing system tracks every action taken on support tickets, 
 | `refund_completed_at` | DateTimeField | Timestamp when refund was marked completed |
 | `refund_reference` | CharField(100) | GCash transaction reference number entered by admin |
 
+### TicketProofImage
+
+Table: `ticket_proof_images`
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | AutoField | Primary key |
+| `ticket` | ForeignKey(SupportTicket) | The ticket this proof photo belongs to |
+| `image` | ImageField | Proof photo file (upload_to: `receipt_screenshots/proofs/`) |
+| `uploaded_at` | DateTimeField(auto_now_add) | When the photo was uploaded |
+
+> Multiple proof images can be associated with a single ticket. They are mandatory at submission time and are deleted during PII purge.
+
+### SupportTicket — Batch Ticket Field
+
+| Field | Type | Description |
+|---|---|---|
+| `related_doc_ids` | TextField | JSON array of all document IDs for batch tickets (empty for single-doc tickets) |
+
 ### TicketAuditLog
 
 Table: `ticket_audit_logs`
@@ -43,6 +62,7 @@ Table: `ticket_audit_logs`
 | `refund_completed` | Admin enters GCash reference and marks refund complete |
 | `refund_rejected` | Admin rejects a refund (future use) |
 | `voided` | Admin voids a ticket |
+| `data_purged` | PII data purged (auto or manual) — includes proof photo deletion |
 | `note_added` | Admin adds a note (future use) |
 | `verified` | Admin verifies/resolves a ticket (future use) |
 
@@ -62,10 +82,12 @@ Table: `ticket_audit_logs`
    - Contact Number
    - **GCash Number** (optional — for refund if applicable)
    - Receipt Code
-   - Receipt Screenshot
+   - Receipt Screenshot (single image — payment receipt)
+   - **Proof Photos** (one or more images — mandatory evidence of the issue)
    - Issue Description
-5. On submission, a `TicketAuditLog` entry with action `created` is recorded
-6. Customer sees confirmation: _"We are working on it! Your ticket number is #TKT-XXXX."_
+5. **Duplicate detection:** If an active ticket already exists for the same document + customer, submission is blocked with the existing ticket number
+6. On submission, a `TicketAuditLog` entry with action `created` is recorded
+7. Customer sees confirmation: _"We are working on it! Your ticket number is #TKT-XXXX."_
 
 ---
 
@@ -89,8 +111,11 @@ The modal displays:
 | Document Info | Document ID, Document Name, Problem Type, Was Reprinted |
 | Payment Info | **GCash Number**, **Payment Amount** |
 | Issue | Full description text |
+| Receipt Proof | Receipt Code, Receipt Screenshot (clickable thumbnail → full-size overlay) |
+| **Proof Photos** | All proof photos uploaded by the customer (clickable thumbnails → full-size overlay) |
+| **Related Documents** | Shown for batch tickets — comma-separated list of all document IDs covered |
 | Refund Pending | Shown only when `refund_status = pending`. Displays refund amount, GCash number, and a text input for the GCash reference number with a "Mark Completed" button |
-| Activity Log | Chronological list of all audit log entries for this ticket |
+| Activity Log | Chronological list of all audit log entries for this ticket (3 tabs: Ticket Log, Printer Status, Document History) |
 
 ### Completing a Refund
 
