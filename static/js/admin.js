@@ -2271,11 +2271,19 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // SSE for real-time printer status and ink updates
+    // Track active SSE connections for cleanup on page unload
+    var _activeSSE = [];
+    window.addEventListener('pagehide', function() {
+        _activeSSE.forEach(function(src) { try { src.close(); } catch(e){} });
+        _activeSSE.length = 0;
+    });
+
     if (window.location.pathname.includes('/portal/status/')) {
         console.log('Setting up SSE connection for printer status...');
 
         function setupPrinterSSE() {
             let evtSource = new EventSource('/sse/printer-status/');
+            _activeSSE.push(evtSource);
 
             evtSource.onopen = function () {
                 console.log('SSE connection opened successfully');
@@ -2482,6 +2490,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function setupDashboardSSE() {
             let evtSourceDash = new EventSource('/sse/dashboard-status/');
+            _activeSSE.push(evtSourceDash);
 
             evtSourceDash.onopen = function () {
                 console.log('Dashboard SSE connection established');

@@ -1801,52 +1801,59 @@ def printer_status_stream(request):
 
 
 def printer_status_event_stream():
+    from django.db import close_old_connections
     last_data = None
-    while True:
-        printers = Printer.objects.all()
-        data = []
-        for printer in printers:
-            # If ink status is None/NULL or printer is Offline, set ink status to "N/A"
-            if printer.ink_status is None or printer.printer_status == "Offline":
-                ink_status = "N/A"
-            else:
-                ink_status = printer.ink_status
-                
-                # If no ink_status is set in the database, calculate it based on individual ink levels
-                if not ink_status or ink_status == "OK":
-                    low_ink_colors = []
+    try:
+        while True:
+            close_old_connections()
+            printers = Printer.objects.all()
+            data = []
+            for printer in printers:
+                # If ink status is None/NULL or printer is Offline, set ink status to "N/A"
+                if printer.ink_status is None or printer.printer_status == "Offline":
+                    ink_status = "N/A"
+                else:
+                    ink_status = printer.ink_status
                     
-                    # Check each ink color
-                    if hasattr(printer, 'ink_cyan') and printer.ink_cyan == 'LOW':
-                        low_ink_colors.append('cyan')
-                    if hasattr(printer, 'ink_magenta') and printer.ink_magenta == 'LOW':
-                        low_ink_colors.append('magenta')
-                    if hasattr(printer, 'ink_yellow') and printer.ink_yellow == 'LOW':
-                        low_ink_colors.append('yellow')
-                    if hasattr(printer, 'ink_black') and printer.ink_black == 'LOW':
-                        low_ink_colors.append('black')
+                    # If no ink_status is set in the database, calculate it based on individual ink levels
+                    if not ink_status or ink_status == "OK":
+                        low_ink_colors = []
                         
-                    if low_ink_colors:
-                        ink_status = ','.join(low_ink_colors)
-                    else:
-                        ink_status = "OK"
-                
-            data.append({
-                'id': printer.id,
-                'printer_name': printer.printer_name,
-                'model_name': getattr(printer, 'model_name', ''),
-                'ip_address': printer.ip_address,
-                'node_name': getattr(printer, 'node_name', ''),
-                'printer_status': printer.printer_status,
-                'ink_status': ink_status,
-                'paper_assigned': getattr(printer, 'paper_assigned', ''),
-                'paper_quality': getattr(printer, 'paper_quality', ''),
-            })
-        json_data = json.dumps({'printers': data})
-        if json_data != last_data:
-            yield f"data: {json_data}\n\n"
-            last_data = json_data
-        time.sleep(1)  # Poll every 1 second for more responsive updates
+                        # Check each ink color
+                        if hasattr(printer, 'ink_cyan') and printer.ink_cyan == 'LOW':
+                            low_ink_colors.append('cyan')
+                        if hasattr(printer, 'ink_magenta') and printer.ink_magenta == 'LOW':
+                            low_ink_colors.append('magenta')
+                        if hasattr(printer, 'ink_yellow') and printer.ink_yellow == 'LOW':
+                            low_ink_colors.append('yellow')
+                        if hasattr(printer, 'ink_black') and printer.ink_black == 'LOW':
+                            low_ink_colors.append('black')
+                            
+                        if low_ink_colors:
+                            ink_status = ','.join(low_ink_colors)
+                        else:
+                            ink_status = "OK"
+                    
+                data.append({
+                    'id': printer.id,
+                    'printer_name': printer.printer_name,
+                    'model_name': getattr(printer, 'model_name', ''),
+                    'ip_address': printer.ip_address,
+                    'node_name': getattr(printer, 'node_name', ''),
+                    'printer_status': printer.printer_status,
+                    'ink_status': ink_status,
+                    'paper_assigned': getattr(printer, 'paper_assigned', ''),
+                    'paper_quality': getattr(printer, 'paper_quality', ''),
+                })
+            json_data = json.dumps({'printers': data})
+            if json_data != last_data:
+                yield f"data: {json_data}\n\n"
+                last_data = json_data
+            else:
+                yield ":\n\n"
+            time.sleep(1)
+    finally:
+        close_old_connections()
 
 
 def dashboard_status_stream(request):
@@ -1856,40 +1863,47 @@ def dashboard_status_stream(request):
 
 
 def dashboard_status_event_stream():
+    from django.db import close_old_connections
     last_data = None
-    while True:
-        # Gather dashboard stats
-        completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
-        printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
-        pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
-        active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
-        resolved_tickets_count = SupportTicket.objects.filter(status__in=['resolved', 'closed', 'voided', 'refunded']).count()
-        # Get recent completed documents (limit 5, order by -printed_at)
-        completed_documents = list(
-            Document.objects.filter(doc_status='Finished')
-            .select_related('printer_assigned')
-            .order_by('-printed_at')[:5]
-        )
-        completed_docs_data = []
-        for doc in completed_documents:
-            completed_docs_data.append({
-                'doc_id': doc.doc_id,
-                'filename': doc.filename,
-                'printer_name': doc.printer_assigned.printer_name if doc.printer_assigned else 'No Printer',
-            })
-        data = {
-            'completed_jobs_count': completed_jobs_count,
-            'printer_errors_count': printer_errors_count,
-            'pending_customers_count': pending_customers_count,
-            'active_tickets_count': active_tickets_count,
-            'resolved_tickets_count': resolved_tickets_count,
-            'completed_documents': completed_docs_data,
-        }
-        json_data = json.dumps(data)
-        if json_data != last_data:
-            yield f"data: {json_data}\n\n"
-            last_data = json_data
-        time.sleep(2)
+    try:
+        while True:
+            close_old_connections()
+            # Gather dashboard stats
+            completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
+            printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
+            pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
+            active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
+            resolved_tickets_count = SupportTicket.objects.filter(status__in=['resolved', 'closed', 'voided', 'refunded']).count()
+            # Get recent completed documents (limit 5, order by -printed_at)
+            completed_documents = list(
+                Document.objects.filter(doc_status='Finished')
+                .select_related('printer_assigned')
+                .order_by('-printed_at')[:5]
+            )
+            completed_docs_data = []
+            for doc in completed_documents:
+                completed_docs_data.append({
+                    'doc_id': doc.doc_id,
+                    'filename': doc.filename,
+                    'printer_name': doc.printer_assigned.printer_name if doc.printer_assigned else 'No Printer',
+                })
+            data = {
+                'completed_jobs_count': completed_jobs_count,
+                'printer_errors_count': printer_errors_count,
+                'pending_customers_count': pending_customers_count,
+                'active_tickets_count': active_tickets_count,
+                'resolved_tickets_count': resolved_tickets_count,
+                'completed_documents': completed_docs_data,
+            }
+            json_data = json.dumps(data)
+            if json_data != last_data:
+                yield f"data: {json_data}\n\n"
+                last_data = json_data
+            else:
+                yield ":\n\n"
+            time.sleep(2)
+    finally:
+        close_old_connections()
 
 
 @csrf_exempt
