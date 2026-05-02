@@ -159,8 +159,13 @@ def dashboard(request):
                 ticket.payment_amount = payment.price
         _attach_dashboard_ticket_display(ticket)
     
+    today = timezone.localdate()
     active_tickets_count = len(active_tickets)
     resolved_tickets_count = len(resolved_tickets)
+    sales_today_amount = Payment.objects.filter(
+        payment_status='Paid',
+        approved_at__date=today,
+    ).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
     
     # Get recent completed documents with payment info and printed_at timestamp
     completed_documents = Document.objects.filter(
@@ -179,6 +184,7 @@ def dashboard(request):
         'resolved_tickets': resolved_tickets,
         'active_tickets_count': active_tickets_count,
         'resolved_tickets_count': resolved_tickets_count,
+        'sales_today_amount': sales_today_amount,
         'completed_documents': completed_documents,
         'searched_documents': searched_documents,
         'customer_id_display': customer_id_display,
@@ -659,6 +665,10 @@ def get_active_tickets_api(request):
             'resolved_tickets': resolved_tickets_data,
             'active_count': len(active_tickets_data),
             'resolved_count': len(resolved_tickets_data),
+            'sales_today_amount': float(Payment.objects.filter(
+                payment_status='Paid',
+                approved_at__date=timezone.localdate(),
+            ).aggregate(total=Sum('price'))['total'] or Decimal('0.00')),
         })
     except Exception as e:
         logger.error(f"Error fetching active tickets: {str(e)}")
@@ -2140,6 +2150,10 @@ def dashboard_status_event_stream():
             pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
             active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
             resolved_tickets_count = SupportTicket.objects.filter(status__in=['resolved', 'closed', 'voided', 'refunded']).count()
+            sales_today_amount = Payment.objects.filter(
+                payment_status='Paid',
+                approved_at__date=timezone.localdate(),
+            ).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
             # Get recent completed documents (limit 5, order by -printed_at)
             completed_documents = list(
                 Document.objects.filter(doc_status='Finished')
@@ -2159,6 +2173,7 @@ def dashboard_status_event_stream():
                 'pending_customers_count': pending_customers_count,
                 'active_tickets_count': active_tickets_count,
                 'resolved_tickets_count': resolved_tickets_count,
+                'sales_today_amount': float(sales_today_amount),
                 'completed_documents': completed_docs_data,
             }
             json_data = json.dumps(data)
