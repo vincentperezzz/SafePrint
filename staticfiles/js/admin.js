@@ -900,18 +900,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const updateTicketCounts = () => {
         const activeCountEl = document.getElementById('active-tickets-count');
-        const resolvedCountEl = document.getElementById('resolved-tickets-count');
 
         if (activeResults && activeCountEl) {
             const activeRows = Array.from(activeResults.querySelectorAll('.document-item'))
                 .filter((row) => !row.classList.contains('empty-row'));
             activeCountEl.textContent = activeRows.length.toString();
-        }
-
-        if (resolvedResults && resolvedCountEl) {
-            const resolvedRows = Array.from(resolvedResults.querySelectorAll('.document-item.resolved-row'))
-                .filter((row) => !row.classList.contains('empty-row'));
-            resolvedCountEl.textContent = resolvedRows.length.toString();
         }
     };
 
@@ -3053,10 +3046,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (errorElem && stats.hasOwnProperty('active_tickets_count')) {
                         errorElem.textContent = String(stats.active_tickets_count);
                     }
-                    // Update Resolved Tickets
-                    const pendingElem = document.getElementById('resolved-tickets-count');
-                    if (pendingElem && stats.hasOwnProperty('resolved_tickets_count')) {
-                        pendingElem.textContent = String(stats.resolved_tickets_count);
+                    // Update Sales Today
+                    const pendingElem = document.getElementById('sales-today-count');
+                    if (pendingElem && stats.hasOwnProperty('sales_today_amount')) {
+                        pendingElem.textContent = '₱' + Number(stats.sales_today_amount || 0).toFixed(2);
                     }
 
                     // Update Completed Jobs List (dashboard-right)
@@ -3769,11 +3762,11 @@ if (addPrinterForm) {
             .then(data => {
                 if (data.success) {
                     const activeCount = data.active_count || 0;
-                    const resolvedCount = data.resolved_count || 0;
+                    const salesTodayAmount = Number(data.sales_today_amount || 0);
 
                     // Update counts in stat cards
                     document.getElementById('active-tickets-count').textContent = activeCount;
-                    document.getElementById('resolved-tickets-count').textContent = resolvedCount;
+                    document.getElementById('sales-today-count').textContent = '₱' + salesTodayAmount.toFixed(2);
 
                     // Update notification bell badge if present
                     const notifCountEl = document.getElementById('notification-count');
