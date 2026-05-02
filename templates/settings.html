@@ -171,7 +171,11 @@ Account Settings
       <div class="settings-field-row payment-gateway-row">
         <div class="settings-field payment-gateway-field">
           <label for="payment-qr-image-setting">Recipient QR Code</label>
-          <input type="file" id="payment-qr-image-setting" accept="image/*">
+          <input type="file" id="payment-qr-image-setting" accept="image/*" style="display:none;">
+          <div class="payment-qr-upload-bar">
+            <button type="button" class="browse-btn payment-qr-browse-btn" onclick="document.getElementById('payment-qr-image-setting').click();">Browse Files</button>
+            <span id="payment-qr-file-name" class="payment-qr-file-name">No file chosen</span>
+          </div>
           <div class="payment-gateway-panel">
             <div class="payment-gateway-preview-wrap">
               {% if site_settings.gcash_qr_image %}
@@ -183,7 +187,7 @@ Account Settings
               {% endif %}
             </div>
             <div class="payment-gateway-actions">
-              <p class="payment-gateway-helper">Changes here update the student payment instructions as soon as the save completes.</p>
+              <p class="payment-gateway-helper">Changes here update the customer's payment instructions as soon as the save completes.</p>
             </div>
           </div>
         </div>
