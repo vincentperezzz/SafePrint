@@ -3480,6 +3480,13 @@ input:focus::placeholder {
     pointer-events: none; 
 }
 
+.navbar-sales-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
 .navbar-item.logout {
     background: #FFF;
     color: #d00000;
@@ -3743,12 +3750,12 @@ input:focus::placeholder {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     margin-top: 12px;
     border: 2px solid black;
     border-radius: 16px;
     background-color: white;
-    padding: 20px;
+    padding: 18px;
     height: 100%;
     box-shadow: 0px 6px 0px 0px black;
 }
@@ -3807,17 +3814,39 @@ input:focus::placeholder {
     background-color: #ffffff;
 }
 
+.document-item-title.active-header {
+    grid-template-columns: 1.05fr 0.9fr 1fr 1.05fr 245px;
+    column-gap: 16px;
+    padding: 8px 12px;
+}
+
 .document-item-title.resolved-header {
-    grid-template-columns: 0.6fr 0.55fr 0.6fr 0.4fr 0.4fr 0.2fr;
+    grid-template-columns: 0.9fr 1fr 1.2fr 0.8fr 0.75fr 220px;
     background-color: #ffffff;
+    column-gap: 16px;
+    padding: 8px 12px;
+}
+
+.ticket-header-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.ticket-header-spacer {
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    display: block;
 }
 
 .document-item.resolved-row {
-    grid-template-columns: 0.6fr 0.55fr 0.6fr 0.4fr 0.4fr auto;
+    grid-template-columns: 0.9fr 1fr 1.2fr 0.8fr 0.75fr 220px;
 }
 
 .dashboard-left .document-item.resolved-row {
-    grid-template-columns: 0.6fr 0.55fr 0.6fr 0.4fr 0.4fr auto;
+    grid-template-columns: 0.9fr 1fr 1.2fr 0.8fr 0.75fr 220px;
 }
 
 .resolved-customer,
@@ -3986,17 +4015,43 @@ input:focus::placeholder {
     font-weight: 500;
 }
 
+.document-item-title > span,
+.document-item-title > p,
+.document-item-title > div {
+    display: block;
+    width: 100%;
+    justify-self: start;
+}
+
 .document-item-title span,
 .document-item-title p {
     padding-left: 0;
 }
 
+.document-item-title > .ticket-header-cell {
+    display: flex !important;
+    align-items: center;
+    width: 100%;
+}
+
+.dashboard-left .document-item-title.active-header {
+    grid-template-columns: 1.05fr 0.9fr 1fr 1.05fr 245px;
+}
+
+.dashboard-left .document-item-title.resolved-header {
+    grid-template-columns: 0.9fr 1fr 1.2fr 0.8fr 0.75fr 220px;
+}
+
 .dashboard-left .document-item {
     display: grid;
-    grid-template-columns: 1.3fr 1.6fr 1.2fr 1fr auto;
+    grid-template-columns: 1.05fr 0.9fr 1fr 1.05fr 245px;
     align-items: center;
-    column-gap: 12px;
+    column-gap: 16px;
     width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #D8D8D8;
+    border-radius: 12px;
+    background-color: #ffffff;
 }
 
 .ticket-cell {
@@ -4035,11 +4090,31 @@ input:focus::placeholder {
 
 .ticket-customer,
 .ticket-date,
+.ticket-documents,
 .ticket-issue{
     font-size: 16px;
     font-weight: 500;
     color: #2a2a2a;
     font-family: 'Montserrat', sans-serif;
+}
+
+.ticket-documents {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.ticket-documents span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ticket-documents span:last-child {
+    color: #6D6D6D;
+    font-size: 14px;
+    font-weight: 600;
 }
 
 .document-item.placeholder {
@@ -4064,6 +4139,19 @@ input:focus::placeholder {
     display: flex;
     gap: 10px;
     justify-self: end;
+}
+
+.resolved-details {
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.resolved-details .purge-ticket-btn {
+    padding: 6px 10px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    line-height: 1.3;
+    white-space: nowrap;
 }
 
 .actions button {
@@ -5134,6 +5222,65 @@ input:focus::placeholder {
 
 .voucher-table .printer-table-row {
     grid-template-columns: 1.2fr 0.8fr 0.8fr 1fr 1fr 1fr 1.2fr;
+}
+
+.sales-stats {
+    gap: 18px;
+}
+
+.sales-stat-card {
+    width: calc((100% - 36px) / 3);
+}
+
+.sales-card {
+    padding: 20px;
+}
+
+.sales-meta {
+    margin: 0 0 16px;
+    color: #5A5D6C;
+    font-size: 0.95rem;
+}
+
+.sales-table .printer-table-header,
+.sales-table .printer-table-row {
+    grid-template-columns: 1.1fr 0.9fr 2fr 1fr 0.9fr 1.1fr;
+}
+
+.sales-document-cell {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.sales-document-cell strong,
+.sales-document-cell span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sales-document-cell span {
+    color: #6B7280;
+    font-size: 0.86rem;
+}
+
+.sales-method-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid #18191F;
+    background: #F6F7FB;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: capitalize;
+}
+
+.sales-amount-cell {
+    font-weight: 800;
+    text-align: right;
 }
 
 .voucher-code-cell {
@@ -7786,6 +7933,61 @@ input:focus::placeholder {
         min-width: 0;
     }
 
+    .sales-stats {
+        flex-direction: row;
+        gap: 8px;
+    }
+
+    .sales-stat-card {
+        width: auto;
+        flex: 1 1 0;
+        min-width: 0;
+        padding: 10px 10px;
+    }
+
+    .sales-stat-card h3 {
+        font-size: 0.72rem;
+        line-height: 1.05;
+    }
+
+    .sales-stat-card p {
+        font-size: 1.8rem;
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .sales-card {
+        padding: 14px;
+    }
+
+    .sales-table .printer-table-header {
+        display: none;
+    }
+
+    .sales-table .printer-table-row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid #D8D8D8;
+        border-radius: 12px;
+        background: #ffffff;
+    }
+
+    .sales-table .printer-table-row [data-label]::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        color: #888;
+        text-transform: uppercase;
+        margin-bottom: 2px;
+    }
+
+    .sales-amount-cell {
+        text-align: left;
+    }
+
     .voucher-generate-form .voucher-form-row {
         flex-wrap: nowrap;
     }
@@ -8047,9 +8249,15 @@ input:focus::placeholder {
 
     .document-item .ticket-customer,
     .document-item .ticket-date,
+    .document-item .ticket-documents,
     .document-item .ticket-issue {
         font-size: 14px;
         text-align: left;
+    }
+
+    .document-item .ticket-documents span {
+        white-space: normal;
+        word-break: break-word;
     }
 
     .document-item .actions {
@@ -8360,6 +8568,14 @@ input:focus::placeholder {
 
     .stat-card h3 {
         font-size: 0.8rem;
+    }
+
+    .sales-stat-card h3 {
+        font-size: 0.65rem;
+    }
+
+    .sales-stat-card p {
+        font-size: 1.45rem;
     }
 
     .customer-info input {

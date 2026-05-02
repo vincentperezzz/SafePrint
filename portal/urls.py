@@ -7,6 +7,7 @@ urlpatterns = [
     path('portal/queue/', views.printing_queue, name='printing_queue'),
     path('portal/completed/', views.print_completed, name='print_completed'),
     path('portal/status/', views.printer_status, name='printer_status'),
+    path('portal/sales/', views.sales_dashboard, name='sales_dashboard'),
     path('portal/settings/', views.account_settings, name='account_settings'),
     path('portal/vouchers/', views.voucher_management, name='voucher_management'),
     path('feedback/', views.feedback_view, name='feedback'),

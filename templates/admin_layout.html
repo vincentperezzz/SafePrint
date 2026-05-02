@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     <link rel="icon" href="{% static 'assets/safeprint-logo.ico' %}" type="image/x-icon">
     <title>{% block title %}SafePrint{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=20260315x">
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=20260502a">
 </head>
 <body>
     <div class="dashboard-layout">
@@ -46,6 +46,8 @@
             <ul class="navbar-menu">
                 <li><a href="{% url 'dashboard' %}" class="navbar-item {% if 'dashboard' in request.path %}active{% endif %}">
                     <img src="{% static 'assets/dashboard.svg' %}" alt="Dashboard Icon"> Dashboard</a></li>
+                <li><a href="{% url 'sales_dashboard' %}" class="navbar-item {% if 'sales' in request.path %}active{% endif %}">
+                    <img src="{% static 'assets/sales.svg' %}" alt="Sales Icon" class="navbar-sales-icon"> Sales</a></li>
                 <li><a href="{% url 'printing_queue' %}" class="navbar-item {% if 'queue' in request.path %}active{% endif %}">
                     <img src="{% static 'assets/printing-queue.svg' %}" alt="Printing Queue Icon"> Print Queue</a></li>
                 <li><a href="{% url 'print_completed' %}" class="navbar-item {% if 'completed' in request.path %}active{% endif %}">
@@ -68,6 +70,6 @@
         </div>
     </div>
 {% block modals %}{% endblock %}
-<script src="{% static 'js/admin.js' %}?v=20260315s"></script>
+<script src="{% static 'js/admin.js' %}?v=20260502a"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@ import threading
 import subprocess
 from datetime import timedelta
 from decimal import Decimal
-from django.db.models import Q
+from django.db.models import Count, Q, Sum
 from .forms import FeedbackForm
 from django.http import Http404
 from django.conf import settings
@@ -27,6 +27,57 @@ from portal.services.firebase_payment import FirebasePaymentError, claim_notific
 logger = logging.getLogger(__name__)
 
 now = timezone.now()
+
+
+def _format_dashboard_customer_id(customer_id):
+    value = str(customer_id or '').strip()
+    if not value:
+        return '—'
+    return value if value.startswith('#') else f'#{value}'
+
+
+def _get_dashboard_document_display(ticket):
+    raw_related_doc_ids = str(ticket.related_doc_ids or '').strip()
+    related_doc_ids = []
+
+    if raw_related_doc_ids:
+        try:
+            parsed_doc_ids = json.loads(raw_related_doc_ids)
+            if isinstance(parsed_doc_ids, list):
+                related_doc_ids = [str(doc_id).strip() for doc_id in parsed_doc_ids if str(doc_id).strip()]
+            elif parsed_doc_ids:
+                related_doc_ids = [str(parsed_doc_ids).strip()]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            related_doc_ids = [part.strip() for part in raw_related_doc_ids.split(',') if part.strip()]
+
+    primary_doc_id = ticket.document.doc_id if ticket.document else ''
+    ordered_doc_ids = []
+
+    for doc_id in [primary_doc_id, *related_doc_ids]:
+        clean_doc_id = str(doc_id or '').strip().strip('#')
+        if clean_doc_id and clean_doc_id not in ordered_doc_ids:
+            ordered_doc_ids.append(clean_doc_id)
+
+    if ordered_doc_ids:
+        summary_ids = [f'#{doc_id}' for doc_id in ordered_doc_ids[:2]]
+        summary = ', '.join(summary_ids)
+        if len(ordered_doc_ids) > 2:
+            summary = f'{summary} +{len(ordered_doc_ids) - 2} more'
+
+        meta = f'{len(ordered_doc_ids)} documents' if len(ordered_doc_ids) > 1 else ''
+        return summary, meta
+
+    fallback_name = str(ticket.document_name or '').strip()
+    if fallback_name:
+        return fallback_name, ''
+
+    return '—', ''
+
+
+def _attach_dashboard_ticket_display(ticket):
+    ticket.customer_id_display = _format_dashboard_customer_id(ticket.customer_id)
+    ticket.document_ids_display, ticket.document_meta_display = _get_dashboard_document_display(ticket)
+    return ticket
 
 def dashboard(request):
     user_id = request.session.get('admin_user_id')
@@ -57,6 +108,7 @@ def dashboard(request):
             payment = Payment.objects.filter(doc=ticket.document).first()
             if payment:
                 ticket.payment_amount = payment.price
+        _attach_dashboard_ticket_display(ticket)
     
     for ticket in resolved_tickets:
         ticket.payment_amount = None
@@ -64,6 +116,7 @@ def dashboard(request):
             payment = Payment.objects.filter(doc=ticket.document).first()
             if payment:
                 ticket.payment_amount = payment.price
+        _attach_dashboard_ticket_display(ticket)
     
     active_tickets_count = len(active_tickets)
     resolved_tickets_count = len(resolved_tickets)
@@ -224,6 +277,41 @@ def voucher_management(request):
     
     return render(request, 'vouchers.html', {
         'vouchers': vouchers,
+    })
+
+
+def sales_dashboard(request):
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        raise Http404("User not found in session")
+
+    try:
+        user = AdminUser.objects.get(id=user_id)
+    except AdminUser.DoesNotExist:
+        raise Http404("User not found")
+
+    active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
+    paid_payments = Payment.objects.select_related('doc').filter(payment_status='Paid')
+
+    today = timezone.localdate()
+    month_start = today.replace(day=1)
+
+    today_sales = paid_payments.filter(approved_at__date=today).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+    month_sales = paid_payments.filter(approved_at__date__gte=month_start).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+    lifetime_sales = paid_payments.aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+    paid_transactions_count = paid_payments.aggregate(total=Count('id'))['total'] or 0
+    recent_sales = paid_payments.order_by('-approved_at', '-id')[:100]
+
+    return render(request, 'sales.html', {
+        'user': user,
+        'active_tickets_count': active_tickets_count,
+        'today_sales': today_sales,
+        'month_sales': month_sales,
+        'lifetime_sales': lifetime_sales,
+        'paid_transactions_count': paid_transactions_count,
+        'recent_sales': recent_sales,
+        'today_label': today.strftime('%b %d, %Y'),
+        'month_label': today.strftime('%B %Y'),
     })
 
 
@@ -459,15 +547,21 @@ def get_active_tickets_api(request):
                 payment = Payment.objects.filter(doc=ticket.document).first()
                 if payment:
                     payment_amount = float(payment.price)
+
+            customer_id_display = _format_dashboard_customer_id(ticket.customer_id)
+            document_ids_display, document_meta_display = _get_dashboard_document_display(ticket)
             
             active_tickets_data.append({
                 'id': ticket.id,
                 'ticket_number': ticket.ticket_number,
                 'customer_id': ticket.customer_id,
+                'customer_id_display': customer_id_display,
                 'customer_name': ticket.customer_name,
                 'email': ticket.email,
                 'phone_number': ticket.phone_number,
                 'document_name': ticket.document_name,
+                'document_ids_display': document_ids_display,
+                'document_meta_display': document_meta_display,
                 'problem_type': ticket.get_problem_type_display(),
                 'description': ticket.description,
                 'created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M:%S'),
@@ -486,15 +580,21 @@ def get_active_tickets_api(request):
                 payment = Payment.objects.filter(doc=ticket.document).first()
                 if payment:
                     payment_amount = float(payment.price)
+
+            customer_id_display = _format_dashboard_customer_id(ticket.customer_id)
+            document_ids_display, document_meta_display = _get_dashboard_document_display(ticket)
             
             resolved_tickets_data.append({
                 'id': ticket.id,
                 'ticket_number': ticket.ticket_number,
                 'customer_id': ticket.customer_id,
+                'customer_id_display': customer_id_display,
                 'customer_name': ticket.customer_name,
                 'email': ticket.email,
                 'phone_number': ticket.phone_number,
                 'document_name': ticket.document_name,
+                'document_ids_display': document_ids_display,
+                'document_meta_display': document_meta_display,
                 'problem_type': ticket.get_problem_type_display(),
                 'description': ticket.description,
                 'created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M:%S'),

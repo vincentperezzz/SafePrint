@@ -1,0 +1,76 @@
+{% extends "admin_layout.html" %}
+{% load static %}
+
+{% block title %}
+Sales
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-rows">
+    <div class="header-left">
+        <h1>Sales</h1>
+    </div>
+    <div style="position:relative;">
+        <button id="notification-bell" class="notification-bell" aria-label="Notifications" style="background:transparent; border:none; padding:6px; cursor:pointer;">
+            <span style="position:relative; display:inline-block; width:34px; height:34px;">
+                <img class="bell-icon" src="{% static 'assets/bell.svg' %}" alt="Notifications" width="34" height="34" aria-hidden="true">
+                <span id="notification-count" style="position:absolute; top:-4px; right:-16px; background:#d9534f; color:#fff; border-radius:50%; padding:4px 6px; font-size:0.75rem; min-width:20px; text-align:center; line-height:1; box-shadow:0 1px 0 rgba(0,0,0,0.2);">{{ active_tickets_count }}</span>
+            </span>
+        </button>
+    </div>
+</div>
+
+<hr class="dashboard-divider">
+<div id="pageMessages"></div>
+
+<div class="dashboard-stats sales-stats">
+    <div class="stat-card green sales-stat-card">
+        <h3>Today<br>({{ today_label }})</h3>
+        <p>₱{{ today_sales|floatformat:2 }}</p>
+    </div>
+    <div class="stat-card yellow sales-stat-card">
+        <h3>This Month<br>({{ month_label }})</h3>
+        <p>₱{{ month_sales|floatformat:2 }}</p>
+    </div>
+    <div class="stat-card red sales-stat-card">
+        <h3>Lifetime<br>Sales</h3>
+        <p>₱{{ lifetime_sales|floatformat:2 }}</p>
+    </div>
+</div>
+
+<div class="queue-header">
+    <h2 class="dashboard-section-header">Recent Paid Transactions</h2>
+</div>
+<div class="printer-status-card sales-card">
+    <p class="sales-meta">{{ paid_transactions_count }} paid document transactions recorded.</p>
+    <div class="printer-table sales-table">
+        <div class="printer-table-header">
+            <div>Date Paid</div>
+            <div>Customer ID</div>
+            <div>Document</div>
+            <div>Method</div>
+            <div>Amount</div>
+            <div>Verified By</div>
+        </div>
+        {% for sale in recent_sales %}
+        <div class="printer-table-row" data-sale-id="{{ sale.id }}">
+            <div data-label="Date Paid">{% if sale.approved_at %}{{ sale.approved_at|date:"M d, Y H:i" }}{% else %}Pending{% endif %}</div>
+            <div data-label="Customer ID">#{{ sale.doc.customer_id }}</div>
+            <div data-label="Document" class="sales-document-cell">
+                <strong>{{ sale.doc.filename }}</strong>
+                <span>#{{ sale.doc.doc_id }}</span>
+            </div>
+            <div data-label="Method">
+                <span class="sales-method-badge">{{ sale.payment_method|default:"manual" }}</span>
+            </div>
+            <div data-label="Amount" class="sales-amount-cell">₱{{ sale.price|floatformat:2 }}</div>
+            <div data-label="Verified By">{{ sale.approved_by|default:"—" }}</div>
+        </div>
+        {% empty %}
+        <div class="printer-table-row">
+            <div style="grid-column: 1 / -1; text-align: center; padding: 24px;">No paid transactions yet.</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
