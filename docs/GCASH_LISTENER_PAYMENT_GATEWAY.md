@@ -328,3 +328,63 @@ For this branch, the recommended implementation direction is:
 - use receipt upload only for ambiguous or failed auto-validation cases
 
 This gives the system a realistic GCash flow without needing a direct GCash API while still preventing duplicate reuse of the same payment across multiple CIDs.
+
+---
+
+## Audit-Safe Retention Plan
+
+The payment migration also needs a retention model that keeps auditability without retaining customer files longer than necessary.
+
+### Retention Principle
+
+- original uploaded document files are not audit records and should continue to be auto-deleted
+- paid sales, refund records, ticket history, and operational logs must survive document deletion
+- short-term evidence with customer-sensitive content should be redacted or purged after the dispute window
+
+### Keep Permanently or Long-Term
+
+- paid Payment records as the immutable sales ledger
+- Payment snapshots needed for audit after document deletion:
+   customer id, doc id, document name, copies, page metadata, paper metadata, approval data
+- SupportTicket snapshots needed for ticket review after document deletion:
+   doc id, document name, payment amount, payment method, verifier, approval timestamp
+- Ticket audit history and ticket status transitions
+- Document lifecycle history
+- reroute history and reprint history in snapshot form so they remain queryable after document deletion
+- voucher movement history for created, reserved, redeemed, restored, deactivated, reactivated, and deleted events
+- refund amount, refund reference, refund completion metadata
+
+### Delete or Redact on a Timer
+
+- uploaded document files and empty upload folders
+- receipt screenshots and proof photos after the ticket retention window
+- payer numbers and raw Firestore listener payload text from finalized payment intents after the retention window
+- unpaid payment attempts tied to abandoned or cancelled flows
+
+### Loopholes This Refactor Closes
+
+- sales records disappearing when a document is deleted
+- refund verification depending on a live document relation that may already be gone
+- ticket review losing the original doc id after document cleanup
+- reroute and reprint evidence disappearing with the document row
+- voucher balance changes having no immutable audit trail
+- sensitive listener payloads being retained indefinitely
+
+### Implementation Notes
+
+- make Payment preserve audit snapshots before any document cleanup path detaches or deletes records
+- keep paid Payment rows and detach them from Document when the document is removed
+- delete only unpaid Payment rows during cancellation or cleanup
+- populate SupportTicket snapshot fields at creation time so ticket review does not depend on live foreign keys
+- keep DocumentLifecycleLog as the permanent deletion-safe document audit source
+- add a scheduled command for payment-intent evidence redaction:
+   `python manage.py purge_payment_intent_evidence --days 30`
+
+### Validation Scenarios
+
+- delete a picked-up document and confirm the sale still appears in Sales
+- open and review a resolved ticket after its source document has been deleted
+- verify reroute and reprint evidence still appears in ticket verification data after document deletion
+- confirm unpaid cancelled flows still remove orphan payment rows
+- confirm voucher reserve, restore, and redeem actions produce audit rows
+- confirm expired finalized payment intents have payer number and raw payload redacted after the retention window
