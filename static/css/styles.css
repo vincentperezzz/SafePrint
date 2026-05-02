@@ -5978,6 +5978,26 @@ input:focus::placeholder {
     gap: 12px;
 }
 
+.payment-qr-upload-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.payment-qr-browse-btn {
+    flex: 0 0 auto;
+}
+
+.payment-qr-file-name {
+    color: #5A5D6C;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 500;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
 .payment-gateway-panel {
     display: flex;
     align-items: flex-start;

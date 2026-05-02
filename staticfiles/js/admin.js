@@ -1916,11 +1916,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const paymentQrInput = document.getElementById('payment-qr-image-setting');
         const paymentQrPreview = document.getElementById('payment-qr-preview');
         const paymentQrPreviewEmpty = document.getElementById('payment-qr-preview-empty');
+        const paymentQrFileName = document.getElementById('payment-qr-file-name');
         const savePaymentGatewayBtn = document.getElementById('save-payment-gateway-btn');
 
         if (paymentQrInput) {
             paymentQrInput.addEventListener('change', function () {
                 const file = this.files && this.files[0];
+                if (paymentQrFileName) {
+                    paymentQrFileName.textContent = file ? file.name : 'No file chosen';
+                }
                 if (!file || !paymentQrPreview) return;
 
                 const reader = new FileReader();
