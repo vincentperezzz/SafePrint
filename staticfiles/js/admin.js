@@ -1910,7 +1910,48 @@ document.addEventListener('DOMContentLoaded', () => {
         const paymentQrPreview = document.getElementById('payment-qr-preview');
         const paymentQrPreviewEmpty = document.getElementById('payment-qr-preview-empty');
         const paymentQrFileName = document.getElementById('payment-qr-file-name');
-        const savePaymentGatewayBtn = document.getElementById('save-payment-gateway-btn');
+        const paymentQrBrowseBtn = document.getElementById('payment-qr-browse-btn');
+        const editPaymentGatewayBtn = document.getElementById('edit-payment-gateway-btn');
+        const paymentGatewaySection = document.querySelector('.payment-gateway-section');
+        const paymentGatewayControls = [
+            paymentRecipientNameInput,
+            paymentRecipientNumberInput,
+            paymentExpiryInput,
+            blockPaymentWhenOfflineInput,
+            paymentQrInput,
+            paymentQrBrowseBtn,
+        ].filter(Boolean);
+        let paymentGatewayOriginalValues = null;
+
+        const getPaymentGatewayValues = () => ({
+            recipient_name: paymentRecipientNameInput ? paymentRecipientNameInput.value.trim() : '',
+            recipient_number: paymentRecipientNumberInput ? paymentRecipientNumberInput.value.trim() : '',
+            payment_expiry_minutes: paymentExpiryInput ? paymentExpiryInput.value.trim() : '10',
+            block_payment_when_printers_unavailable: !!(blockPaymentWhenOfflineInput && blockPaymentWhenOfflineInput.checked),
+        });
+
+        const setPaymentGatewayButtonState = (mode, isBusy = false) => {
+            if (!editPaymentGatewayBtn) {
+                return;
+            }
+
+            editPaymentGatewayBtn.dataset.mode = mode;
+            editPaymentGatewayBtn.disabled = isBusy;
+            editPaymentGatewayBtn.classList.toggle('is-save-mode', mode === 'save' && !isBusy);
+            editPaymentGatewayBtn.textContent = isBusy ? 'Saving...' : (mode === 'save' ? 'Save Changes' : 'Edit');
+        };
+
+        const setPaymentGatewayEditing = (isEditing) => {
+            paymentGatewayControls.forEach((control) => {
+                control.disabled = !isEditing;
+            });
+
+            if (paymentGatewaySection) {
+                paymentGatewaySection.classList.toggle('is-locked', !isEditing);
+            }
+
+            setPaymentGatewayButtonState(isEditing ? 'save' : 'edit');
+        };
 
         if (paymentQrInput) {
             paymentQrInput.addEventListener('change', function () {
@@ -1930,25 +1971,45 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        if (savePaymentGatewayBtn) {
-            savePaymentGatewayBtn.addEventListener('click', function () {
+        if (paymentGatewayControls.length) {
+            paymentGatewayOriginalValues = getPaymentGatewayValues();
+            setPaymentGatewayEditing(false);
+        }
+
+        if (editPaymentGatewayBtn) {
+            editPaymentGatewayBtn.addEventListener('click', function () {
                 const pageMessages = document.getElementById('pageMessages');
                 if (pageMessages) {
                     pageMessages.innerHTML = '';
                 }
 
+                if (editPaymentGatewayBtn.dataset.mode !== 'save') {
+                    paymentGatewayOriginalValues = getPaymentGatewayValues();
+                    setPaymentGatewayEditing(true);
+                    if (paymentRecipientNameInput) {
+                        paymentRecipientNameInput.focus();
+                    }
+                    return;
+                }
+
+                const currentPaymentGatewayValues = getPaymentGatewayValues();
+                const hasQrFile = !!(paymentQrInput && paymentQrInput.files && paymentQrInput.files[0]);
+                if (paymentGatewayOriginalValues && JSON.stringify(currentPaymentGatewayValues) === JSON.stringify(paymentGatewayOriginalValues) && !hasQrFile) {
+                    setPaymentGatewayEditing(false);
+                    return;
+                }
+
                 const formData = new FormData();
-                formData.append('gcash_recipient_name', paymentRecipientNameInput ? paymentRecipientNameInput.value.trim() : '');
-                formData.append('gcash_recipient_number', paymentRecipientNumberInput ? paymentRecipientNumberInput.value.trim() : '');
-                formData.append('payment_expiry_minutes', paymentExpiryInput ? paymentExpiryInput.value.trim() : '10');
-                formData.append('block_payment_when_printers_unavailable', blockPaymentWhenOfflineInput && blockPaymentWhenOfflineInput.checked ? 'true' : 'false');
+                formData.append('gcash_recipient_name', currentPaymentGatewayValues.recipient_name);
+                formData.append('gcash_recipient_number', currentPaymentGatewayValues.recipient_number);
+                formData.append('payment_expiry_minutes', currentPaymentGatewayValues.payment_expiry_minutes);
+                formData.append('block_payment_when_printers_unavailable', currentPaymentGatewayValues.block_payment_when_printers_unavailable ? 'true' : 'false');
 
                 if (paymentQrInput && paymentQrInput.files && paymentQrInput.files[0]) {
                     formData.append('gcash_qr_image', paymentQrInput.files[0]);
                 }
 
-                savePaymentGatewayBtn.disabled = true;
-                savePaymentGatewayBtn.textContent = 'Saving...';
+                setPaymentGatewayButtonState('save', true);
 
                 fetch('/api/update-payment-gateway-settings/', {
                     method: 'POST',
@@ -1963,22 +2024,29 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (paymentRecipientNameInput) paymentRecipientNameInput.value = data.payment_config.recipient_name || '';
                             if (paymentRecipientNumberInput) paymentRecipientNumberInput.value = data.payment_config.recipient_number || '';
                             if (paymentExpiryInput) paymentExpiryInput.value = data.payment_config.payment_expiry_minutes || '10';
+                            if (blockPaymentWhenOfflineInput) blockPaymentWhenOfflineInput.checked = !!data.payment_config.block_payment_when_printers_unavailable;
                             if (paymentQrPreview && data.payment_config.recipient_qr_url) {
                                 paymentQrPreview.src = data.payment_config.recipient_qr_url;
                                 paymentQrPreview.style.display = 'block';
                                 if (paymentQrPreviewEmpty) paymentQrPreviewEmpty.style.display = 'none';
                             }
+                            if (paymentQrInput) {
+                                paymentQrInput.value = '';
+                            }
+                            if (paymentQrFileName) {
+                                paymentQrFileName.textContent = 'No file chosen';
+                            }
+                            paymentGatewayOriginalValues = getPaymentGatewayValues();
+                            setPaymentGatewayEditing(false);
                             createAlert('Success', 'Payment Gateway Updated', 'GCash recipient settings have been saved.', 'success', true, true, 'pageMessages');
                         } else {
+                            setPaymentGatewayButtonState('save');
                             createAlert('Error', 'Update Failed', data.error || 'Failed to update payment gateway settings.', 'danger', true, true, 'pageMessages');
                         }
                     })
                     .catch(() => {
+                        setPaymentGatewayButtonState('save');
                         createAlert('Error', 'Update Failed', 'An error occurred while saving payment gateway settings.', 'danger', true, true, 'pageMessages');
-                    })
-                    .finally(() => {
-                        savePaymentGatewayBtn.disabled = false;
-                        savePaymentGatewayBtn.textContent = 'Save Payment Gateway';
                     });
             });
         }
@@ -2026,6 +2094,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             editSalesPricingBtn.dataset.mode = mode;
             editSalesPricingBtn.disabled = isBusy;
+            editSalesPricingBtn.classList.toggle('is-save-mode', mode === 'save' && !isBusy);
             editSalesPricingBtn.textContent = isBusy ? 'Saving...' : (mode === 'save' ? 'Save Changes' : 'Edit Pricing Rules');
         };
 

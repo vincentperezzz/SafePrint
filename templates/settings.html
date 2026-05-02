@@ -134,30 +134,33 @@ Account Settings
       </div>
     </div>
 
-    <div class="settings-section payment-gateway-section">
-      <span class="settings-title">Payment Gateway</span>
+    <div class="settings-section payment-gateway-section is-locked">
+      <div class="payment-gateway-header">
+        <span class="settings-title">Payment Gateway</span>
+        <button id="edit-payment-gateway-btn" class="general-btn payment-gateway-edit-btn" type="button">Edit</button>
+      </div>
       <div class="settings-field-row">
         <div class="settings-field">
           <label for="payment-recipient-name-setting">Recipient Name</label>
-          <input type="text" id="payment-recipient-name-setting" value="{{ site_settings.gcash_recipient_name }}" placeholder="GCash Recipient Name">
+          <input type="text" id="payment-recipient-name-setting" value="{{ site_settings.gcash_recipient_name }}" placeholder="GCash Recipient Name" disabled>
         </div>
       </div>
       <div class="settings-field-row">
         <div class="settings-field">
           <label for="payment-recipient-number-setting">Recipient Number</label>
-          <input type="text" id="payment-recipient-number-setting" value="{{ site_settings.gcash_recipient_number }}" placeholder="09XXXXXXXXX" maxlength="20">
+          <input type="text" id="payment-recipient-number-setting" value="{{ site_settings.gcash_recipient_number }}" placeholder="09XXXXXXXXX" maxlength="20" disabled>
         </div>
       </div>
       <div class="settings-field-row">
         <div class="settings-field">
           <label for="payment-expiry-minutes-setting">Payment Expiry Window (minutes)</label>
-          <input type="number" id="payment-expiry-minutes-setting" value="{{ site_settings.payment_expiry_minutes|default:10 }}" min="1" max="60">
+          <input type="number" id="payment-expiry-minutes-setting" value="{{ site_settings.payment_expiry_minutes|default:10 }}" min="1" max="60" disabled>
         </div>
       </div>
       <div class="settings-field-row">
         <div class="sound-enabled">Block Payment When Matching Printers Are Offline</div>
         <div class="switch">
-          <input type="checkbox" class="switch-input-blue" id="block-payment-when-offline-setting" {% if site_settings.block_payment_when_printers_unavailable %}checked{% endif %}>
+          <input type="checkbox" class="switch-input-blue" id="block-payment-when-offline-setting" {% if site_settings.block_payment_when_printers_unavailable %}checked{% endif %} disabled>
           <label class="switch-label-blue" for="block-payment-when-offline-setting">
             <span class="switch-circle">
               <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none">
@@ -171,9 +174,9 @@ Account Settings
       <div class="settings-field-row payment-gateway-row">
         <div class="settings-field payment-gateway-field">
           <label for="payment-qr-image-setting">Recipient QR Code</label>
-          <input type="file" id="payment-qr-image-setting" accept="image/*" style="display:none;">
+          <input type="file" id="payment-qr-image-setting" accept="image/*" style="display:none;" disabled>
           <div class="payment-qr-upload-bar">
-            <button type="button" class="browse-btn payment-qr-browse-btn" onclick="document.getElementById('payment-qr-image-setting').click();">Browse Files</button>
+            <button type="button" id="payment-qr-browse-btn" class="browse-btn payment-qr-browse-btn" onclick="document.getElementById('payment-qr-image-setting').click();" disabled>Browse Files</button>
             <span id="payment-qr-file-name" class="payment-qr-file-name">No file chosen</span>
           </div>
           <div class="payment-gateway-panel">
@@ -192,7 +195,6 @@ Account Settings
           </div>
         </div>
       </div>
-      <button id="save-payment-gateway-btn" class="create-account-btn payment-gateway-save-btn" type="button">Save Payment Gateway</button>
     </div>
 
     <!-- Hidden audio elements for preview playback -->

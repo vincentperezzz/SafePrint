@@ -6176,6 +6176,60 @@ input:focus::placeholder {
     gap: 16px;
 }
 
+.payment-gateway-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.sales-edit-btn,
+.payment-gateway-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+}
+
+.sales-edit-btn {
+    width: 100%;
+}
+
+.sales-edit-btn.is-save-mode,
+.payment-gateway-edit-btn.is-save-mode {
+    background: #16A34A;
+    color: #ffffff;
+}
+
+.sales-edit-btn.is-save-mode:hover,
+.payment-gateway-edit-btn.is-save-mode:hover {
+    background: #15803D;
+}
+
+.sales-edit-btn:disabled,
+.payment-gateway-edit-btn:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.payment-gateway-section.is-locked .settings-field-row {
+    background: #F8FAFC;
+}
+
+.payment-gateway-section.is-locked .settings-field input {
+    color: #9CA3AF;
+    cursor: not-allowed;
+}
+
+.payment-gateway-section.is-locked .payment-qr-browse-btn {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.payment-gateway-section.is-locked .switch-label-blue {
+    pointer-events: none;
+}
+
 .payment-gateway-field {
     gap: 12px;
 }
@@ -6564,33 +6618,6 @@ input:focus::placeholder {
     font-size: 1.1em;
     outline: none;
     transition: border-color 0.2s;
-}
-
-.popup-done-btn {
-    width: 100%;
-    padding: 12px 24px;
-    border-radius: 12px;
-    border: 2px solid #18191F;
-    background-color: #caff70;
-    color: #18191F;
-    font-weight: bold;
-    cursor: pointer;
-    box-shadow: 0px 4px 0px 0px #18191F;
-    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
-    text-align: center;
-    line-height: 1.5;
-    font-size: 1rem;
-    margin-bottom: 1.5em;
-}
-
-.popup-done-btn:hover {
-    background-color: #d4ff8a;
-    box-shadow: 0px 6px 0px 0px #18191F;
-}
-
-.popup-done-btn:active {
-    transform: translateY(2px);
-    box-shadow: 0px 2px 0px 0px #18191F;
 }
 
 /* Feedback Comments and Problem Reports Modal */
@@ -8964,7 +8991,7 @@ input:focus::placeholder {
     .payment-gateway-preview-wrap,
     .payment-qr-preview-image,
     .payment-qr-preview-empty,
-    .payment-gateway-save-btn {
+    .payment-gateway-edit-btn {
         width: 100%;
         max-width: none;
         min-width: 0;
