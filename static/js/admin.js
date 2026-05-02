@@ -3312,8 +3312,19 @@ if (addPrinterForm) {
     let lastActiveCount = null;
     let lastResolvedCount = null;
 
+    function formatDashboardCustomerId(customerId) {
+        const value = String(customerId || '').trim();
+        if (!value) {
+            return '—';
+        }
+        return value.startsWith('#') ? value : `#${value}`;
+    }
+
     function renderActiveTicketRow(ticket) {
         const paymentDisplay = ticket.payment_amount ? `₱${ticket.payment_amount.toFixed(2)}` : '—';
+        const customerIdDisplay = ticket.customer_id_display || formatDashboardCustomerId(ticket.customer_id);
+        const documentIdsDisplay = ticket.document_ids_display || ticket.doc_id || ticket.document_name || '—';
+        const documentMetaDisplay = ticket.document_meta_display || '';
         let actionButtons = `
             <button class="deny-btn" type="button" data-action="void" data-ticket-id="${ticket.id}">Void</button>
             <button class="approve-btn" type="button" data-open-ticket-modal
@@ -3346,9 +3357,12 @@ if (addPrinterForm) {
                         <span>${paymentDisplay}</span>
                     </div>
                 </div>
-                <div class="ticket-issue">${ticket.problem_type}</div>
+                <div class="ticket-customer">${customerIdDisplay}</div>
                 <div class="ticket-date">${ticket.created_at}</div>
-                <div class="ticket-customer">#${ticket.customer_id}</div>
+                <div class="ticket-documents">
+                    <span>${documentIdsDisplay}</span>
+                    ${documentMetaDisplay ? `<span>${documentMetaDisplay}</span>` : ''}
+                </div>
                 <div class="actions">
                     ${actionButtons}
                 </div>
@@ -3417,11 +3431,14 @@ if (addPrinterForm) {
                         </svg>
                     </span>
                 </div>
-                <div class="document-item-title">
-                    <span>Ticket Number</span>
-                    <p>Issue</p>
-                    <p>Date Submitted</p>
+                <div class="document-item-title active-header">
+                    <div class="ticket-header-cell">
+                        <span class="ticket-header-spacer" aria-hidden="true"></span>
+                        <span>Ticket Number</span>
+                    </div>
                     <p>Customer ID</p>
+                    <p>Date Submitted</p>
+                    <p>Document ID</p>
                     <span class="action-title"></span>
                 </div>
             `;

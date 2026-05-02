@@ -72,11 +72,14 @@ Dashboard
                                 </svg>
                             </span>
                         </div>
-                        <div class="document-item-title">
-                            <span>Ticket Number</span>
-                            <p>Issue</p>
-                            <p>Date Submitted</p>
+                        <div class="document-item-title active-header">
+                            <div class="ticket-header-cell" style="display:flex; align-items:center; width:100%;">
+                                <span class="ticket-header-spacer" aria-hidden="true"></span>
+                                <span>Ticket Number</span>
+                            </div>
                             <p>Customer ID</p>
+                            <p>Date Submitted</p>
+                            <p>Document ID</p>
                             <span class="action-title"></span>
                         </div>
                     </div>
@@ -90,9 +93,14 @@ Dashboard
                                 <span>{% if ticket.payment_amount %}₱{{ ticket.payment_amount }}{% else %}—{% endif %}</span>
                             </div>
                         </div>
-                        <div class="ticket-issue">{{ ticket.get_problem_type_display }}</div>
+                        <div class="ticket-customer">{{ ticket.customer_id_display }}</div>
                         <div class="ticket-date">{{ ticket.created_at|date:"Y-m-d H:i:s" }}</div>
-                        <div class="ticket-customer">#{{ ticket.customer_id }}</div>
+                        <div class="ticket-documents">
+                            <span>{{ ticket.document_ids_display }}</span>
+                            {% if ticket.document_meta_display %}
+                            <span>{{ ticket.document_meta_display }}</span>
+                            {% endif %}
+                        </div>
                         <div class="actions">
                             <button class="deny-btn" type="button" data-action="void" data-ticket-id="{{ ticket.id }}">Void</button>
                             <button class="approve-btn" type="button" data-open-ticket-modal
@@ -150,12 +158,15 @@ Dashboard
                             </span>
                         </div>
                         <div class="document-item-title resolved-header">
-                            <span>Ticket Number</span>
+                            <div class="ticket-header-cell" style="display:flex; align-items:center; width:100%;">
+                                <span class="ticket-header-spacer" aria-hidden="true"></span>
+                                <span>Ticket Number</span>
+                            </div>
                             <p>Customer Name</p>
                             <p>Email</p>
                             <p>Verified by</p>
                             <p>Status</p>
-                            <p></p>
+                            <p class="action-title"></p>
                         </div>
                     </div>
 
