@@ -3537,6 +3537,15 @@ input:focus::placeholder {
     gap: 20px;
 }
 
+.main-content > .dashboard-rows:first-child {
+    position: sticky;
+    top: 0;
+    z-index: 120;
+    padding: 10px 0 12px;
+    background: #f7f8fc;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
 .dashboard-rows h1 {
     font-size: 2rem;
     font-weight: 800;
@@ -8173,6 +8182,11 @@ input:focus::placeholder {
         min-width: 0;
         width: 100%;
         padding: 12px;
+    }
+
+    .main-content > .dashboard-rows:first-child {
+        top: 56px;
+        padding-top: 12px;
     }
 
     /* --- Dashboard header row --- */
