@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 
 import requests
 from django.conf import settings
+from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from google.auth.transport.requests import AuthorizedSession
 from google.oauth2 import service_account
@@ -148,6 +149,10 @@ def _coerce_timestamp(value):
         return None
     if hasattr(value, 'to_pydatetime'):
         value = value.to_pydatetime()
+    elif isinstance(value, str):
+        value = parse_datetime(value)
+        if value is None:
+            return None
     if timezone.is_naive(value):
         return timezone.make_aware(value, timezone.get_current_timezone())
     return value
