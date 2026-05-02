@@ -5257,7 +5257,13 @@ input:focus::placeholder {
 
 .sales-table .printer-table-header,
 .sales-table .printer-table-row {
-    grid-template-columns: 1.1fr 0.9fr 2fr 1fr 0.9fr 1.1fr;
+    grid-template-columns: minmax(150px, 1.1fr) minmax(110px, 0.9fr) minmax(220px, 2fr) minmax(130px, 1fr) minmax(110px, 0.8fr) minmax(180px, 1.2fr);
+    column-gap: 16px;
+}
+
+.sales-table .printer-table-header > div,
+.sales-table .printer-table-row > div {
+    min-width: 0;
 }
 
 .sales-document-cell {
@@ -5294,6 +5300,13 @@ input:focus::placeholder {
 .sales-amount-cell {
     font-weight: 800;
     text-align: right;
+    white-space: nowrap;
+}
+
+.sales-table .printer-table-row > div:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .voucher-code-cell {
