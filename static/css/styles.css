@@ -5255,6 +5255,53 @@ input:focus::placeholder {
     font-size: 0.95rem;
 }
 
+.sales-filter-form {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.sales-filter-input {
+    min-height: 46px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1.5px solid #18191F;
+    background: #ffffff;
+    color: #18191F;
+    font: inherit;
+}
+
+.sales-filter-input.sales-filter-date {
+    min-width: 170px;
+}
+
+.sales-filter-btn,
+.sales-filter-clear {
+    min-height: 46px;
+    padding: 10px 18px;
+    border-radius: 12px;
+    border: 1.5px solid #18191F;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sales-filter-btn {
+    background: #FBB41D;
+    color: #18191F;
+    cursor: pointer;
+}
+
+.sales-filter-clear {
+    background: #ffffff;
+    color: #18191F;
+}
+
 .sales-table .printer-table-header,
 .sales-table .printer-table-row {
     grid-template-columns: minmax(150px, 1.1fr) minmax(110px, 0.9fr) minmax(220px, 2fr) minmax(130px, 1fr) minmax(110px, 0.8fr) minmax(180px, 1.2fr);
@@ -5299,7 +5346,7 @@ input:focus::placeholder {
 
 .sales-amount-cell {
     font-weight: 800;
-    text-align: right;
+    text-align: left;
     white-space: nowrap;
 }
 
@@ -8004,6 +8051,16 @@ input:focus::placeholder {
 
     .sales-card {
         padding: 14px;
+    }
+
+    .sales-filter-form {
+        gap: 10px;
+    }
+
+    .sales-filter-input,
+    .sales-filter-btn,
+    .sales-filter-clear {
+        width: 100%;
     }
 
     .sales-table .printer-table-header {

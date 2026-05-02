@@ -174,6 +174,59 @@ def _month_start_bounds(target_date=None):
     return month_start, next_month_start
 
 
+def _get_payment_customer_id(payment):
+    return str(payment.audit_customer_id or '').strip()
+
+
+def _get_payment_doc_id(payment):
+    return str(payment.audit_doc_id or '').strip()
+
+
+def _build_sales_records(payments):
+    grouped_records = {}
+
+    for payment in payments:
+        customer_id = _get_payment_customer_id(payment)
+        approved_at = payment.approved_at
+        payment_method = payment.payment_method or 'manual'
+        approved_by = payment.approved_by or '—'
+        group_key = (
+            customer_id,
+            approved_at.isoformat() if approved_at else '',
+            payment_method,
+            approved_by,
+        )
+
+        record = grouped_records.get(group_key)
+        if record is None:
+            record = {
+                'row_id': f'{customer_id}-{payment.id}',
+                'approved_at': approved_at,
+                'customer_id': customer_id,
+                'payment_method': payment_method,
+                'approved_by': approved_by,
+                'amount': Decimal('0.00'),
+                'doc_ids': [],
+            }
+            grouped_records[group_key] = record
+
+        record['amount'] += Decimal(payment.price or 0)
+
+        doc_id = _get_payment_doc_id(payment)
+        if doc_id and doc_id not in record['doc_ids']:
+            record['doc_ids'].append(doc_id)
+
+    sales_records = list(grouped_records.values())
+    for record in sales_records:
+        record['document_ids_display'] = ', '.join(record['doc_ids']) if record['doc_ids'] else '—'
+
+    sales_records.sort(
+        key=lambda item: (item['approved_at'] is not None, item['approved_at'] or timezone.make_aware(datetime.min, timezone.get_current_timezone())),
+        reverse=True,
+    )
+    return sales_records
+
+
 def _admin_log_sources():
     base_dir = settings.BASE_DIR
     return {
@@ -434,6 +487,25 @@ def sales_dashboard(request):
 
     active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
     paid_payments = Payment.objects.select_related('doc').filter(payment_status='Paid')
+    filtered_payments = paid_payments
+
+    search_query = (request.GET.get('q') or '').strip()
+    date_from = (request.GET.get('date_from') or '').strip()
+    date_to = (request.GET.get('date_to') or '').strip()
+
+    if search_query:
+        normalized_search = search_query.strip().lstrip('#')
+        filtered_payments = filtered_payments.filter(
+            Q(customer_id_snapshot__icontains=normalized_search)
+            | Q(doc_id_snapshot__icontains=normalized_search)
+            | Q(doc__customer_id__icontains=normalized_search)
+            | Q(doc__doc_id__icontains=normalized_search)
+        )
+
+    if date_from:
+        filtered_payments = filtered_payments.filter(approved_at__gte=f'{date_from}T00:00:00')
+    if date_to:
+        filtered_payments = filtered_payments.filter(approved_at__lt=f'{date_to}T23:59:59.999999')
 
     today = timezone.localdate()
     today_start, tomorrow_start = _local_day_bounds(today)
@@ -442,8 +514,8 @@ def sales_dashboard(request):
     today_sales = paid_payments.filter(approved_at__gte=today_start, approved_at__lt=tomorrow_start).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
     month_sales = paid_payments.filter(approved_at__gte=month_start, approved_at__lt=next_month_start).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
     lifetime_sales = paid_payments.aggregate(total=Sum('price'))['total'] or Decimal('0.00')
-    paid_transactions_count = paid_payments.aggregate(total=Count('id'))['total'] or 0
-    recent_sales = paid_payments.order_by('-approved_at', '-id')[:100]
+    recent_sales = _build_sales_records(filtered_payments.order_by('-approved_at', '-id')[:250])[:100]
+    paid_transactions_count = len(recent_sales)
 
     return render(request, 'sales.html', {
         'user': user,
@@ -455,6 +527,9 @@ def sales_dashboard(request):
         'recent_sales': recent_sales,
         'today_label': today.strftime('%b %d, %Y'),
         'month_label': today.strftime('%B %Y'),
+        'sales_search_query': search_query,
+        'sales_date_from': date_from,
+        'sales_date_to': date_to,
     })
 
 
