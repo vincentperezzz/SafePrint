@@ -3978,6 +3978,184 @@ if (addPrinterForm) {
     });
 })();
 
+// Live logs drawer — admin-only log tail viewer attached beside the notification bell
+(function () {
+    const drawer = document.getElementById('live-logs-drawer');
+    const backdrop = document.getElementById('live-logs-backdrop');
+    const statusText = document.getElementById('live-logs-status');
+    const sourceSelect = document.getElementById('live-logs-source-select');
+    const content = document.getElementById('live-logs-content');
+    const closeBtn = document.getElementById('live-logs-close');
+    const refreshBtn = document.getElementById('live-logs-refresh');
+    const pauseBtn = document.getElementById('live-logs-pause');
+    const lineCountSelect = document.getElementById('live-logs-line-count');
+    const bell = document.getElementById('notification-bell');
+    const terminalIconPath = document.body.dataset.terminalIcon || '/static/assets/terminal.svg';
+
+    if (!drawer || !backdrop || !statusText || !sourceSelect || !content || !closeBtn || !refreshBtn || !pauseBtn || !lineCountSelect || !bell) {
+        return;
+    }
+
+    let selectedSource = 'gunicorn_error';
+    let isOpen = false;
+    let isPaused = false;
+    let refreshTimer = null;
+
+    const bellContainer = bell.closest('div[style*="position:relative"]') || bell.parentElement;
+    if (bellContainer) {
+        bellContainer.style.display = 'inline-flex';
+        bellContainer.style.alignItems = 'center';
+        bellContainer.style.gap = '10px';
+    }
+
+    const logsButton = document.createElement('button');
+    logsButton.type = 'button';
+    logsButton.id = 'live-logs-toggle';
+    logsButton.className = 'live-logs-toggle';
+    logsButton.setAttribute('aria-label', 'Hide or show live terminal logs');
+    logsButton.innerHTML = '<img src="' + terminalIconPath + '" alt="" class="live-logs-toggle-icon" aria-hidden="true">';
+    logsButton.title = 'Terminal logs';
+    if (bellContainer) {
+        bellContainer.appendChild(logsButton);
+    }
+
+    function setDrawerOpen(nextOpen) {
+        isOpen = nextOpen;
+        drawer.classList.toggle('is-open', nextOpen);
+        drawer.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
+        backdrop.hidden = !nextOpen;
+        logsButton.classList.toggle('is-active', nextOpen);
+
+        if (!nextOpen) {
+            window.clearInterval(refreshTimer);
+            refreshTimer = null;
+            return;
+        }
+
+        loadLogs();
+        refreshTimer = window.setInterval(function () {
+            if (!isPaused) {
+                loadLogs();
+            }
+        }, 3000);
+    }
+
+    function renderSources(sources) {
+        if (!Array.isArray(sources) || !sources.length) {
+            return;
+        }
+
+        sourceSelect.innerHTML = '';
+        sources.forEach(function (source) {
+            const option = document.createElement('option');
+            option.value = source.id;
+            option.textContent = source.label;
+            sourceSelect.appendChild(option);
+        });
+        sourceSelect.value = selectedSource;
+    }
+
+    function updateToolbarState() {
+        pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+        pauseBtn.setAttribute('aria-pressed', isPaused ? 'true' : 'false');
+    }
+
+    function formatUpdatedAt(updatedAt) {
+        if (!updatedAt) {
+            return 'idle';
+        }
+
+        const date = new Date(updatedAt * 1000);
+        if (Number.isNaN(date.getTime())) {
+            return 'Updated just now';
+        }
+
+        return 'last sync ' + date.toLocaleTimeString();
+    }
+
+    function loadLogs() {
+        const params = new URLSearchParams({
+            source: selectedSource,
+            lines: String(lineCountSelect.value || 120)
+        });
+
+        statusText.textContent = '$ tail -f ' + selectedSource.replace(/_/g, '-');
+
+        fetch('/portal/api/live-logs/?' + params.toString(), {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(function (response) {
+                return response.json().then(function (data) {
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.error || 'Failed to load logs.');
+                    }
+                    return data;
+                });
+            })
+            .then(function (data) {
+                selectedSource = data.selected_source || selectedSource;
+                renderSources(data.sources);
+
+                if (data.unavailable_reason) {
+                    content.textContent = '[unavailable] ' + data.unavailable_reason;
+                    statusText.textContent = '[unavailable]';
+                    return;
+                }
+
+                content.textContent = data.content || '$ no log lines available yet';
+                content.scrollTop = content.scrollHeight;
+                statusText.textContent = formatUpdatedAt(data.updated_at);
+            })
+            .catch(function (error) {
+                content.textContent = '[error] Unable to load logs.';
+                statusText.textContent = error.message || '[error]';
+            });
+    }
+
+    logsButton.addEventListener('click', function () {
+        setDrawerOpen(!isOpen);
+    });
+
+    closeBtn.addEventListener('click', function () {
+        setDrawerOpen(false);
+    });
+
+    backdrop.addEventListener('click', function () {
+        setDrawerOpen(false);
+    });
+
+    refreshBtn.addEventListener('click', function () {
+        loadLogs();
+    });
+
+    pauseBtn.addEventListener('click', function () {
+        isPaused = !isPaused;
+        updateToolbarState();
+        if (!isPaused) {
+            loadLogs();
+        }
+    });
+
+    lineCountSelect.addEventListener('change', function () {
+        loadLogs();
+    });
+
+    sourceSelect.addEventListener('change', function () {
+        selectedSource = sourceSelect.value || selectedSource;
+        loadLogs();
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && isOpen) {
+            setDrawerOpen(false);
+        }
+    });
+
+    updateToolbarState();
+})();
+
 // Paper Refill - Tray Capacity editing and Mark as Refilled
 (function() {
     // Time ago helper function
