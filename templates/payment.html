@@ -29,12 +29,10 @@ SafePrint - Payment
 
         {% for doc in documents %}
         <div class="document-item">
-            <div class="document-item-wrapper">
-                <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                <div class="document-info">
-                    <h6 title="{{ doc.name }}">{{ doc.name }}</h6>
-                    <span>#{{ doc.doc_id }}</span>
-                </div>
+            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+            <div class="document-info">
+                <h6 title="{{ doc.name }}">{{ doc.name }}</h6>
+                <span>#{{ doc.doc_id }}</span>
             </div>
             <div class="document-id">₱{{ doc.price|floatformat:2 }}</div>
         </div>
@@ -109,7 +107,7 @@ SafePrint - Payment
                         required
                     />
                 </div>
-                <button type="submit" id="pay-now-btn" class="card-pay-btn">
+                <button type="submit" id="pay-now-btn" class="card-pay-btn payment-gcash-btn">
                     Continue to GCash Details
                 </button>
             </form>
@@ -129,7 +127,7 @@ SafePrint - Payment
                     <span class="payment-destination-label">GCash Number</span>
                     <div class="payment-number-row">
                         <strong id="payment-recipient-number">{{ payment_config.recipient_number }}</strong>
-                        <button type="button" class="card-redirect-btn payment-copy-btn" onclick="copyPaymentNumber()">Copy Number</button>
+                        <button type="button" class="card-redirect-btn payment-copy-btn payment-gcash-btn" onclick="copyPaymentNumber()">Copy Number</button>
                     </div>
                     <span class="payment-destination-label">Exact Amount</span>
                     <div id="payment-send-amount" class="payment-send-amount">₱{{ total_price|floatformat:2 }}</div>
@@ -147,11 +145,11 @@ SafePrint - Payment
                 </div>
             </div>
             <div class="payment-step-actions">
-                <button type="button" id="open-gcash-btn" class="card-redirect-btn" onclick="openGCashApp()">
+                <button type="button" id="open-gcash-btn" class="card-redirect-btn payment-gcash-btn" onclick="openGCashApp()">
                     Copy Number &amp; Open GCash
                 </button>
             </div>
-            <button type="button" id="verify-btn" class="card-pay-btn" onclick="verifyPayment()">
+            <button type="button" id="verify-btn" class="card-pay-btn payment-success-btn" onclick="verifyPayment()">
                 I Have Paid ✓
             </button>
             <button type="button" class="card-cancel-btn" onclick="cancelPayment()">Cancel</button>
