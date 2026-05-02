@@ -19,7 +19,7 @@ from django.utils.timezone import localtime
 from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
 from django.views.decorators.csrf import csrf_exempt
-from .models import AdminUser, Printer, Document, Payment, PaymentIntent, NotificationSound, SupportTicket, SiteSetting, TicketAuditLog, VoucherCredit
+from .models import AdminUser, Printer, Document, Payment, PaymentIntent, NotificationSound, SupportTicket, SiteSetting, TicketAuditLog, VoucherCredit, VoucherCreditAuditLog
 from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.decorators import login_required
@@ -37,6 +37,77 @@ def _format_dashboard_customer_id(customer_id):
     return value if value.startswith('#') else f'#{value}'
 
 
+def _normalize_doc_id_value(doc_id):
+    return str(doc_id or '').strip().strip('#')
+
+
+def _get_ticket_primary_doc_id(ticket):
+    if ticket.document:
+        return _normalize_doc_id_value(ticket.document.doc_id)
+    return _normalize_doc_id_value(ticket.document_id_snapshot)
+
+
+def _get_ticket_payment_record(ticket):
+    payment_filters = Q()
+    primary_doc_id = _get_ticket_primary_doc_id(ticket)
+
+    if ticket.document:
+        payment_filters |= Q(doc=ticket.document)
+    if primary_doc_id:
+        payment_filters |= Q(doc_id_snapshot=primary_doc_id) | Q(doc__doc_id=primary_doc_id)
+
+    if not payment_filters:
+        return None
+
+    payment_qs = Payment.objects.filter(payment_filters)
+    normalized_customer_id = str(ticket.customer_id or '').strip()
+    if normalized_customer_id:
+        payment_qs = payment_qs.filter(
+            Q(customer_id_snapshot=normalized_customer_id) |
+            Q(doc__customer_id=normalized_customer_id)
+        )
+
+    return payment_qs.order_by('-approved_at', '-id').first()
+
+
+def _get_ticket_payment_amount(ticket):
+    if ticket.payment_amount_snapshot is not None:
+        return ticket.payment_amount_snapshot
+
+    payment = _get_ticket_payment_record(ticket)
+    return payment.price if payment else None
+
+
+def _preserve_or_delete_document_payment(doc):
+    payments = list(
+        Payment.objects.filter(
+            Q(doc=doc) | Q(doc_id_snapshot=doc.doc_id)
+        )
+    )
+
+    for payment in payments:
+        payment.capture_document_snapshot()
+        if str(payment.payment_status or '').lower() == 'paid':
+            payment.doc = None
+            payment.save()
+            continue
+        payment.delete()
+
+
+def _log_voucher_audit(voucher, *, action, amount, customer_id='', performed_by='', reference='', details=''):
+    VoucherCreditAuditLog.objects.create(
+        voucher=voucher,
+        voucher_code_snapshot=voucher.code if voucher else reference,
+        action=action,
+        amount=Decimal(amount),
+        balance_after=voucher.remaining_balance if voucher else None,
+        customer_id=customer_id,
+        performed_by=performed_by,
+        reference=reference,
+        details=details,
+    )
+
+
 def _get_dashboard_document_display(ticket):
     raw_related_doc_ids = str(ticket.related_doc_ids or '').strip()
     related_doc_ids = []
@@ -51,7 +122,7 @@ def _get_dashboard_document_display(ticket):
         except (TypeError, ValueError, json.JSONDecodeError):
             related_doc_ids = [part.strip() for part in raw_related_doc_ids.split(',') if part.strip()]
 
-    primary_doc_id = ticket.document.doc_id if ticket.document else ''
+    primary_doc_id = _get_ticket_primary_doc_id(ticket)
     ordered_doc_ids = []
 
     for doc_id in [primary_doc_id, *related_doc_ids]:
@@ -77,6 +148,7 @@ def _get_dashboard_document_display(ticket):
 
 def _attach_dashboard_ticket_display(ticket):
     ticket.customer_id_display = _format_dashboard_customer_id(ticket.customer_id)
+    ticket.primary_doc_id = _get_ticket_primary_doc_id(ticket)
     ticket.document_ids_display, ticket.document_meta_display = _get_dashboard_document_display(ticket)
     return ticket
 
@@ -142,21 +214,13 @@ def dashboard(request):
         status__in=['resolved', 'closed', 'voided', 'refunded']
     ).select_related('document').prefetch_related('proof_images').order_by('-resolved_at', '-updated_at'))
     
-    # Attach payment amount to each ticket via its document
+    # Attach payment amount to each ticket via its preserved payment snapshot
     for ticket in active_tickets:
-        ticket.payment_amount = None
-        if ticket.document:
-            payment = Payment.objects.filter(doc=ticket.document).first()
-            if payment:
-                ticket.payment_amount = payment.price
+        ticket.payment_amount = _get_ticket_payment_amount(ticket)
         _attach_dashboard_ticket_display(ticket)
     
     for ticket in resolved_tickets:
-        ticket.payment_amount = None
-        if ticket.document:
-            payment = Payment.objects.filter(doc=ticket.document).first()
-            if payment:
-                ticket.payment_amount = payment.price
+        ticket.payment_amount = _get_ticket_payment_amount(ticket)
         _attach_dashboard_ticket_display(ticket)
     
     today = timezone.localdate()
@@ -268,6 +332,14 @@ def _refund_reserved_voucher(intent):
     voucher.remaining_balance = Decimal(voucher.remaining_balance) + Decimal(intent.credit_applied)
     voucher.is_active = True
     voucher.save(update_fields=['remaining_balance', 'is_active'])
+    _log_voucher_audit(
+        voucher,
+        action='restored',
+        amount=Decimal(intent.credit_applied),
+        customer_id=intent.customer_id,
+        reference=str(intent.intent_id),
+        details='Voucher credit restored after payment intent cancellation or expiry.',
+    )
 
 
 def _expire_stale_payment_intents(customer_id=None):
@@ -423,6 +495,11 @@ def generate_voucher_api(request):
     try:
         data = json.loads(request.body)
         amount = data.get('amount')
+        admin_name = ''
+        try:
+            admin_name = AdminUser.objects.get(id=user_id).name
+        except AdminUser.DoesNotExist:
+            pass
         
         if amount is None:
             return JsonResponse({'success': False, 'error': 'Amount is required'})
@@ -446,6 +523,13 @@ def generate_voucher_api(request):
             remaining_balance=amount,
             is_active=True,
             expires_at=timezone.now() + timedelta(days=VOUCHER_CREDIT_EXPIRY_DAYS),
+        )
+        _log_voucher_audit(
+            voucher,
+            action='created',
+            amount=Decimal(str(amount)),
+            performed_by=admin_name,
+            details='Voucher created by admin.',
         )
         
         return JsonResponse({
@@ -485,8 +569,20 @@ def toggle_voucher_api(request):
         data = json.loads(request.body)
         voucher_id = data.get('id')
         voucher = VoucherCredit.objects.get(id=voucher_id)
+        admin_name = ''
+        try:
+            admin_name = AdminUser.objects.get(id=user_id).name
+        except AdminUser.DoesNotExist:
+            pass
         voucher.is_active = not voucher.is_active
         voucher.save(update_fields=['is_active'])
+        _log_voucher_audit(
+            voucher,
+            action='deactivated' if not voucher.is_active else 'reactivated',
+            amount=Decimal('0.00'),
+            performed_by=admin_name,
+            details=f'Voucher manually {"deactivated" if not voucher.is_active else "reactivated"} by admin.',
+        )
         
         return JsonResponse({
             'success': True,
@@ -511,6 +607,18 @@ def delete_voucher_api(request):
         data = json.loads(request.body)
         voucher_id = data.get('id')
         voucher = VoucherCredit.objects.get(id=voucher_id)
+        admin_name = ''
+        try:
+            admin_name = AdminUser.objects.get(id=user_id).name
+        except AdminUser.DoesNotExist:
+            pass
+        _log_voucher_audit(
+            voucher,
+            action='deleted',
+            amount=Decimal('0.00'),
+            performed_by=admin_name,
+            details='Voucher deleted by admin.',
+        )
         voucher.delete()
         return JsonResponse({'success': True})
     except VoucherCredit.DoesNotExist:
@@ -589,11 +697,7 @@ def get_active_tickets_api(request):
         # Attach payment amounts and format data
         active_tickets_data = []
         for ticket in active_tickets:
-            payment_amount = None
-            if ticket.document:
-                payment = Payment.objects.filter(doc=ticket.document).first()
-                if payment:
-                    payment_amount = float(payment.price)
+            payment_amount = _get_ticket_payment_amount(ticket)
 
             customer_id_display = _format_dashboard_customer_id(ticket.customer_id)
             document_ids_display, document_meta_display = _get_dashboard_document_display(ticket)
@@ -612,9 +716,9 @@ def get_active_tickets_api(request):
                 'problem_type': ticket.get_problem_type_display(),
                 'description': ticket.description,
                 'created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                'payment_amount': payment_amount,
+                'payment_amount': float(payment_amount) if payment_amount is not None else None,
                 'was_reprinted': ticket.was_reprinted,
-                'doc_id': ticket.document.doc_id if ticket.document else '',
+                'doc_id': _get_ticket_primary_doc_id(ticket),
                 'gcash_number': ticket.gcash_number,
                 'receipt_code': ticket.receipt_code,
                 'receipt_screenshot_url': ticket.receipt_screenshot.url if ticket.receipt_screenshot else '',
@@ -622,11 +726,7 @@ def get_active_tickets_api(request):
         
         resolved_tickets_data = []
         for ticket in resolved_tickets:
-            payment_amount = None
-            if ticket.document:
-                payment = Payment.objects.filter(doc=ticket.document).first()
-                if payment:
-                    payment_amount = float(payment.price)
+            payment_amount = _get_ticket_payment_amount(ticket)
 
             customer_id_display = _format_dashboard_customer_id(ticket.customer_id)
             document_ids_display, document_meta_display = _get_dashboard_document_display(ticket)
@@ -645,9 +745,9 @@ def get_active_tickets_api(request):
                 'problem_type': ticket.get_problem_type_display(),
                 'description': ticket.description,
                 'created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                'payment_amount': payment_amount,
+                'payment_amount': float(payment_amount) if payment_amount is not None else None,
                 'was_reprinted': ticket.was_reprinted,
-                'doc_id': ticket.document.doc_id if ticket.document else '',
+                'doc_id': _get_ticket_primary_doc_id(ticket),
                 'status': ticket.get_status_display(),
                 'resolved_by': ticket.resolved_by,
                 'gcash_number': ticket.gcash_number,
@@ -878,6 +978,14 @@ def payment(request):
                         credit_voucher.last_customer_id = customer_id
                         credit_voucher.last_used_at = timezone.now()
                         credit_voucher.save()
+                        _log_voucher_audit(
+                            credit_voucher,
+                            action='redeemed',
+                            amount=credit_applied,
+                            customer_id=customer_id,
+                            reference=voucher_credit_code,
+                            details='Voucher fully redeemed for a credit-only payment.',
+                        )
                         
                         payments = list(
                             Payment.objects.select_related('doc').filter(
@@ -961,6 +1069,16 @@ def payment(request):
                         recipient_number=gateway_context['recipient_number'],
                         expires_at=expires_at,
                     )
+
+                    if credit_voucher and credit_applied > 0:
+                        _log_voucher_audit(
+                            credit_voucher,
+                            action='reserved',
+                            amount=credit_applied,
+                            customer_id=customer_id,
+                            reference=str(payment_intent.intent_id),
+                            details='Voucher credit reserved for a pending GCash listener payment intent.',
+                        )
 
                     for payment_obj in Payment.objects.filter(doc__doc_id__in=documents_ids):
                         payment_obj.payment_method = 'gcash_listener'
@@ -1098,6 +1216,18 @@ def payment(request):
                         locked_intent.matched_at = timezone.now()
                         locked_intent.verification_source = 'firestore'
                         locked_intent.save(update_fields=['status', 'matched_notification_id', 'matched_raw_text', 'matched_at', 'verification_source', 'updated_at'])
+
+                        if locked_intent.voucher_credit_code and Decimal(locked_intent.credit_applied) > Decimal('0'):
+                            voucher = VoucherCredit.objects.filter(code=locked_intent.voucher_credit_code).first()
+                            if voucher:
+                                _log_voucher_audit(
+                                    voucher,
+                                    action='redeemed',
+                                    amount=Decimal(locked_intent.credit_applied),
+                                    customer_id=locked_intent.customer_id,
+                                    reference=str(locked_intent.intent_id),
+                                    details='Reserved voucher credit finalized after successful GCash listener payment verification.',
+                                )
 
                         _mark_customer_documents_paid(
                             payments,
@@ -2961,7 +3091,7 @@ def picked_up_document(request):
 
         # Delete associated Payment records then the Document record
         cid = doc.customer_id
-        Payment.objects.filter(doc=doc).delete()
+        _preserve_or_delete_document_payment(doc)
         doc.delete()
 
         # If no documents remain for this CID, clear voucher association
@@ -3030,7 +3160,7 @@ def finish_transaction(request):
                     print(f"[FINISH TXN] Deleted file {file_path} for document {doc.doc_id}")
 
             # Delete associated Payment records
-            Payment.objects.filter(doc=doc).delete()
+            _preserve_or_delete_document_payment(doc)
 
             # Delete the Document record itself
             doc.delete()
@@ -3102,11 +3232,7 @@ def void_ticket(request):
             details=f"Ticket voided by {admin_name}."
         )
 
-        payment_amount = None
-        if ticket.document:
-            payment = Payment.objects.filter(doc=ticket.document).first()
-            if payment:
-                payment_amount = float(payment.price)
+        payment_amount = _get_ticket_payment_amount(ticket)
 
         return JsonResponse({
             'success': True,
@@ -3117,13 +3243,13 @@ def void_ticket(request):
             'customer_id': ticket.customer_id,
             'email': ticket.email,
             'phone': ticket.phone_number,
-            'doc_id': ticket.document.doc_id if ticket.document else '',
+            'doc_id': _get_ticket_primary_doc_id(ticket),
             'doc_name': ticket.document_name,
             'description': ticket.description,
             'problem_type': ticket.get_problem_type_display(),
             'was_reprinted': ticket.was_reprinted,
             'resolved_by': admin_name,
-            'payment_amount': payment_amount,
+            'payment_amount': float(payment_amount) if payment_amount is not None else None,
         })
 
     except SupportTicket.DoesNotExist:
@@ -3165,11 +3291,7 @@ def refund_ticket(request):
         from django.utils import timezone
 
         # Look up payment amount
-        payment_amount = None
-        if ticket.document:
-            payment = Payment.objects.filter(doc=ticket.document).first()
-            if payment:
-                payment_amount = float(payment.price)
+        payment_amount = _get_ticket_payment_amount(ticket)
 
         # Set refund amount (from request or from payment)
         refund_amount = data.get('refund_amount')
@@ -3212,13 +3334,13 @@ def refund_ticket(request):
             'email': ticket.email,
             'phone': ticket.phone_number,
             'gcash_number': ticket.gcash_number,
-            'doc_id': ticket.document.doc_id if ticket.document else '',
+            'doc_id': _get_ticket_primary_doc_id(ticket),
             'doc_name': ticket.document_name,
             'description': ticket.description,
             'problem_type': ticket.get_problem_type_display(),
             'was_reprinted': ticket.was_reprinted,
             'resolved_by': admin_name,
-            'payment_amount': payment_amount,
+            'payment_amount': float(payment_amount) if payment_amount is not None else None,
             'refund_amount': refund_amount,
             'refund_status': 'pending',
         })
@@ -3504,9 +3626,10 @@ def get_ticket_verification_data(request):
             })
 
         # Get document lifecycle logs for this document
+        primary_doc_id = _get_ticket_primary_doc_id(ticket)
         doc_logs = DocumentLifecycleLog.objects.filter(
-            doc_id=ticket.document_id
-        ).order_by('-timestamp') if ticket.document_id else []
+            doc_id=primary_doc_id
+        ).order_by('-timestamp') if primary_doc_id else []
 
         doc_data = []
         for log in doc_logs:
@@ -3521,18 +3644,18 @@ def get_ticket_verification_data(request):
             })
 
         # Get reroute history for this document
-        if ticket.document_id:
+        if primary_doc_id:
             from .models import RerouteHistory
             reroutes = RerouteHistory.objects.select_related('printer').filter(
-                document_id=ticket.document_id
+                Q(document_id=primary_doc_id) | Q(doc_id_snapshot=primary_doc_id)
             ).order_by('-timestamp')
             for rr in reroutes:
                 doc_data.append({
-                    'doc_id': ticket.document_id,
+                    'doc_id': primary_doc_id,
                     'customer_id': ticket.customer_id,
                     'doc_name': ticket.document_name or '',
                     'event': 'Rerouted',
-                    'printer_name': rr.printer.name if rr.printer else '—',
+                    'printer_name': rr.printer.name if rr.printer else rr.printer_name_snapshot or '—',
                     'details': f'Rerouted ({rr.status})',
                     'timestamp': rr.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
                 })

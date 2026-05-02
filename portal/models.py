@@ -314,10 +314,23 @@ class Document(models.Model):
         db_table = 'documents'
 
 class RerouteHistory(models.Model):
-    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='reroute_history')
+    document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name='reroute_history')
     printer = models.ForeignKey(Printer, to_field='id', on_delete=models.SET_NULL, null=True)
+    doc_id_snapshot = models.CharField(max_length=255, blank=True, default='', db_index=True)
+    customer_id_snapshot = models.CharField(max_length=255, blank=True, default='')
+    doc_name_snapshot = models.CharField(max_length=255, blank=True, default='')
+    printer_name_snapshot = models.CharField(max_length=100, blank=True, default='')
     status = models.CharField(max_length=50)
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.document:
+            self.doc_id_snapshot = self.doc_id_snapshot or self.document.doc_id
+            self.customer_id_snapshot = self.customer_id_snapshot or self.document.customer_id
+            self.doc_name_snapshot = self.doc_name_snapshot or self.document.original_name or self.document.filename or ''
+        if self.printer:
+            self.printer_name_snapshot = self.printer_name_snapshot or self.printer.name
+        super().save(*args, **kwargs)
 
     class Meta:
         db_table = 'reroute_history'
@@ -326,10 +339,12 @@ class RerouteHistory(models.Model):
         verbose_name_plural = "Reroute history"
 
     def __str__(self):
-        return f"{self.document.doc_id} - {self.printer} ({self.status} at {self.timestamp})"
+        doc_id = self.document.doc_id if self.document else self.doc_id_snapshot or 'Unknown'
+        printer = self.printer or self.printer_name_snapshot or 'Unknown'
+        return f"{doc_id} - {printer} ({self.status} at {self.timestamp})"
 
 class Payment(models.Model):
-    doc = models.ForeignKey(Document, to_field='doc_id', on_delete=models.CASCADE)
+    doc = models.ForeignKey(Document, to_field='doc_id', on_delete=models.SET_NULL, null=True, blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     payment_status = models.CharField(max_length=50)
     voucher_code = models.CharField(max_length=50, null=True, blank=True, unique=True)
@@ -338,6 +353,76 @@ class Payment(models.Model):
     klcis_transaction_id = models.CharField(max_length=64, null=True, blank=True, unique=True)  # KLCiS Transaction ID for dedup
     approved_by = models.CharField(max_length=255, null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
+    customer_id_snapshot = models.CharField(max_length=255, blank=True, default='', db_index=True)
+    doc_id_snapshot = models.CharField(max_length=255, blank=True, default='', db_index=True)
+    document_name_snapshot = models.CharField(max_length=255, blank=True, default='')
+    num_copies_snapshot = models.IntegerField(null=True, blank=True)
+    pages_num_snapshot = models.CharField(max_length=255, blank=True, default='')
+    total_pages_snapshot = models.IntegerField(null=True, blank=True)
+    orientation_snapshot = models.CharField(max_length=50, blank=True, default='')
+    color_mode_snapshot = models.CharField(max_length=50, blank=True, default='')
+    paper_size_snapshot = models.CharField(max_length=50, blank=True, default='')
+    paper_quality_snapshot = models.CharField(max_length=50, blank=True, default='')
+
+    def capture_document_snapshot(self):
+        updated_fields = set()
+
+        if not self.doc:
+            return updated_fields
+
+        if not self.customer_id_snapshot:
+            self.customer_id_snapshot = self.doc.customer_id
+            updated_fields.add('customer_id_snapshot')
+        if not self.doc_id_snapshot:
+            self.doc_id_snapshot = self.doc.doc_id
+            updated_fields.add('doc_id_snapshot')
+        if not self.document_name_snapshot:
+            self.document_name_snapshot = self.doc.original_name or self.doc.filename or ''
+            updated_fields.add('document_name_snapshot')
+        if self.num_copies_snapshot is None:
+            self.num_copies_snapshot = self.doc.num_copies
+            updated_fields.add('num_copies_snapshot')
+        if not self.pages_num_snapshot:
+            self.pages_num_snapshot = self.doc.pages_num or ''
+            updated_fields.add('pages_num_snapshot')
+        if self.total_pages_snapshot is None:
+            self.total_pages_snapshot = self.doc.get_total_pages()
+            updated_fields.add('total_pages_snapshot')
+        if not self.orientation_snapshot:
+            self.orientation_snapshot = self.doc.orientation or ''
+            updated_fields.add('orientation_snapshot')
+        if not self.color_mode_snapshot:
+            self.color_mode_snapshot = self.doc.color_mode or ''
+            updated_fields.add('color_mode_snapshot')
+        if not self.paper_size_snapshot:
+            self.paper_size_snapshot = self.doc.paper_size or ''
+            updated_fields.add('paper_size_snapshot')
+        if not self.paper_quality_snapshot:
+            self.paper_quality_snapshot = self.doc.paper_quality or ''
+            updated_fields.add('paper_quality_snapshot')
+
+        return updated_fields
+
+    @property
+    def audit_customer_id(self):
+        return self.doc.customer_id if self.doc else self.customer_id_snapshot
+
+    @property
+    def audit_doc_id(self):
+        return self.doc.doc_id if self.doc else self.doc_id_snapshot
+
+    @property
+    def audit_document_name(self):
+        if self.doc:
+            return self.doc.original_name or self.doc.filename
+        return self.document_name_snapshot
+
+    def save(self, *args, **kwargs):
+        snapshot_fields = self.capture_document_snapshot()
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and snapshot_fields:
+            kwargs['update_fields'] = set(update_fields) | snapshot_fields
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.doc} - {self.price} ({self.payment_status})"
@@ -375,6 +460,7 @@ class PaymentIntent(models.Model):
     matched_notification_id = models.CharField(max_length=255, blank=True, default='', db_index=True)
     matched_raw_text = models.TextField(blank=True, default='')
     matched_at = models.DateTimeField(null=True, blank=True)
+    evidence_redacted_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -526,6 +612,7 @@ class SupportTicket(models.Model):
         blank=True,
         related_name='support_tickets'
     )
+    document_id_snapshot = models.CharField(max_length=255, blank=True, default='', db_index=True)
     document_name = models.CharField(max_length=255)
     
     # Customer contact info
@@ -558,6 +645,10 @@ class SupportTicket(models.Model):
     refund_status = models.CharField(max_length=20, choices=REFUND_STATUS_CHOICES, default='none')
     refund_completed_at = models.DateTimeField(null=True, blank=True)
     refund_reference = models.CharField(max_length=100, blank=True, default="")
+    payment_amount_snapshot = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    payment_method_snapshot = models.CharField(max_length=50, blank=True, default='')
+    payment_verified_by_snapshot = models.CharField(max_length=255, blank=True, default='')
+    payment_approved_at_snapshot = models.DateTimeField(null=True, blank=True)
     
     # Status tracking
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='open')
@@ -585,6 +676,43 @@ class SupportTicket(models.Model):
             date_prefix = timezone.now().strftime('%y%m%d')
             random_suffix = ''.join(random.choices(string.digits, k=4))
             self.ticket_number = f"#TKT-{date_prefix}-{random_suffix}"
+
+        if self.document:
+            self.document_id_snapshot = self.document_id_snapshot or self.document.doc_id
+            self.document_name = self.document_name or self.document.original_name or self.document.filename
+
+        if not self.document_id_snapshot and self.document_id:
+            self.document_id_snapshot = self.document_id
+
+        payment = None
+        if self.document and (
+            self.payment_amount_snapshot is None
+            or not self.payment_method_snapshot
+            or not self.payment_verified_by_snapshot
+            or self.payment_approved_at_snapshot is None
+        ):
+            payment = Payment.objects.filter(doc=self.document).order_by('-approved_at', '-id').first()
+
+        if payment is None and self.document_id_snapshot and (
+            self.payment_amount_snapshot is None
+            or not self.payment_method_snapshot
+            or not self.payment_verified_by_snapshot
+            or self.payment_approved_at_snapshot is None
+        ):
+            payment = Payment.objects.filter(
+                models.Q(doc_id_snapshot=self.document_id_snapshot) |
+                models.Q(doc__doc_id=self.document_id_snapshot)
+            ).order_by('-approved_at', '-id').first()
+
+        if payment:
+            if self.payment_amount_snapshot is None:
+                self.payment_amount_snapshot = payment.price
+            if not self.payment_method_snapshot:
+                self.payment_method_snapshot = payment.payment_method or ''
+            if not self.payment_verified_by_snapshot:
+                self.payment_verified_by_snapshot = payment.approved_by or ''
+            if self.payment_approved_at_snapshot is None:
+                self.payment_approved_at_snapshot = payment.approved_at
         
         # Delete old screenshot if being replaced
         if self.pk:
@@ -723,9 +851,14 @@ class DocumentReprintLog(models.Model):
     document = models.ForeignKey(
         Document,
         to_field='doc_id',
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='reprint_logs'
     )
+    doc_id_snapshot = models.CharField(max_length=255, blank=True, default='', db_index=True)
+    customer_id_snapshot = models.CharField(max_length=255, blank=True, default='')
+    doc_name_snapshot = models.CharField(max_length=255, blank=True, default='')
     reason = models.CharField(max_length=50)  # low-quality, missing-pages-jam, no-print
     page_range = models.CharField(max_length=20, blank=True, default="all")
     specific_pages = models.CharField(max_length=100, blank=True, default="")
@@ -738,9 +871,17 @@ class DocumentReprintLog(models.Model):
         blank=True
     )
     success = models.BooleanField(default=True)
+
+    def save(self, *args, **kwargs):
+        if self.document:
+            self.doc_id_snapshot = self.doc_id_snapshot or self.document.doc_id
+            self.customer_id_snapshot = self.customer_id_snapshot or self.document.customer_id
+            self.doc_name_snapshot = self.doc_name_snapshot or self.document.original_name or self.document.filename or ''
+        super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"Reprint of {self.document.doc_id} - {self.reason}"
+        doc_id = self.document.doc_id if self.document else self.doc_id_snapshot or 'Unknown'
+        return f"Reprint of {doc_id} - {self.reason}"
     
     class Meta:
         db_table = 'document_reprint_logs'
@@ -769,6 +910,48 @@ class PrinterStatusLog(models.Model):
             models.Index(fields=['-timestamp']),
             models.Index(fields=['printer', '-timestamp']),
         ]
+
+
+class VoucherCreditAuditLog(models.Model):
+    ACTION_CHOICES = [
+        ('created', 'Created'),
+        ('reserved', 'Reserved'),
+        ('redeemed', 'Redeemed'),
+        ('restored', 'Restored'),
+        ('reactivated', 'Reactivated'),
+        ('deactivated', 'Deactivated'),
+        ('expired', 'Expired'),
+        ('deleted', 'Deleted'),
+    ]
+
+    voucher = models.ForeignKey(
+        'VoucherCredit',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='audit_logs'
+    )
+    voucher_code_snapshot = models.CharField(max_length=20, db_index=True)
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    balance_after = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    customer_id = models.CharField(max_length=255, blank=True, default='')
+    performed_by = models.CharField(max_length=255, blank=True, default='')
+    reference = models.CharField(max_length=255, blank=True, default='')
+    details = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.voucher and not self.voucher_code_snapshot:
+            self.voucher_code_snapshot = self.voucher.code
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.voucher_code_snapshot} - {self.action} ({self.amount})"
+
+    class Meta:
+        db_table = 'voucher_credit_audit_logs'
+        ordering = ['-created_at']
 
 
 class DocumentLifecycleLog(models.Model):

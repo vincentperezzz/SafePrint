@@ -6,6 +6,7 @@ API endpoints for handling print error reports, reprints, and support tickets.
 
 import json
 import logging
+from django.db.models import Q
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_protect
@@ -319,7 +320,7 @@ def submit_ticket(request):
         # for the same document_id from the same customer
         if document_id:
             existing_ticket = SupportTicket.objects.filter(
-                document_id=document_id,
+                Q(document_id=document_id) | Q(document_id_snapshot=document_id),
                 customer_id=customer_id,
                 status__in=['open', 'in-progress']
             ).first()
@@ -353,6 +354,7 @@ def submit_ticket(request):
         ticket = SupportTicket.objects.create(
             customer_id=customer_id,
             document=document,
+            document_id_snapshot=document_id,
             document_name=document_name,
             customer_name=customer_name,
             email=email,

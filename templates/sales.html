@@ -55,10 +55,10 @@ Sales
         {% for sale in recent_sales %}
         <div class="printer-table-row" data-sale-id="{{ sale.id }}">
             <div data-label="Date Paid">{% if sale.approved_at %}{{ sale.approved_at|date:"M d, Y H:i" }}{% else %}Pending{% endif %}</div>
-            <div data-label="Customer ID">#{{ sale.doc.customer_id }}</div>
+            <div data-label="Customer ID">#{{ sale.audit_customer_id }}</div>
             <div data-label="Document" class="sales-document-cell">
-                <strong>{{ sale.doc.filename }}</strong>
-                <span>#{{ sale.doc.doc_id }}</span>
+                <strong>{{ sale.audit_document_name }}</strong>
+                <span>#{{ sale.audit_doc_id }}</span>
             </div>
             <div data-label="Method">
                 <span class="sales-method-badge">{{ sale.payment_method|default:"manual" }}</span>
