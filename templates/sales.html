@@ -42,7 +42,14 @@ Sales
     <h2 class="dashboard-section-header">Recent Paid Transactions</h2>
 </div>
 <div class="printer-status-card sales-card">
-    <p class="sales-meta">{{ paid_transactions_count }} paid document transactions recorded.</p>
+    <form method="get" class="sales-filter-form">
+        <input type="text" name="q" value="{{ sales_search_query }}" placeholder="Search CID or DOC ID" class="sales-filter-input">
+        <input type="date" name="date_from" value="{{ sales_date_from }}" class="sales-filter-input sales-filter-date">
+        <input type="date" name="date_to" value="{{ sales_date_to }}" class="sales-filter-input sales-filter-date">
+        <button type="submit" class="sales-filter-btn">Apply</button>
+        <a href="{% url 'sales_dashboard' %}" class="sales-filter-clear">Clear</a>
+    </form>
+    <p class="sales-meta">{{ paid_transactions_count }} paid transaction records shown.</p>
     <div class="printer-table sales-table">
         <div class="printer-table-header">
             <div>Date Paid</div>
@@ -53,22 +60,21 @@ Sales
             <div>Verified By</div>
         </div>
         {% for sale in recent_sales %}
-        <div class="printer-table-row" data-sale-id="{{ sale.id }}">
-            <div data-label="Date Paid">{% if sale.approved_at %}{{ sale.approved_at|date:"M d, Y H:i" }}{% else %}Pending{% endif %}</div>
-            <div data-label="Customer ID">#{{ sale.audit_customer_id }}</div>
+        <div class="printer-table-row" data-sale-id="{{ sale.row_id }}">
+            <div data-label="Date Paid">{% if sale.approved_at %}{{ sale.approved_at|date:"M d, Y h:i A" }}{% else %}Pending{% endif %}</div>
+            <div data-label="Customer ID">#{{ sale.customer_id }}</div>
             <div data-label="Document" class="sales-document-cell">
-                <strong>{{ sale.audit_document_name }}</strong>
-                <span>#{{ sale.audit_doc_id }}</span>
+                <strong>{{ sale.document_ids_display }}</strong>
             </div>
             <div data-label="Method">
                 <span class="sales-method-badge">{{ sale.payment_method|default:"manual" }}</span>
             </div>
-            <div data-label="Amount" class="sales-amount-cell">₱{{ sale.price|floatformat:2 }}</div>
+            <div data-label="Amount" class="sales-amount-cell">₱{{ sale.amount|floatformat:2 }}</div>
             <div data-label="Verified By">{{ sale.approved_by|default:"—" }}</div>
         </div>
         {% empty %}
         <div class="printer-table-row">
-            <div style="grid-column: 1 / -1; text-align: center; padding: 24px;">No paid transactions yet.</div>
+            <div style="grid-column: 1 / -1; text-align: center; padding: 24px;">No paid transactions matched the current filters.</div>
         </div>
         {% endfor %}
     </div>
