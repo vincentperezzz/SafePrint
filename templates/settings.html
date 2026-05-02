@@ -134,6 +134,63 @@ Account Settings
       </div>
     </div>
 
+    <div class="settings-section payment-gateway-section">
+      <span class="settings-title">Payment Gateway</span>
+      <div class="settings-field-row">
+        <div class="settings-field">
+          <label for="payment-recipient-name-setting">Recipient Name</label>
+          <input type="text" id="payment-recipient-name-setting" value="{{ site_settings.gcash_recipient_name }}" placeholder="GCash Recipient Name">
+        </div>
+      </div>
+      <div class="settings-field-row">
+        <div class="settings-field">
+          <label for="payment-recipient-number-setting">Recipient Number</label>
+          <input type="text" id="payment-recipient-number-setting" value="{{ site_settings.gcash_recipient_number }}" placeholder="09XXXXXXXXX" maxlength="20">
+        </div>
+      </div>
+      <div class="settings-field-row">
+        <div class="settings-field">
+          <label for="payment-expiry-minutes-setting">Payment Expiry Window (minutes)</label>
+          <input type="number" id="payment-expiry-minutes-setting" value="{{ site_settings.payment_expiry_minutes|default:10 }}" min="1" max="60">
+        </div>
+      </div>
+      <div class="settings-field-row">
+        <div class="sound-enabled">Block Payment When Matching Printers Are Offline</div>
+        <div class="switch">
+          <input type="checkbox" class="switch-input-blue" id="block-payment-when-offline-setting" {% if site_settings.block_payment_when_printers_unavailable %}checked{% endif %}>
+          <label class="switch-label-blue" for="block-payment-when-offline-setting">
+            <span class="switch-circle">
+              <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none">
+                <rect x="1" y="1" width="34" height="34" rx="17" fill="white" stroke="#18191F" stroke-width="2"/>
+                <rect x="11" y="11" width="14" height="14" rx="7" stroke="#18191F" stroke-width="2"/>
+              </svg>
+            </span>
+          </label>
+        </div>
+      </div>
+      <div class="settings-field-row payment-gateway-row">
+        <div class="settings-field payment-gateway-field">
+          <label for="payment-qr-image-setting">Recipient QR Code</label>
+          <input type="file" id="payment-qr-image-setting" accept="image/*">
+          <div class="payment-gateway-panel">
+            <div class="payment-gateway-preview-wrap">
+              {% if site_settings.gcash_qr_image %}
+              <img id="payment-qr-preview" src="{{ site_settings.gcash_qr_image.url }}" alt="Payment QR Preview" class="payment-qr-preview-image">
+              <div id="payment-qr-preview-empty" class="payment-qr-preview-empty" style="display:none;">No QR uploaded yet</div>
+              {% else %}
+              <div id="payment-qr-preview-empty" class="payment-qr-preview-empty">No QR uploaded yet</div>
+              <img id="payment-qr-preview" src="" alt="Payment QR Preview" class="payment-qr-preview-image" style="display:none;">
+              {% endif %}
+            </div>
+            <div class="payment-gateway-actions">
+              <p class="payment-gateway-helper">Changes here update the student payment instructions as soon as the save completes.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button id="save-payment-gateway-btn" class="create-account-btn payment-gateway-save-btn" type="button">Save Payment Gateway</button>
+    </div>
+
     <!-- Hidden audio elements for preview playback -->
     <audio id="sound-preview" preload="auto" style="display:none"></audio>
     <audio id="customer-sound-preview" preload="auto" style="display:none"></audio>

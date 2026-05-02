@@ -43,6 +43,7 @@ urlpatterns = [
     path('api/get-notification-prefs/', views.get_notification_prefs, name='get_notification_prefs'),
     path('api/get-customer-sound-prefs/', views.get_customer_sound_prefs, name='get_customer_sound_prefs'),
     path('api/update-customer-sound-prefs/', views.update_customer_sound_prefs, name='update_customer_sound_prefs'),
+    path('api/update-payment-gateway-settings/', views.update_payment_gateway_settings, name='update_payment_gateway_settings'),
     path('sse/printer-status/', views.printer_status_stream, name='printer_status_stream'),
     path('sse/dashboard-status/', views.dashboard_status_stream, name='dashboard_status_stream'),
     path('sse/customer-documents/<str:customer_id>/', views.customer_documents_stream, name='customer_documents_stream'),
