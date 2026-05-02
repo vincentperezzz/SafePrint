@@ -5,6 +5,7 @@ import time
 import logging
 import threading
 import subprocess
+from collections import deque
 from datetime import timedelta
 from decimal import Decimal
 from django.db.models import Count, Q, Sum
@@ -78,6 +79,46 @@ def _attach_dashboard_ticket_display(ticket):
     ticket.customer_id_display = _format_dashboard_customer_id(ticket.customer_id)
     ticket.document_ids_display, ticket.document_meta_display = _get_dashboard_document_display(ticket)
     return ticket
+
+
+def _admin_log_sources():
+    base_dir = settings.BASE_DIR
+    return {
+        'gunicorn_error': {
+            'label': 'Gunicorn Error',
+            'path': '/var/log/gunicorn/safeprint-error.log',
+        },
+        'gunicorn_access': {
+            'label': 'Gunicorn Access',
+            'path': '/var/log/gunicorn/safeprint-access.log',
+        },
+        'django_runtime': {
+            'label': 'Django Runtime',
+            'path': '/var/log/gunicorn/safeprint-django.log',
+        },
+        'django_app': {
+            'label': 'Django App',
+            'path': os.path.join(base_dir, 'logs', 'django.log'),
+        },
+        'printer_polling': {
+            'label': 'Printer Polling',
+            'path': os.path.join(base_dir, 'logs', 'printer_polling.log'),
+        },
+        'cron_purge': {
+            'label': 'Cron Purge',
+            'path': os.path.join(base_dir, 'logs', 'cron_purge_tickets.log'),
+        },
+    }
+
+
+def _tail_log_lines(file_path, line_count):
+    recent_lines = deque(maxlen=line_count)
+
+    with open(file_path, 'r', encoding='utf-8', errors='replace') as handle:
+        for line in handle:
+            recent_lines.append(line.rstrip('\n'))
+
+    return '\n'.join(recent_lines)
 
 def dashboard(request):
     user_id = request.session.get('admin_user_id')
@@ -1942,6 +1983,61 @@ def update_payment_gateway_settings(request):
     return JsonResponse({
         'success': True,
         'payment_config': _payment_gateway_context(site),
+    })
+
+
+def get_admin_live_logs(request):
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=403)
+
+    try:
+        AdminUser.objects.only('id').get(id=user_id)
+    except AdminUser.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=403)
+
+    sources = _admin_log_sources()
+    requested_source = str(request.GET.get('source') or 'gunicorn_error').strip()
+    if requested_source not in sources:
+        requested_source = 'gunicorn_error'
+
+    try:
+        line_count = int(request.GET.get('lines', 120))
+    except (TypeError, ValueError):
+        line_count = 120
+    line_count = max(20, min(line_count, 400))
+
+    selected_source = sources[requested_source]
+    file_path = selected_source['path']
+    content = ''
+    unavailable_reason = ''
+    updated_at = None
+
+    try:
+        if not os.path.exists(file_path):
+            unavailable_reason = 'Log file not found.'
+        else:
+            content = _tail_log_lines(file_path, line_count)
+            updated_at = os.path.getmtime(file_path)
+    except PermissionError:
+        unavailable_reason = 'Log file is not readable by the web app.'
+    except OSError as error:
+        unavailable_reason = f'Failed to read log file: {error}'
+
+    return JsonResponse({
+        'success': True,
+        'sources': [
+            {
+                'id': source_id,
+                'label': source_meta['label'],
+            }
+            for source_id, source_meta in sources.items()
+        ],
+        'selected_source': requested_source,
+        'line_count': line_count,
+        'content': content,
+        'unavailable_reason': unavailable_reason,
+        'updated_at': updated_at,
     })
 
 
