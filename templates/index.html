@@ -36,11 +36,20 @@ SafePrint
 <!-- Payment Channels Supported -->
 <div class="payment-channels-section">
     <p class="payment-channels-title">Payment Channels Supported</p>
-    <div class="payment-channels-logos">
-        <img src="{% static 'assets/gcash-logo.png' %}" alt="GCash">
-        <img src="{% static 'assets/shopeepay-logo.png' %}" alt="ShopeePay">
-        <img src="{% static 'assets/maya-logo.png' %}" alt="Maya">
-        <img src="{% static 'assets/grabpay-logo.png' %}" alt="GrabPay">
+    <div class="coupon-banner payment-gateway-banner">
+        <div class="coupon-tab payment-gateway-tab">
+            <span class="coupon-tab-text payment-gateway-tab-text">Payment</span>
+        </div>
+        <div class="coupon-hole payment-gateway-hole"></div>
+        <div class="coupon-body payment-gateway-body">
+            <div class="payment-gateway-logo-wrap">
+                <img src="{% static 'assets/gcash-logo.png' %}" alt="GCash" class="payment-gateway-logo">
+            </div>
+            <div class="payment-gateway-copy">
+                <div class="coupon-flat payment-gateway-label">GCash Payment Supported</div>
+                <div class="coupon-code payment-gateway-headline">Experience the Power of Digital Payments</div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -79,7 +88,7 @@ SafePrint
         <div class="card-text">
             <h3 class="card-title">Payment</h3>
             <h3 class="card-title">Process</h3>
-            <p class="card-description">We support GCash, Maya, ShopeePay, and GrabPay. To pay, simply enter your registered mobile number in e-wallet, then save your receipt.</p>
+            <p class="card-description">SafePrint currently accepts GCash payments only. Use your registered GCash mobile number to pay, then save your receipt.</p>
         </div>
         <img src="{% static 'assets/payment.svg' %}" alt="Payment Icon" class="card-icon">
     </div>
