@@ -1984,6 +1984,141 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+        const salesFullThresholdInput = document.getElementById('sales-full-threshold-setting');
+        const salesBwPrice70Input = document.getElementById('sales-bw-price-70-setting');
+        const salesBwPrice80Input = document.getElementById('sales-bw-price-80-setting');
+        const salesPartialColorPriceInput = document.getElementById('sales-partial-color-price-setting');
+        const salesFullColorPriceInput = document.getElementById('sales-full-color-price-setting');
+        const salesThresholdRuleText = document.getElementById('sales-threshold-rule-text');
+        const editSalesPricingBtn = document.getElementById('edit-sales-pricing-btn');
+        const salesPricingCard = document.querySelector('.sales-pricing-card');
+        const salesPricingInputs = [salesFullThresholdInput, salesBwPrice70Input, salesBwPrice80Input, salesPartialColorPriceInput, salesFullColorPriceInput].filter(Boolean);
+        let salesPricingOriginalValues = null;
+
+        const formatThresholdPercent = (value) => {
+            const numericValue = Number.parseFloat(value);
+            if (Number.isNaN(numericValue)) return '0';
+            return String(Math.round(numericValue));
+        };
+
+        const getSalesPricingValues = () => ({
+            color_full_threshold_percent: salesFullThresholdInput ? formatThresholdPercent(salesFullThresholdInput.value) : '10',
+            bw_price_70: salesBwPrice70Input ? salesBwPrice70Input.value.trim() : '1',
+            bw_price_80: salesBwPrice80Input ? salesBwPrice80Input.value.trim() : '2',
+            partial_color_price: salesPartialColorPriceInput ? salesPartialColorPriceInput.value.trim() : '2',
+            full_color_price: salesFullColorPriceInput ? salesFullColorPriceInput.value.trim() : '5',
+        });
+
+        const syncSalesThresholdValue = () => {
+            const thresholdValue = formatThresholdPercent(salesFullThresholdInput ? salesFullThresholdInput.value : '10');
+            if (salesFullThresholdInput) {
+                salesFullThresholdInput.value = thresholdValue;
+            }
+            if (salesThresholdRuleText) {
+                salesThresholdRuleText.textContent = `Partial Color: above 0% and below ${thresholdValue}%. Full Color: ${thresholdValue}% and above.`;
+            }
+        };
+
+        const setSalesPricingButtonState = (mode, isBusy = false) => {
+            if (!editSalesPricingBtn) {
+                return;
+            }
+
+            editSalesPricingBtn.dataset.mode = mode;
+            editSalesPricingBtn.disabled = isBusy;
+            editSalesPricingBtn.textContent = isBusy ? 'Saving...' : (mode === 'save' ? 'Save Changes' : 'Edit Pricing Rules');
+        };
+
+        const setSalesPricingEditing = (isEditing) => {
+            salesPricingInputs.forEach((input) => {
+                input.disabled = !isEditing;
+            });
+
+            if (salesPricingCard) {
+                salesPricingCard.classList.toggle('is-editing', isEditing);
+            }
+
+            setSalesPricingButtonState(isEditing ? 'save' : 'edit');
+        };
+
+        const applySalesPricingConfig = (pricingConfig) => {
+            const savedThresholdValue = formatThresholdPercent(pricingConfig.color_full_threshold_percent || '10');
+            if (salesFullThresholdInput) salesFullThresholdInput.value = savedThresholdValue;
+            if (salesBwPrice70Input) salesBwPrice70Input.value = pricingConfig.bw_price_70 || '1';
+            if (salesBwPrice80Input) salesBwPrice80Input.value = pricingConfig.bw_price_80 || '2';
+            if (salesPartialColorPriceInput) salesPartialColorPriceInput.value = pricingConfig.partial_color_price || '2';
+            if (salesFullColorPriceInput) salesFullColorPriceInput.value = pricingConfig.full_color_price || '5';
+            syncSalesThresholdValue();
+        };
+
+        if (salesFullThresholdInput) {
+            syncSalesThresholdValue();
+            salesFullThresholdInput.addEventListener('input', syncSalesThresholdValue);
+            salesFullThresholdInput.addEventListener('change', syncSalesThresholdValue);
+        }
+
+        if (salesPricingInputs.length) {
+            salesPricingOriginalValues = getSalesPricingValues();
+            setSalesPricingEditing(false);
+        }
+
+        if (editSalesPricingBtn) {
+            editSalesPricingBtn.addEventListener('click', function () {
+                const pageMessages = document.getElementById('pageMessages');
+                if (pageMessages) {
+                    pageMessages.innerHTML = '';
+                }
+
+                if (editSalesPricingBtn.dataset.mode !== 'save') {
+                    salesPricingOriginalValues = getSalesPricingValues();
+                    setSalesPricingEditing(true);
+                    if (salesFullThresholdInput) {
+                        salesFullThresholdInput.focus();
+                    }
+                    return;
+                }
+
+                const currentPricingValues = getSalesPricingValues();
+                if (salesPricingOriginalValues && JSON.stringify(currentPricingValues) === JSON.stringify(salesPricingOriginalValues)) {
+                    setSalesPricingEditing(false);
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('color_full_threshold_percent', currentPricingValues.color_full_threshold_percent);
+                formData.append('bw_price_70', currentPricingValues.bw_price_70);
+                formData.append('bw_price_80', currentPricingValues.bw_price_80);
+                formData.append('partial_color_price', currentPricingValues.partial_color_price);
+                formData.append('full_color_price', currentPricingValues.full_color_price);
+
+                setSalesPricingButtonState('save', true);
+
+                fetch('/api/update-pricing-settings/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                    },
+                    body: formData,
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            applySalesPricingConfig(data.pricing_config || {});
+                            salesPricingOriginalValues = getSalesPricingValues();
+                            setSalesPricingEditing(false);
+                            createAlert('Success', 'Pricing Updated', 'Sales pricing rules have been saved.', 'success', true, true, 'pageMessages');
+                        } else {
+                            setSalesPricingButtonState('save');
+                            createAlert('Error', 'Update Failed', data.error || 'Failed to update pricing rules.', 'danger', true, true, 'pageMessages');
+                        }
+                    })
+                    .catch(() => {
+                        setSalesPricingButtonState('save');
+                        createAlert('Error', 'Update Failed', 'An error occurred while saving pricing rules.', 'danger', true, true, 'pageMessages');
+                    });
+            });
+        }
+
     // Printer Search Functionality
     const printerSearchInput = document.getElementById('printer-search');
     const tableRows = document.querySelectorAll('.printer-table-row');

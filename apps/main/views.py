@@ -3,6 +3,7 @@ from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
+from portal.models import SiteSetting
 from .utils.pdf_color_detection import analyze_pdf_colors, calculate_page_costs
 
 @csrf_exempt
@@ -17,8 +18,19 @@ def upload_pdf_view(request):
                 destination.write(chunk)
         # Analyze PDF
         try:
-            color_results = analyze_pdf_colors(temp_path)
-            total, costs = calculate_page_costs(color_results, gsm=gsm)
+            site_settings = SiteSetting.load()
+            color_results = analyze_pdf_colors(
+                temp_path,
+                full_color_threshold_percent=site_settings.color_full_threshold_percent,
+            )
+            total, costs = calculate_page_costs(
+                color_results,
+                gsm=gsm,
+                bw_price_70=site_settings.bw_price_70,
+                bw_price_80=site_settings.bw_price_80,
+                partial_color_price=site_settings.partial_color_price,
+                full_color_price=site_settings.full_color_price,
+            )
             os.remove(temp_path)
             return JsonResponse({
                 'total_cost': total,

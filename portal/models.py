@@ -78,6 +78,36 @@ class SiteSetting(models.Model):
         default=10,
         help_text='Minutes before a pending payment intent expires'
     )
+    bw_price_70 = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=1,
+        help_text='Price for a black-and-white page on 70 GSM paper'
+    )
+    bw_price_80 = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=2,
+        help_text='Price for a black-and-white page on 80 GSM paper'
+    )
+    partial_color_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=2,
+        help_text='Price for a partially colored page'
+    )
+    full_color_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=5,
+        help_text='Price for a full-color page'
+    )
+    color_full_threshold_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=10,
+        help_text='Percent of colored pixels at or above which a page is treated as full color'
+    )
     block_payment_when_printers_unavailable = models.BooleanField(
         default=True,
         help_text='When enabled, payment is blocked if no matching printer is currently available'
@@ -363,6 +393,7 @@ class Payment(models.Model):
     color_mode_snapshot = models.CharField(max_length=50, blank=True, default='')
     paper_size_snapshot = models.CharField(max_length=50, blank=True, default='')
     paper_quality_snapshot = models.CharField(max_length=50, blank=True, default='')
+    pricing_threshold_snapshot = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
 
     def capture_document_snapshot(self):
         updated_fields = set()

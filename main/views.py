@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect
 from django.urls import reverse, path
-from portal.models import AdminUser, Document, Payment
+from portal.models import AdminUser, Document, Payment, SiteSetting
 from django.contrib.auth.hashers import check_password
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -708,6 +708,12 @@ def update_document_settings(request):
                     file_rel_path = f'uploads/{session_key}/{doc.stored_name}'
                     abs_path = default_storage.path(file_rel_path)
                     page_range_str = upd.get('pages', None)
+                    site_settings = SiteSetting.load()
+                    full_color_threshold_percent = site_settings.color_full_threshold_percent
+                    bw_price_70 = site_settings.bw_price_70
+                    bw_price_80 = site_settings.bw_price_80
+                    partial_color_price = site_settings.partial_color_price
+                    full_color_price = site_settings.full_color_price
                     if page_range_str and isinstance(page_range_str, str):
                         # Parse page indices before scanning
                         with default_storage.open(file_rel_path, 'rb') as f:
@@ -733,27 +739,40 @@ def update_document_settings(request):
                                 except Exception:
                                     return JsonResponse({'success': False, 'error': f'Invalid range format: {part}'}, status=400)
                         # Only scan selected pages
-                        color_results = analyze_pdf_colors(abs_path, page_indices=page_indices)
+                        color_results = analyze_pdf_colors(
+                            abs_path,
+                            page_indices=page_indices,
+                            full_color_threshold_percent=full_color_threshold_percent,
+                        )
                         filtered_color_results = color_results
                     else:
-                        color_results = analyze_pdf_colors(abs_path)
+                        color_results = analyze_pdf_colors(
+                            abs_path,
+                            full_color_threshold_percent=full_color_threshold_percent,
+                        )
                         filtered_color_results = color_results
                     total_cost, costs_per_page = calculate_page_costs(
                         filtered_color_results,
                         gsm=int(doc.paper_quality),
                         color_mode=doc.color_mode,
                         num_copies=doc.num_copies,
+                        bw_price_70=bw_price_70,
+                        bw_price_80=bw_price_80,
+                        partial_color_price=partial_color_price,
+                        full_color_price=full_color_price,
                     )
                     new_price = total_cost
                     try:
                         payment = Payment.objects.get(doc=doc)
                         payment.price = new_price
+                        payment.pricing_threshold_snapshot = full_color_threshold_percent
                         payment.save()
                     except Payment.DoesNotExist:
                         Payment.objects.create(
                             doc=doc,
                             price=new_price,
-                            payment_status='Unpaid'
+                            payment_status='Unpaid',
+                            pricing_threshold_snapshot=full_color_threshold_percent,
                         )
                 except Document.DoesNotExist:
                     continue
