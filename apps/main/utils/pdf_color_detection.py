@@ -7,13 +7,14 @@ def is_colored_pixel(pixel, threshold=10):
     r, g, b = pixel[:3]
     return abs(r - g) > threshold or abs(r - b) > threshold or abs(g - b) > threshold
 
-def analyze_pdf_colors(pdf_path, dpi=100, page_indices=None):
+def analyze_pdf_colors(pdf_path, dpi=100, page_indices=None, full_color_threshold_percent=10):
     """
     Returns a list of dicts per page: { 'bw': bool, 'partial': bool, 'full_color': bool, 'color_ratio': float }
     If page_indices is provided, only those pages are scanned (0-based).
     """
     doc = fitz.open(pdf_path)
     results = []
+    full_color_threshold_ratio = max(float(full_color_threshold_percent or 0), 0.0) / 100.0
     if page_indices is None:
         page_indices = range(len(doc))
     for i in page_indices:
@@ -25,7 +26,7 @@ def analyze_pdf_colors(pdf_path, dpi=100, page_indices=None):
         total = len(pixels)
         color_count = sum(1 for px in pixels if is_colored_pixel(px))
         color_ratio = color_count / total
-        if color_ratio > 0.10:
+        if color_ratio >= full_color_threshold_ratio and color_ratio > 0:
             results.append({'bw': False, 'partial': False, 'full_color': True, 'color_ratio': color_ratio})
         elif color_ratio > 0:
             results.append({'bw': False, 'partial': True, 'full_color': False, 'color_ratio': color_ratio})
@@ -33,13 +34,22 @@ def analyze_pdf_colors(pdf_path, dpi=100, page_indices=None):
             results.append({'bw': True, 'partial': False, 'full_color': False, 'color_ratio': 0.0})
     return results
 
-# Pricing variables for easy changes
+# Pricing defaults
 PRICE_BW_70 = 1
 PRICE_BW_80 = 2
-PRICE_COLOR_PARTIAL = 2  # <10% colored pixels
-PRICE_COLOR_FULL = 5     # Full RGB
+PRICE_COLOR_PARTIAL = 2
+PRICE_COLOR_FULL = 5
 
-def calculate_page_costs(color_results, gsm=70, color_mode='Color', num_copies=1):
+def calculate_page_costs(
+    color_results,
+    gsm=70,
+    color_mode='Color',
+    num_copies=1,
+    bw_price_70=PRICE_BW_70,
+    bw_price_80=PRICE_BW_80,
+    partial_color_price=PRICE_COLOR_PARTIAL,
+    full_color_price=PRICE_COLOR_FULL,
+):
     """
     Calculates per-page costs based on color analysis, GSM, and color mode.
     Factors in the number of copies requested.
@@ -50,16 +60,16 @@ def calculate_page_costs(color_results, gsm=70, color_mode='Color', num_copies=1
     
     if color_mode != 'Color':
         # B&W pricing logic
-        bw_price = PRICE_BW_70 if gsm == 70 else PRICE_BW_80
+        bw_price = bw_price_70 if gsm == 70 else bw_price_80
         costs = [bw_price] * len(color_results)
     else:
         for page in color_results:
             if page.get('full_color'):
-                costs.append(PRICE_COLOR_FULL)
+                costs.append(full_color_price)
             elif page.get('partial'):
-                costs.append(PRICE_COLOR_PARTIAL)
+                costs.append(partial_color_price)
             else:  # pure B&W in color mode
-                bw_price = PRICE_BW_70 if gsm == 70 else PRICE_BW_80
+                bw_price = bw_price_70 if gsm == 70 else bw_price_80
                 costs.append(bw_price)
     
     # Calculate single copy cost and total cost

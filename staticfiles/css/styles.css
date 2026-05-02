@@ -4644,17 +4644,18 @@ input:focus::placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 70vh;
+    min-height: 70vh;
     margin: auto;
+    padding: 24px 16px;
 }
 
 .login-box {
-    width: 674px;
-    height: 462px;
+    width: min(674px, 100%);
+    min-height: 462px;
     border-radius: 16px 16px 0px 0px;
     border: 2px solid var(--Colors-Black, #18191F);
     background: var(--Colors-White, #FFF);
-    position: absolute;
+    position: relative;
 }
 
 .login-header {
@@ -5249,6 +5250,126 @@ input:focus::placeholder {
     padding: 20px;
 }
 
+.sales-pricing-card {
+    margin-bottom: 22px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+}
+
+.sales-pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.sales-pricing-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sales-pricing-field-action {
+    justify-content: flex-start;
+}
+
+.sales-pricing-field label {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #18191F;
+}
+
+.sales-pricing-field input {
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1.5px solid #18191F;
+    background: #ffffff;
+    font: inherit;
+}
+
+.sales-pricing-field input:disabled {
+    background: #F3F4F6;
+    color: #6B7280;
+    border-color: #D1D5DB;
+    cursor: not-allowed;
+}
+
+.sales-threshold-input-wrap {
+    position: relative;
+}
+
+.sales-threshold-input {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 36px 10px 12px;
+    border-radius: 12px;
+    border: 1.5px solid #18191F;
+    background: #ffffff;
+    font: inherit;
+}
+
+.sales-threshold-suffix {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    font-weight: 800;
+    color: #18191F;
+    pointer-events: none;
+}
+
+.sales-price-input-wrap {
+    position: relative;
+}
+
+.sales-price-input-wrap input {
+    width: 100%;
+    padding-left: 34px;
+}
+
+.sales-price-prefix {
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    transform: translateY(-50%);
+    font-weight: 800;
+    color: #18191F;
+    pointer-events: none;
+}
+
+.sales-pricing-helper {
+    color: #6B7280;
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.sales-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    width: 100%;
+    padding: 10px 18px;
+    border: 1px solid #1D4ED8;
+    border-radius: 12px;
+    background: #2563EB;
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.sales-edit-btn:hover {
+    background: #1D4ED8;
+    border-color: #1E40AF;
+}
+
+.sales-edit-btn:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
 .sales-meta {
     margin: 0 0 16px;
     color: #5A5D6C;
@@ -5342,6 +5463,14 @@ input:focus::placeholder {
     font-size: 0.82rem;
     font-weight: 700;
     text-transform: capitalize;
+}
+
+.sales-method-meta {
+    display: block;
+    margin-top: 6px;
+    color: #6B7280;
+    font-size: 0.82rem;
+    white-space: nowrap;
 }
 
 .sales-amount-cell {
@@ -6671,21 +6800,41 @@ input:focus::placeholder {
 
 @media (max-width: 1024px) {
     .login-container {
-        height: auto;
-        padding: 20px;
+        align-items: flex-start;
+        min-height: auto;
+        padding: 24px 16px 40px;
+    }
+
+    .login-box {
+        width: min(100%, 420px);
+        min-height: 0;
+        margin: 0 auto;
+        border-radius: 16px;
     }
 
     .login-form {
-        padding: 20px;
-        margin-top: 12px;
+        padding: 20px 16px 24px;
+        margin-top: 0;
     }
 
     .form-group {
-        width: 220px;
-        margin-top: 1em;
+        width: 100%;
+        margin-top: 0;
     }
 
     .btn-login {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .login-links {
+        width: 100%;
+    }
+
+    .form-control {
+        font-size: 16px;
+    }
+}
 
 @media (max-width: 480px) {
     .card-container {
@@ -6708,18 +6857,6 @@ input:focus::placeholder {
 
     .card-icon {
         width: min(156px, 58vw);
-    }
-}
-        width: 100%;
-        box-sizing: border-box;
-    }
-
-    .login-links {
-        width: 100%;
-    }
-
-    .form-control {
-        font-size: 16px;
     }
 }
 
@@ -8053,6 +8190,14 @@ input:focus::placeholder {
         padding: 14px;
     }
 
+    .sales-pricing-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sales-edit-btn {
+        width: 100%;
+    }
+
     .sales-filter-form {
         gap: 10px;
     }
@@ -8244,19 +8389,19 @@ input:focus::placeholder {
     /* --- Dashboard layout adjusts for top bar --- */
     .dashboard-layout {
         flex-direction: column;
-        padding-top: 56px;
+        padding-top: 0;
     }
 
     /* --- Main content fills width --- */
     .main-content {
         min-width: 0;
         width: 100%;
-        padding: 12px;
+        padding: 72px 12px 12px;
     }
 
     .main-content > .dashboard-rows:first-child {
-        top: 56px;
-        padding-top: 12px;
+        top: auto;
+        padding-top: 0;
     }
 
     /* --- Dashboard header row --- */

@@ -182,6 +182,14 @@ def _get_payment_doc_id(payment):
     return str(payment.audit_doc_id or '').strip()
 
 
+def _format_threshold_percent(value):
+    if value in (None, ''):
+        return ''
+    decimal_value = Decimal(str(value))
+    normalized = decimal_value.normalize()
+    return format(normalized, 'f').rstrip('0').rstrip('.') if '.' in format(normalized, 'f') else format(normalized, 'f')
+
+
 def _build_sales_records(payments):
     grouped_records = {}
 
@@ -207,6 +215,7 @@ def _build_sales_records(payments):
                 'approved_by': approved_by,
                 'amount': Decimal('0.00'),
                 'doc_ids': [],
+                'pricing_thresholds': [],
             }
             grouped_records[group_key] = record
 
@@ -216,9 +225,17 @@ def _build_sales_records(payments):
         if doc_id and doc_id not in record['doc_ids']:
             record['doc_ids'].append(doc_id)
 
+        threshold_display = _format_threshold_percent(payment.pricing_threshold_snapshot)
+        if threshold_display and threshold_display not in record['pricing_thresholds']:
+            record['pricing_thresholds'].append(threshold_display)
+
     sales_records = list(grouped_records.values())
     for record in sales_records:
         record['document_ids_display'] = ', '.join(record['doc_ids']) if record['doc_ids'] else '—'
+        if record['pricing_thresholds']:
+            record['pricing_threshold_display'] = ', '.join(record['pricing_thresholds'])
+        else:
+            record['pricing_threshold_display'] = '—'
 
     sales_records.sort(
         key=lambda item: (item['approved_at'] is not None, item['approved_at'] or timezone.make_aware(datetime.min, timezone.get_current_timezone())),
@@ -461,6 +478,16 @@ def _payment_gateway_context(site):
     }
 
 
+def _pricing_settings_context(site):
+    return {
+        'bw_price_70': str(site.bw_price_70),
+        'bw_price_80': str(site.bw_price_80),
+        'partial_color_price': str(site.partial_color_price),
+        'full_color_price': str(site.full_color_price),
+        'color_full_threshold_percent': str(site.color_full_threshold_percent),
+    }
+
+
 def voucher_management(request):
     """Admin page for viewing and managing voucher credits."""
     user_id = request.session.get('admin_user_id')
@@ -486,6 +513,7 @@ def sales_dashboard(request):
         raise Http404("User not found")
 
     active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
+    site = SiteSetting.load()
     paid_payments = Payment.objects.select_related('doc').filter(payment_status='Paid')
     filtered_payments = paid_payments
 
@@ -530,6 +558,7 @@ def sales_dashboard(request):
         'sales_search_query': search_query,
         'sales_date_from': date_from,
         'sales_date_to': date_to,
+        'pricing_config': _pricing_settings_context(site),
     })
 
 
@@ -2200,6 +2229,7 @@ def update_payment_gateway_settings(request):
     recipient_name = request.POST.get('gcash_recipient_name', '').strip()
     recipient_number = normalize_phone_number(request.POST.get('gcash_recipient_number', '').strip())
     expiry_minutes = request.POST.get('payment_expiry_minutes', '').strip()
+    color_full_threshold_percent = request.POST.get('color_full_threshold_percent', '').strip()
     block_when_unavailable = request.POST.get('block_payment_when_printers_unavailable')
     qr_image = request.FILES.get('gcash_qr_image')
 
@@ -2214,6 +2244,16 @@ def update_payment_gateway_settings(request):
         except ValueError:
             return JsonResponse({'success': False, 'error': 'Payment expiry must be a valid number of minutes.'})
 
+    if color_full_threshold_percent:
+        try:
+            threshold_value = Decimal(color_full_threshold_percent)
+        except Exception:
+            return JsonResponse({'success': False, 'error': 'Full color cutoff must be a valid percentage.'})
+
+        if threshold_value < 0 or threshold_value > 100:
+            return JsonResponse({'success': False, 'error': 'Full color cutoff must be between 0 and 100.'})
+        site.color_full_threshold_percent = threshold_value
+
     if qr_image:
         if site.gcash_qr_image:
             site.gcash_qr_image.delete(save=False)
@@ -2224,6 +2264,51 @@ def update_payment_gateway_settings(request):
     return JsonResponse({
         'success': True,
         'payment_config': _payment_gateway_context(site),
+        'color_full_threshold_percent': str(site.color_full_threshold_percent),
+    })
+
+
+def update_pricing_settings(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Not authenticated'}, status=403)
+
+    site = SiteSetting.load()
+
+    try:
+        bw_price_70 = Decimal(request.POST.get('bw_price_70', '').strip())
+        bw_price_80 = Decimal(request.POST.get('bw_price_80', '').strip())
+        partial_color_price = Decimal(request.POST.get('partial_color_price', '').strip())
+        full_color_price = Decimal(request.POST.get('full_color_price', '').strip())
+        color_full_threshold_percent = Decimal(request.POST.get('color_full_threshold_percent', '').strip())
+    except Exception:
+        return JsonResponse({'success': False, 'error': 'Pricing values must be valid numbers.'})
+
+    if any(value < 0 for value in [bw_price_70, bw_price_80, partial_color_price, full_color_price]):
+        return JsonResponse({'success': False, 'error': 'Prices cannot be negative.'})
+
+    if color_full_threshold_percent < 0 or color_full_threshold_percent > 100:
+        return JsonResponse({'success': False, 'error': 'Full color cutoff must be between 0 and 100.'})
+
+    site.bw_price_70 = bw_price_70
+    site.bw_price_80 = bw_price_80
+    site.partial_color_price = partial_color_price
+    site.full_color_price = full_color_price
+    site.color_full_threshold_percent = color_full_threshold_percent
+    site.save(update_fields=[
+        'bw_price_70',
+        'bw_price_80',
+        'partial_color_price',
+        'full_color_price',
+        'color_full_threshold_percent',
+    ])
+
+    return JsonResponse({
+        'success': True,
+        'pricing_config': _pricing_settings_context(site),
     })
 
 

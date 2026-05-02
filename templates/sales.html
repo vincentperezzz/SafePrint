@@ -39,6 +39,36 @@ Sales
 </div>
 
 <div class="queue-header">
+    <h2 class="dashboard-section-header">Pricing Rules</h2>
+</div>
+<div class="printer-status-card sales-card sales-pricing-card">
+    <div class="sales-pricing-grid">
+        <div class="sales-pricing-field">
+            <label for="sales-full-threshold-setting">Full Color Cutoff (%)</label>
+            <div class="sales-threshold-input-wrap"><input type="number" id="sales-full-threshold-setting" value="{{ pricing_config.color_full_threshold_percent }}" min="0" max="100" step="10" class="sales-threshold-input" disabled><span class="sales-threshold-suffix">%</span></div>
+            <span id="sales-threshold-rule-text" class="sales-pricing-helper">Partial Color: above 0% and below {{ pricing_config.color_full_threshold_percent }}%. Full Color: {{ pricing_config.color_full_threshold_percent }}% and above.</span>
+        </div>
+        <div class="sales-pricing-field">
+            <label for="sales-bw-price-70-setting">B/W Price 70 GSM</label>
+            <div class="sales-price-input-wrap"><span class="sales-price-prefix">₱</span><input type="number" id="sales-bw-price-70-setting" value="{{ pricing_config.bw_price_70 }}" min="0" step="0.01" disabled></div>
+        </div>
+        <div class="sales-pricing-field">
+            <label for="sales-bw-price-80-setting">B/W Price 80 GSM</label>
+            <div class="sales-price-input-wrap"><span class="sales-price-prefix">₱</span><input type="number" id="sales-bw-price-80-setting" value="{{ pricing_config.bw_price_80 }}" min="0" step="0.01" disabled></div>
+        </div>
+        <div class="sales-pricing-field">
+            <label for="sales-partial-color-price-setting">Partial Color Price</label>
+            <div class="sales-price-input-wrap"><span class="sales-price-prefix">₱</span><input type="number" id="sales-partial-color-price-setting" value="{{ pricing_config.partial_color_price }}" min="0" step="0.01" disabled></div>
+        </div>
+        <div class="sales-pricing-field sales-pricing-field-action">
+            <label for="sales-full-color-price-setting">Full Color Price</label>
+            <div class="sales-price-input-wrap"><span class="sales-price-prefix">₱</span><input type="number" id="sales-full-color-price-setting" value="{{ pricing_config.full_color_price }}" min="0" step="0.01" disabled></div>
+            <button id="edit-sales-pricing-btn" class="sales-edit-btn" type="button">Edit Pricing Rules</button>
+        </div>
+    </div>
+</div>
+
+<div class="queue-header">
     <h2 class="dashboard-section-header">Recent Paid Transactions</h2>
 </div>
 <div class="printer-status-card sales-card">
@@ -68,6 +98,7 @@ Sales
             </div>
             <div data-label="Method">
                 <span class="sales-method-badge">{{ sale.payment_method|default:"manual" }}</span>
+                <span class="sales-method-meta">Color cutoff: {{ sale.pricing_threshold_display }}{% if sale.pricing_threshold_display != '—' %}%{% endif %}</span>
             </div>
             <div data-label="Amount" class="sales-amount-cell">₱{{ sale.amount|floatformat:2 }}</div>
             <div data-label="Verified By">{{ sale.approved_by|default:"—" }}</div>
