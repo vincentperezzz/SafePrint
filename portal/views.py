@@ -1,9 +1,12 @@
 import os
 import json
+import re
 import time
 import logging
 import threading
 import subprocess
+from datetime import timedelta
+from decimal import Decimal
 from django.db.models import Q
 from .forms import FeedbackForm
 from django.http import Http404
@@ -15,10 +18,11 @@ from django.utils.timezone import localtime
 from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
 from django.views.decorators.csrf import csrf_exempt
-from .models import AdminUser, Printer, Document, Payment, NotificationSound, SupportTicket, SiteSetting, TicketAuditLog
+from .models import AdminUser, Printer, Document, Payment, PaymentIntent, NotificationSound, SupportTicket, SiteSetting, TicketAuditLog, VoucherCredit
 from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.decorators import login_required
+from portal.services.firebase_payment import FirebasePaymentError, claim_notification, list_matching_notifications, normalize_phone_number
 
 logger = logging.getLogger(__name__)
 
@@ -150,8 +154,63 @@ def search_customer(request):
 # ─────────────────────────────────────────────
 # Minimum payment and credit constants
 # ─────────────────────────────────────────────
-XENDIT_MIN_AMOUNT = 5  # ₱5 minimum for Xendit transactions
 VOUCHER_CREDIT_EXPIRY_DAYS = 120  # Credits expire after 120 days
+
+
+def _refund_reserved_voucher(intent):
+    if not intent.voucher_credit_code or Decimal(intent.credit_applied) <= Decimal('0'):
+        return
+
+    voucher = VoucherCredit.objects.filter(code=intent.voucher_credit_code).first()
+    if not voucher:
+        return
+
+    voucher.remaining_balance = Decimal(voucher.remaining_balance) + Decimal(intent.credit_applied)
+    voucher.is_active = True
+    voucher.save(update_fields=['remaining_balance', 'is_active'])
+
+
+def _expire_stale_payment_intents(customer_id=None):
+    stale_intents = PaymentIntent.objects.filter(
+        status=PaymentIntent.STATUS_PENDING,
+        expires_at__lt=timezone.now(),
+    ).order_by('created_at')
+
+    if customer_id:
+        stale_intents = stale_intents.filter(customer_id=customer_id)
+
+    for intent in stale_intents:
+        with transaction.atomic():
+            locked_intent = PaymentIntent.objects.select_for_update().get(pk=intent.pk)
+            if locked_intent.status != PaymentIntent.STATUS_PENDING:
+                continue
+            _refund_reserved_voucher(locked_intent)
+            locked_intent.status = PaymentIntent.STATUS_EXPIRED
+            locked_intent.save(update_fields=['status', 'updated_at'])
+
+
+def _mark_customer_documents_paid(payments, *, approved_by, payment_method):
+    approved_at = timezone.now()
+    for payment_obj in payments:
+        payment_obj.payment_status = 'Paid'
+        payment_obj.payment_method = payment_method
+        payment_obj.approved_at = approved_at
+        payment_obj.approved_by = approved_by
+        payment_obj.save(update_fields=['payment_status', 'payment_method', 'approved_at', 'approved_by'])
+
+        document = payment_obj.doc
+        document.doc_status = 'Queued'
+        document.save(update_fields=['doc_status', 'status_updated_at'])
+
+
+def _payment_gateway_context(site):
+    return {
+        'recipient_name': site.gcash_recipient_name or 'GCash Recipient',
+        'recipient_number': site.gcash_recipient_number or '09XX XXX XXXX',
+        'recipient_qr_url': site.gcash_qr_image.url if site.gcash_qr_image else '',
+        'payment_expiry_minutes': site.payment_expiry_minutes or 10,
+        'block_payment_when_printers_unavailable': site.block_payment_when_printers_unavailable,
+    }
 
 
 def voucher_management(request):
@@ -467,14 +526,11 @@ def get_active_tickets_api(request):
 
 def payment(request):
     """
-    Handle payment gateway for documents via KLCiS integration.
-    
-    Flow:
-    1. GET: Display payment form with documents and total price
-    2. POST (action=initiate): Generate voucher code, upload to KLCiS, return payment URL
-    3. POST (action=verify): Verify voucher code entered by customer, approve documents
+    Handle the SafePrint-managed GCash payment flow backed by Firebase.
     """
-    # Default context to prevent auto-close
+    site = SiteSetting.load()
+    gateway_context = _payment_gateway_context(site)
+
     default_context = {
         'customer_id': '',
         'documents': [],
@@ -482,7 +538,7 @@ def payment(request):
         'stars': range(1, 6),
         'debug': False,
         'error': None,
-        'klcis_base_url': settings.KLCIS_BASE_URL,
+        'payment_config': gateway_context,
     }
     
     if request.method == 'GET':
@@ -566,6 +622,7 @@ def payment(request):
                 'total_price': round(total_price, 2),
                 'doc_ids_json': json.dumps(doc_ids_list),
                 'stars': stars,
+                'payment_config': gateway_context,
             })
             
             return render(request, 'payment.html', context)
@@ -589,10 +646,12 @@ def payment(request):
                 })
 
             # ─────────────────────────────────────────────
-            # ACTION: INITIATE — Calculate charges, apply credit, create payment
+            # ACTION: INITIATE — Create local payment intent and show GCash instructions
             # ─────────────────────────────────────────────
             if action == 'initiate':
-                phone_number = data.get('phone_number', '').strip()
+                _expire_stale_payment_intents(customer_id=customer_id)
+
+                phone_number = normalize_phone_number(data.get('phone_number', '').strip())
                 voucher_credit_code = data.get('voucher_credit_code', '').strip().upper()
 
                 if not documents_ids:
@@ -602,25 +661,26 @@ def payment(request):
                     })
 
                 # ─── Check printer availability before proceeding ───
-                pending_docs = Document.objects.filter(doc_id__in=documents_ids, doc_status='Pending')
-                for doc in pending_docs:
-                    matching_printers = Printer.objects.filter(
-                        paper_assigned=doc.paper_size,
-                        paper_quality=doc.paper_quality,
-                        printer_status__in=['Ready', 'Printing', 'Sleep']
-                    )
-                    if not matching_printers.exists():
-                        return JsonResponse({
-                            'success': False,
-                            'error': f'No available printer for {doc.paper_size} {doc.paper_quality} GSM. All matching printers are currently offline or unavailable. Please try again later.'
-                        })
+                if site.block_payment_when_printers_unavailable:
+                    pending_docs = Document.objects.filter(doc_id__in=documents_ids, doc_status='Pending')
+                    for doc in pending_docs:
+                        matching_printers = Printer.objects.filter(
+                            paper_assigned=doc.paper_size,
+                            paper_quality=doc.paper_quality,
+                            printer_status__in=['Ready', 'Printing', 'Sleep']
+                        )
+                        if not matching_printers.exists():
+                            return JsonResponse({
+                                'success': False,
+                                'error': f'No available printer for {doc.paper_size} {doc.paper_quality} GSM. All matching printers are currently offline or unavailable. Please try again later.'
+                            })
 
                 # Calculate total price from Payment records
-                total_price = 0.0
+                total_price = Decimal('0.00')
                 for doc_id in documents_ids:
                     try:
                         payment_obj = Payment.objects.get(doc__doc_id=doc_id)
-                        total_price += float(payment_obj.price)
+                        total_price += Decimal(payment_obj.price)
                     except Payment.DoesNotExist:
                         pass
                 
@@ -631,11 +691,10 @@ def payment(request):
                     })
                 
                 # ─── Apply voucher credit if provided ───
-                credit_applied = 0.0
+                credit_applied = Decimal('0.00')
                 credit_voucher = None
                 
                 if voucher_credit_code:
-                    from portal.models import VoucherCredit
                     try:
                         credit_voucher = VoucherCredit.objects.get(code=voucher_credit_code)
                     except VoucherCredit.DoesNotExist:
@@ -652,7 +711,7 @@ def payment(request):
                     
                     # Apply up to the voucher balance
                     credit_applied = min(
-                        float(credit_voucher.remaining_balance),
+                        Decimal(credit_voucher.remaining_balance),
                         total_price
                     )
                 
@@ -660,39 +719,31 @@ def payment(request):
                 
                 # ─── Case 1: Fully covered by credit (₱0 charge) ───
                 if balance_due <= 0:
-                    # Skip KLCiS entirely — approve documents directly
                     with transaction.atomic():
-                        # Deduct credit from voucher
-                        credit_voucher.remaining_balance = float(credit_voucher.remaining_balance) - credit_applied
+                        credit_voucher.remaining_balance = Decimal(credit_voucher.remaining_balance) - credit_applied
                         if credit_voucher.remaining_balance <= 0:
-                            credit_voucher.remaining_balance = 0
+                            credit_voucher.remaining_balance = Decimal('0.00')
                             credit_voucher.is_active = False
+                        credit_voucher.last_customer_id = customer_id
                         credit_voucher.last_used_at = timezone.now()
                         credit_voucher.save()
                         
-                        # Update all Payment records — mark as Paid
-                        for doc_id in documents_ids:
-                            try:
-                                payment_obj = Payment.objects.get(doc__doc_id=doc_id)
-                                payment_obj.payment_status = 'Paid'
-                                payment_obj.payment_method = 'voucher_credit'
-                                payment_obj.approved_at = timezone.now()
-                                payment_obj.approved_by = f'Credit:{voucher_credit_code}'
-                                payment_obj.save()
-                                
-                                # Queue document for printing
-                                doc = payment_obj.doc
-                                doc.doc_status = 'Queued'
-                                doc.save()
-                            except Payment.DoesNotExist:
-                                pass
+                        payments = list(
+                            Payment.objects.select_related('doc').filter(
+                                doc__doc_id__in=documents_ids,
+                                doc__customer_id=customer_id,
+                            )
+                        )
+                        _mark_customer_documents_paid(
+                            payments,
+                            approved_by=f'Credit:{voucher_credit_code}',
+                            payment_method='voucher_credit',
+                        )
                     
                     remaining = float(credit_voucher.remaining_balance)
                     
                     # Store remaining credit info in session + DB for confirmation page coupon
                     if remaining > 0:
-                        credit_voucher.last_customer_id = customer_id
-                        credit_voucher.save()
                         request.session['credit_info'] = {
                             'code': voucher_credit_code,
                             'balance': remaining,
@@ -708,276 +759,243 @@ def payment(request):
                         'credit_code': voucher_credit_code if remaining > 0 else None,
                     })
                 
-                # ─── Phone number is required from here (KLCiS payment needed) ───
+                # ─── Phone number is required from here ───
                 if not phone_number:
                     return JsonResponse({
                         'success': False,
                         'error': 'Phone number is required for payment.'
                     })
-                
-                # ─── Case 2: Balance < ₱5 minimum — bump to ₱5 ───
-                charge_amount = balance_due
-                excess_credit = 0.0
-                
-                if charge_amount < XENDIT_MIN_AMOUNT:
-                    excess_credit = XENDIT_MIN_AMOUNT - charge_amount
-                    charge_amount = XENDIT_MIN_AMOUNT
-                
-                # Generate a unique voucher code for KLCiS
-                import random, string
-                klcis_voucher_code = ''.join(random.choices(
-                    string.ascii_lowercase + string.digits, k=8
-                ))
-                
-                # Upload voucher to KLCiS dashboard
-                from portal.services.klcis import create_and_upload_voucher, get_checkout_url, snapshot_existing_transactions
-                result = create_and_upload_voucher(klcis_voucher_code, charge_amount)
-                
-                if not result['success']:
+
+                if not re.match(r'^0?9\d{9}$', phone_number):
                     return JsonResponse({
                         'success': False,
-                        'error': f'Payment setup failed: {result["message"]}'
+                        'error': 'A valid GCash number is required for payment.'
                     })
                 
-                # Snapshot existing PAID transactions for dedup
-                baseline_txn_ids = snapshot_existing_transactions(phone_number, charge_amount)
-                request.session['baseline_txn_ids'] = baseline_txn_ids
-                
-                # Deduct credit from voucher NOW (optimistic — refund if cancelled)
-                if credit_voucher and credit_applied > 0:
-                    credit_voucher.remaining_balance = float(credit_voucher.remaining_balance) - credit_applied
-                    if credit_voucher.remaining_balance <= 0:
-                        credit_voucher.remaining_balance = 0
-                        credit_voucher.is_active = False
-                    credit_voucher.last_used_at = timezone.now()
-                    credit_voucher.save()
-                
-                # Store metadata in all Payment records
-                for doc_id in documents_ids:
-                    try:
-                        payment_obj = Payment.objects.get(doc__doc_id=doc_id)
-                        payment_obj.voucher_code = klcis_voucher_code
-                        payment_obj.payment_method = 'klcis'
+                with transaction.atomic():
+                    existing_intents = list(
+                        PaymentIntent.objects.select_for_update().filter(
+                            customer_id=customer_id,
+                            status=PaymentIntent.STATUS_PENDING,
+                        )
+                    )
+                    for pending_intent in existing_intents:
+                        _refund_reserved_voucher(pending_intent)
+                        pending_intent.status = PaymentIntent.STATUS_CANCELLED
+                        pending_intent.save(update_fields=['status', 'updated_at'])
+
+                    if credit_voucher and credit_applied > 0:
+                        credit_voucher = VoucherCredit.objects.select_for_update().get(pk=credit_voucher.pk)
+                        if not credit_voucher.is_usable or Decimal(credit_voucher.remaining_balance) < credit_applied:
+                            return JsonResponse({
+                                'success': False,
+                                'error': 'Voucher balance is no longer available. Please re-apply the voucher.',
+                            })
+                        credit_voucher.remaining_balance = Decimal(credit_voucher.remaining_balance) - credit_applied
+                        if credit_voucher.remaining_balance <= 0:
+                            credit_voucher.remaining_balance = Decimal('0.00')
+                            credit_voucher.is_active = False
+                        credit_voucher.last_used_at = timezone.now()
+                        credit_voucher.save(update_fields=['remaining_balance', 'is_active', 'last_used_at'])
+
+                    expires_at = timezone.now() + timedelta(minutes=site.payment_expiry_minutes or 10)
+                    payment_intent = PaymentIntent.objects.create(
+                        customer_id=customer_id,
+                        doc_ids=list(documents_ids),
+                        payer_number=phone_number,
+                        expected_amount=balance_due,
+                        voucher_credit_code=voucher_credit_code,
+                        credit_applied=credit_applied,
+                        recipient_name=gateway_context['recipient_name'],
+                        recipient_number=gateway_context['recipient_number'],
+                        expires_at=expires_at,
+                    )
+
+                    for payment_obj in Payment.objects.filter(doc__doc_id__in=documents_ids):
+                        payment_obj.payment_method = 'gcash_listener'
                         payment_obj.phone_number = phone_number
-                        payment_obj.save()
-                    except Payment.DoesNotExist:
-                        pass
-                
-                # Build direct checkout URL
-                checkout_url = get_checkout_url(charge_amount, phone_number)
-                
-                # Store session metadata for redirect handling & credit tracking
+                        payment_obj.save(update_fields=['payment_method', 'phone_number'])
+
                 request.session['pending_payment_cid'] = customer_id
                 request.session['pending_payment_doc_ids'] = documents_ids
-                request.session['pending_excess_credit'] = excess_credit
-                request.session['pending_credit_code'] = voucher_credit_code if voucher_credit_code else None
-                request.session['pending_credit_applied'] = credit_applied
-                request.session['pending_charge_amount'] = float(charge_amount)
-                
+
                 return JsonResponse({
                     'success': True,
                     'mode': 'payment',
-                    'message': 'Payment link created',
-                    'checkout_url': checkout_url,
-                    'voucher_code': klcis_voucher_code,
-                    'amount': int(round(charge_amount)),
-                    'original_total': round(total_price, 2),
-                    'credit_applied': round(credit_applied, 2),
-                    'excess_credit': round(excess_credit, 2),
+                    'message': 'Payment instructions ready.',
+                    'payment_intent_id': str(payment_intent.intent_id),
+                    'amount': float(balance_due),
+                    'original_total': float(total_price),
+                    'credit_applied': float(credit_applied),
+                    'recipient_name': gateway_context['recipient_name'],
+                    'recipient_number': gateway_context['recipient_number'],
+                    'recipient_qr_url': gateway_context['recipient_qr_url'],
+                    'payment_expiry_minutes': gateway_context['payment_expiry_minutes'],
+                    'expires_at': expires_at.isoformat(),
+                    'open_url': 'gcash://',
                 })
 
             # ─────────────────────────────────────────────
-            # ACTION: VERIFY — Poll KLCiS to check if payment is complete
+            # ACTION: VERIFY — Match pending payment intent against Firestore notification
             # ─────────────────────────────────────────────
             elif action == 'verify':
-                # Find pending payments for this customer that have a voucher code
-                payments = Payment.objects.filter(
-                    doc__customer_id=customer_id,
-                    payment_status='Unpaid',
-                    voucher_code__isnull=False,
-                ).exclude(voucher_code='')
-                
-                if not payments.exists():
-                    # Check if payments are already Paid (user re-visiting page)
+                _expire_stale_payment_intents(customer_id=customer_id)
+
+                payment_intent = PaymentIntent.objects.filter(
+                    customer_id=customer_id,
+                    status=PaymentIntent.STATUS_PENDING,
+                ).order_by('created_at').first()
+
+                if not payment_intent:
                     already_paid = Payment.objects.filter(
                         doc__customer_id=customer_id,
                         payment_status='Paid',
                     ).exists()
-                    
+
                     if already_paid:
                         return JsonResponse({
                             'success': True,
                             'message': 'Payment already verified! Your documents are queued for printing.',
                             'redirect_url': f'/confirmation/{customer_id}/'
                         })
-                    
+
                     return JsonResponse({
                         'success': False,
                         'error': 'No pending payment found for this customer.'
                     })
-                
-                # Get phone number and total amount for transaction verification
-                first_payment = payments.first()
-                phone_number = first_payment.phone_number
-                voucher_code = first_payment.voucher_code
-                total_amount = sum(float(p.price) for p in payments)
-                
-                # Use the actual charge amount sent to KLCiS (may differ from
-                # total_amount due to Xendit minimum bump or credit deductions)
-                charge_amount = request.session.get('pending_charge_amount')
-                if charge_amount is None:
-                    # Fallback: apply Xendit minimum bump (same logic as initiate)
-                    credit_applied = request.session.get('pending_credit_applied', 0)
-                    balance_due = total_amount - credit_applied
-                    charge_amount = max(balance_due, XENDIT_MIN_AMOUNT)
-                
-                if not phone_number:
+
+                if payment_intent.is_expired:
+                    with transaction.atomic():
+                        locked_intent = PaymentIntent.objects.select_for_update().get(pk=payment_intent.pk)
+                        if locked_intent.status == PaymentIntent.STATUS_PENDING:
+                            _refund_reserved_voucher(locked_intent)
+                            locked_intent.status = PaymentIntent.STATUS_EXPIRED
+                            locked_intent.save(update_fields=['status', 'updated_at'])
                     return JsonResponse({
                         'success': False,
-                        'error': 'No phone number on record for this payment.'
+                        'status': 'expired',
+                        'error': 'This payment attempt expired. Please start a new payment attempt.',
                     })
-                
-                # Collect Transaction IDs already used by previous payments (dedup)
-                # From active Payment records
-                used_txn_ids = set(
-                    Payment.objects.filter(
-                        klcis_transaction_id__isnull=False,
-                    ).exclude(
-                        klcis_transaction_id=''
-                    ).values_list('klcis_transaction_id', flat=True)
-                )
-                # From persistent used-transaction table (survives Payment deletion)
-                from portal.models import UsedKLCiSTransaction
-                used_txn_ids |= set(
-                    UsedKLCiSTransaction.objects.values_list('transaction_id', flat=True)
-                )
-                
-                # Merge baseline snapshot IDs (transactions that existed BEFORE
-                # this payment was initiated — prevents matching old transactions)
-                baseline_ids = set(request.session.get('baseline_txn_ids', []))
-                exclude_ids = used_txn_ids | baseline_ids
-                
-                # Check the KLCiS Transaction Logs page for a PAID entry
-                # matching this phone number + charge amount, excluding old + used txn IDs
-                from portal.services.klcis import verify_transaction_payment
-                result = verify_transaction_payment(phone_number, charge_amount, exclude_ids)
-                
-                if result['success']:
-                    txn_id = result.get('transaction_id')
-                    
-                    # Persist the transaction ID so it survives Payment deletion
-                    if txn_id:
-                        from portal.models import UsedKLCiSTransaction
-                        UsedKLCiSTransaction.objects.get_or_create(
-                            transaction_id=txn_id,
-                            defaults={
-                                'phone_number': phone_number or '',
-                                'amount': charge_amount,
-                            }
+
+                older_pending_intent_exists = PaymentIntent.objects.filter(
+                    status=PaymentIntent.STATUS_PENDING,
+                    payer_number=payment_intent.payer_number,
+                    expected_amount=payment_intent.expected_amount,
+                    created_at__lt=payment_intent.created_at,
+                    expires_at__gte=timezone.now(),
+                ).exclude(pk=payment_intent.pk).exists()
+
+                if older_pending_intent_exists:
+                    return JsonResponse({
+                        'success': False,
+                        'status': 'pending',
+                        'error': 'A previous payment attempt with the same number and amount is still waiting for confirmation.',
+                    })
+
+                try:
+                    candidates = list_matching_notifications(
+                        payer_number=payment_intent.payer_number,
+                        expected_amount=Decimal(payment_intent.expected_amount),
+                        earliest_at=payment_intent.created_at,
+                        latest_at=payment_intent.expires_at,
+                    )
+                except FirebasePaymentError:
+                    return JsonResponse({
+                        'success': False,
+                        'status': 'pending',
+                        'error': 'Automatic payment checking is temporarily unavailable. Please try again in a moment, and keep your receipt for manual review if needed.',
+                    })
+
+                for candidate in candidates:
+                    try:
+                        claimed_payload = claim_notification(
+                            notification_ref=candidate['reference'],
+                            customer_id=customer_id,
+                            intent_id=payment_intent.intent_id,
                         )
-                    
-                    # Payment confirmed! Mark all documents as Queued
+                    except FirebasePaymentError:
+                        return JsonResponse({
+                            'success': False,
+                            'status': 'pending',
+                            'error': 'Automatic payment checking is temporarily unavailable. Please try again in a moment, and keep your receipt for manual review if needed.',
+                        })
+                    if claimed_payload is None:
+                        continue
+
+                    payments = list(
+                        Payment.objects.select_related('doc').filter(
+                            doc__customer_id=customer_id,
+                            doc__doc_id__in=payment_intent.doc_ids,
+                            payment_status='Unpaid',
+                        )
+                    )
+
+                    if not payments:
+                        return JsonResponse({
+                            'success': False,
+                            'error': 'No unpaid documents were found for this payment attempt.',
+                        })
+
                     with transaction.atomic():
-                        for i, payment_obj in enumerate(payments):
-                            payment_obj.payment_status = 'Paid'
-                            payment_obj.approved_at = timezone.now()
-                            payment_obj.approved_by = 'KLCiS-Auto'
-                            # Store txn_id on first payment only (unique constraint)
-                            if i == 0 and txn_id:
-                                payment_obj.klcis_transaction_id = txn_id
-                            payment_obj.save()
-                            
-                            # Update document status to Queued (triggers WRR print)
-                            doc = payment_obj.doc
-                            doc.doc_status = 'Queued'
-                            doc.save()
-                    
-                    # ── Voucher cleanup: Delete voucher from KLCiS ──
-                    if voucher_code:
-                        from portal.services.klcis import cleanup_voucher
-                        cleanup_voucher(voucher_code)
-                    
-                    # ── Handle excess credit from ₱5 minimum ──
-                    excess_credit = request.session.get('pending_excess_credit', 0)
-                    pending_credit_code = request.session.get('pending_credit_code', None)
-                    credit_info = None
-                    
-                    if excess_credit > 0:
-                        from portal.models import VoucherCredit
-                        from datetime import timedelta
-                        import random, string as str_mod
-                        
-                        # Always use the KLCiS voucher code as the new credit code
-                        # (uppercased to match VoucherCredit format).
-                        # If student redeemed an old credit code, the old voucher
-                        # was already depleted — the new KLCiS voucher code becomes
-                        # the new credit code with the excess balance.
-                        new_code = voucher_code.upper() if voucher_code else ''.join(
-                            random.choices(str_mod.ascii_uppercase + str_mod.digits, k=8)
+                        locked_intent = PaymentIntent.objects.select_for_update().get(pk=payment_intent.pk)
+                        if locked_intent.status != PaymentIntent.STATUS_PENDING:
+                            break
+
+                        locked_intent.status = PaymentIntent.STATUS_MATCHED
+                        locked_intent.matched_notification_id = candidate['doc_id']
+                        locked_intent.matched_raw_text = claimed_payload.get('rawText', '')
+                        locked_intent.matched_at = timezone.now()
+                        locked_intent.verification_source = 'firestore'
+                        locked_intent.save(update_fields=['status', 'matched_notification_id', 'matched_raw_text', 'matched_at', 'verification_source', 'updated_at'])
+
+                        _mark_customer_documents_paid(
+                            payments,
+                            approved_by='GCash-Listener-Auto',
+                            payment_method='gcash_listener',
                         )
-                        vc = VoucherCredit.objects.create(
-                            code=new_code,
-                            original_amount=excess_credit,
-                            remaining_balance=excess_credit,
-                            last_customer_id=customer_id,
-                            expires_at=timezone.now() + timedelta(days=VOUCHER_CREDIT_EXPIRY_DAYS),
-                        )
-                        credit_info = {
-                            'code': vc.code,
-                            'balance': float(vc.remaining_balance),
-                            'expires_at': vc.expires_at.strftime('%B %d, %Y'),
-                        }
-                    
-                    # Store credit info in session for confirmation page display
-                    if credit_info:
-                        request.session['credit_info'] = credit_info
-                    
-                    # Clear pending payment session flags
+
                     request.session.pop('pending_payment_cid', None)
                     request.session.pop('pending_payment_doc_ids', None)
-                    request.session.pop('baseline_txn_ids', None)
-                    request.session.pop('pending_excess_credit', None)
-                    request.session.pop('pending_credit_code', None)
-                    request.session.pop('pending_credit_applied', None)
-                    
+
                     return JsonResponse({
                         'success': True,
                         'message': 'Payment verified! Your documents are now queued for printing.',
                         'redirect_url': f'/confirmation/{customer_id}/',
-                        'credit_info': credit_info,
                     })
-                else:
-                    return JsonResponse({
-                        'success': False,
-                        'error': 'Payment not yet confirmed. Please complete the payment and try again.',
-                        'status': 'pending'
-                    })
+
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Payment not yet confirmed. If auto-detection still fails, keep your receipt for manual review.',
+                    'status': 'pending'
+                })
 
             elif action == 'cancel':
                 # Cancel payment - delete unpaid payments and associated documents
                 customer_id = data.get('customer_id')
                 if not customer_id:
                     return JsonResponse({'success': False, 'error': 'Missing customer_id'})
+
+                pending_intents = list(
+                    PaymentIntent.objects.filter(
+                        customer_id=customer_id,
+                        status=PaymentIntent.STATUS_PENDING,
+                    )
+                )
+
+                for intent in pending_intents:
+                    with transaction.atomic():
+                        locked_intent = PaymentIntent.objects.select_for_update().get(pk=intent.pk)
+                        if locked_intent.status != PaymentIntent.STATUS_PENDING:
+                            continue
+                        _refund_reserved_voucher(locked_intent)
+                        locked_intent.status = PaymentIntent.STATUS_CANCELLED
+                        locked_intent.save(update_fields=['status', 'updated_at'])
                 
                 # Delete unpaid payments and their documents
                 unpaid_payments = Payment.objects.filter(
                     doc__customer_id=customer_id,
                     payment_status='Unpaid'
                 )
-                
-                # ── Voucher cleanup: Delete voucher from KLCiS on cancel ──
-                # Don't leave orphaned vouchers sitting on the KLCiS dashboard
-                voucher_codes_to_delete = set(
-                    unpaid_payments.exclude(
-                        voucher_code__isnull=True
-                    ).exclude(
-                        voucher_code=''
-                    ).values_list('voucher_code', flat=True)
-                )
-                if voucher_codes_to_delete:
-                    from portal.services.klcis import cleanup_voucher
-                    for vc in voucher_codes_to_delete:
-                        cleanup_voucher(vc)
                 
                 for payment_obj in unpaid_payments:
                     doc = payment_obj.doc
@@ -996,29 +1014,9 @@ def payment(request):
                 if os.path.exists(customer_folder) and not os.listdir(customer_folder):
                     os.rmdir(customer_folder)
                 
-                # ── Refund optimistically deducted credit ──
-                pending_credit_code = request.session.get('pending_credit_code')
-                pending_credit_applied = request.session.get('pending_credit_applied', 0)
-                if pending_credit_code and pending_credit_applied > 0:
-                    from portal.models import VoucherCredit
-                    try:
-                        vc = VoucherCredit.objects.get(code=pending_credit_code)
-                        vc.remaining_balance = float(vc.remaining_balance) + pending_credit_applied
-                        vc.is_active = True
-                        vc.save()
-                        logger.info(
-                            f'Refunded ₱{pending_credit_applied} credit to '
-                            f'voucher {pending_credit_code} on cancel'
-                        )
-                    except VoucherCredit.DoesNotExist:
-                        pass
-                
                 # Clear session flags
                 request.session.pop('pending_payment_cid', None)
                 request.session.pop('pending_payment_doc_ids', None)
-                request.session.pop('pending_excess_credit', None)
-                request.session.pop('pending_credit_code', None)
-                request.session.pop('pending_credit_applied', None)
                 
                 return JsonResponse({'success': True, 'message': 'Payment cancelled successfully.'})
 
@@ -1805,6 +1803,46 @@ def update_customer_sound_prefs(request):
 
     site.save()
     return JsonResponse({'success': True})
+
+
+@csrf_exempt
+def update_payment_gateway_settings(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Not authenticated'}, status=403)
+
+    site = SiteSetting.load()
+    recipient_name = request.POST.get('gcash_recipient_name', '').strip()
+    recipient_number = normalize_phone_number(request.POST.get('gcash_recipient_number', '').strip())
+    expiry_minutes = request.POST.get('payment_expiry_minutes', '').strip()
+    block_when_unavailable = request.POST.get('block_payment_when_printers_unavailable')
+    qr_image = request.FILES.get('gcash_qr_image')
+
+    site.gcash_recipient_name = recipient_name
+    site.gcash_recipient_number = recipient_number
+    if block_when_unavailable is not None:
+        site.block_payment_when_printers_unavailable = str(block_when_unavailable).lower() in ('1', 'true', 'yes', 'on')
+
+    if expiry_minutes:
+        try:
+            site.payment_expiry_minutes = max(1, int(expiry_minutes))
+        except ValueError:
+            return JsonResponse({'success': False, 'error': 'Payment expiry must be a valid number of minutes.'})
+
+    if qr_image:
+        if site.gcash_qr_image:
+            site.gcash_qr_image.delete(save=False)
+        site.gcash_qr_image = qr_image
+
+    site.save()
+
+    return JsonResponse({
+        'success': True,
+        'payment_config': _payment_gateway_context(site),
+    })
 
 
 def printer_status_stream(request):
@@ -3314,6 +3352,10 @@ def check_printer_availability(request):
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
     try:
+        site = SiteSetting.load()
+        if not site.block_payment_when_printers_unavailable:
+            return JsonResponse({'available': True, 'all_offline': False, 'unavailable_docs': [], 'bypass_enabled': True})
+
         data = json.loads(request.body)
         doc_ids = data.get('doc_ids', [])
 

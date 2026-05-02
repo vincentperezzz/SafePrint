@@ -8,6 +8,7 @@ PyPDF2==3.0.1
 pdf2image
 python-decouple==3.8
 requests
+firebase-admin
 sqlparse==0.5.3
 tornado==6.5.1
 tzdata==2025.2

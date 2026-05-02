@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 import os
 
@@ -68,6 +70,17 @@ class SiteSetting(models.Model):
     auto_ticket_timeout_minutes = models.IntegerField(
         default=5,
         help_text='Minutes a document stays Queued with empty queue before auto-triggering ticket popup'
+    )
+    gcash_recipient_name = models.CharField(max_length=255, blank=True, default='')
+    gcash_recipient_number = models.CharField(max_length=20, blank=True, default='')
+    gcash_qr_image = models.ImageField(upload_to='payment_qr/', null=True, blank=True)
+    payment_expiry_minutes = models.IntegerField(
+        default=10,
+        help_text='Minutes before a pending payment intent expires'
+    )
+    block_payment_when_printers_unavailable = models.BooleanField(
+        default=True,
+        help_text='When enabled, payment is blocked if no matching printer is currently available'
     )
 
     class Meta:
@@ -331,6 +344,52 @@ class Payment(models.Model):
     
     class Meta:
         db_table = 'payments'
+
+
+class PaymentIntent(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_MATCHED = 'matched'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_EXPIRED = 'expired'
+    STATUS_FAILED = 'failed'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_MATCHED, 'Matched'),
+        (STATUS_CANCELLED, 'Cancelled'),
+        (STATUS_EXPIRED, 'Expired'),
+        (STATUS_FAILED, 'Failed'),
+    ]
+
+    intent_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    customer_id = models.CharField(max_length=255, db_index=True)
+    doc_ids = models.JSONField(default=list, blank=True)
+    payer_number = models.CharField(max_length=20, db_index=True)
+    expected_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    voucher_credit_code = models.CharField(max_length=20, blank=True, default='')
+    credit_applied = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    recipient_name = models.CharField(max_length=255, blank=True, default='')
+    recipient_number = models.CharField(max_length=20, blank=True, default='')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
+    verification_source = models.CharField(max_length=50, blank=True, default='')
+    matched_notification_id = models.CharField(max_length=255, blank=True, default='', db_index=True)
+    matched_raw_text = models.TextField(blank=True, default='')
+    matched_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'payment_intents'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.customer_id} - {self.expected_amount} ({self.status})'
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        return timezone.now() > self.expires_at
 
 
 class UsedKLCiSTransaction(models.Model):

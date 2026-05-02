@@ -1908,6 +1908,83 @@ document.addEventListener('DOMContentLoaded', () => {
                 saveCustomerSoundPrefs({ reroute_sound: this.value });
             });
         }
+
+        const paymentRecipientNameInput = document.getElementById('payment-recipient-name-setting');
+        const paymentRecipientNumberInput = document.getElementById('payment-recipient-number-setting');
+        const paymentExpiryInput = document.getElementById('payment-expiry-minutes-setting');
+        const blockPaymentWhenOfflineInput = document.getElementById('block-payment-when-offline-setting');
+        const paymentQrInput = document.getElementById('payment-qr-image-setting');
+        const paymentQrPreview = document.getElementById('payment-qr-preview');
+        const paymentQrPreviewEmpty = document.getElementById('payment-qr-preview-empty');
+        const savePaymentGatewayBtn = document.getElementById('save-payment-gateway-btn');
+
+        if (paymentQrInput) {
+            paymentQrInput.addEventListener('change', function () {
+                const file = this.files && this.files[0];
+                if (!file || !paymentQrPreview) return;
+
+                const reader = new FileReader();
+                reader.onload = function (event) {
+                    paymentQrPreview.src = event.target.result;
+                    paymentQrPreview.style.display = 'block';
+                    if (paymentQrPreviewEmpty) paymentQrPreviewEmpty.style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        if (savePaymentGatewayBtn) {
+            savePaymentGatewayBtn.addEventListener('click', function () {
+                const pageMessages = document.getElementById('pageMessages');
+                if (pageMessages) {
+                    pageMessages.innerHTML = '';
+                }
+
+                const formData = new FormData();
+                formData.append('gcash_recipient_name', paymentRecipientNameInput ? paymentRecipientNameInput.value.trim() : '');
+                formData.append('gcash_recipient_number', paymentRecipientNumberInput ? paymentRecipientNumberInput.value.trim() : '');
+                formData.append('payment_expiry_minutes', paymentExpiryInput ? paymentExpiryInput.value.trim() : '10');
+                formData.append('block_payment_when_printers_unavailable', blockPaymentWhenOfflineInput && blockPaymentWhenOfflineInput.checked ? 'true' : 'false');
+
+                if (paymentQrInput && paymentQrInput.files && paymentQrInput.files[0]) {
+                    formData.append('gcash_qr_image', paymentQrInput.files[0]);
+                }
+
+                savePaymentGatewayBtn.disabled = true;
+                savePaymentGatewayBtn.textContent = 'Saving...';
+
+                fetch('/api/update-payment-gateway-settings/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                    },
+                    body: formData,
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            if (paymentRecipientNameInput) paymentRecipientNameInput.value = data.payment_config.recipient_name || '';
+                            if (paymentRecipientNumberInput) paymentRecipientNumberInput.value = data.payment_config.recipient_number || '';
+                            if (paymentExpiryInput) paymentExpiryInput.value = data.payment_config.payment_expiry_minutes || '10';
+                            if (paymentQrPreview && data.payment_config.recipient_qr_url) {
+                                paymentQrPreview.src = data.payment_config.recipient_qr_url;
+                                paymentQrPreview.style.display = 'block';
+                                if (paymentQrPreviewEmpty) paymentQrPreviewEmpty.style.display = 'none';
+                            }
+                            createAlert('Success', 'Payment Gateway Updated', 'GCash recipient settings have been saved.', 'success', true, true, 'pageMessages');
+                        } else {
+                            createAlert('Error', 'Update Failed', data.error || 'Failed to update payment gateway settings.', 'danger', true, true, 'pageMessages');
+                        }
+                    })
+                    .catch(() => {
+                        createAlert('Error', 'Update Failed', 'An error occurred while saving payment gateway settings.', 'danger', true, true, 'pageMessages');
+                    })
+                    .finally(() => {
+                        savePaymentGatewayBtn.disabled = false;
+                        savePaymentGatewayBtn.textContent = 'Save Payment Gateway';
+                    });
+            });
+        }
     }
 
     // Printer Search Functionality

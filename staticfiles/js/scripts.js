@@ -2859,11 +2859,10 @@ document.addEventListener('input', function(e) {
     const PAYMENT = window.PAYMENT_DATA;
     let pollInterval = null;
     let pollAttempts = 0;
-    const MAX_POLL_ATTEMPTS = 60; // 5 minutes at 5-second intervals
-    let checkoutUrl = null;
+    let maxPollAttempts = Math.ceil(((PAYMENT.paymentConfig?.paymentExpiryMinutes || 10) * 60) / 5);
+    let paymentOpenUrl = 'gcash://';
     let appliedVoucherCode = null;
     let appliedCreditAmount = 0;
-    const XENDIT_MIN = 5;
 
     /** Show full-screen loading overlay */
     function showOverlay() {
@@ -2881,13 +2880,7 @@ document.addEventListener('input', function(e) {
     function updatePriceDisplay(creditAmount, creditCode) {
         const total = PAYMENT.totalPrice;
         const balanceDue = Math.max(0, total - creditAmount);
-        let chargeAmount = balanceDue;
-        let excessCredit = 0;
-
-        if (balanceDue > 0 && balanceDue < XENDIT_MIN) {
-            excessCredit = XENDIT_MIN - balanceDue;
-            chargeAmount = XENDIT_MIN;
-        }
+        const chargeAmount = balanceDue;
 
         // Update amount display
         const amountEl = document.getElementById('display-amount');
@@ -2897,28 +2890,15 @@ document.addEventListener('input', function(e) {
         const step1Title = document.getElementById('step1-title');
         const step1Hint = document.getElementById('step1-hint');
         const discountSummary = document.getElementById('discount-summary');
-        const minDisclaimer = document.getElementById('minimum-disclaimer');
-        const minRow = document.getElementById('minimum-charge-row');
 
         if (creditAmount > 0) {
             // Show discount breakdown
             discountSummary.style.display = 'block';
             document.getElementById('original-total-display').textContent = '\u20B1' + total.toFixed(2);
             document.getElementById('credit-applied-display').textContent = '-\u20B1' + creditAmount.toFixed(2);
-
-            if (excessCredit > 0) {
-                minRow.style.display = 'flex';
-                document.getElementById('minimum-adj-display').textContent = '+\u20B1' + excessCredit.toFixed(2);
-                minDisclaimer.style.display = 'block';
-            } else {
-                minRow.style.display = 'none';
-                minDisclaimer.style.display = 'none';
-            }
-
             document.getElementById('final-charge-display').textContent = '\u20B1' + chargeAmount.toFixed(2);
         } else {
             discountSummary.style.display = 'none';
-            minDisclaimer.style.display = 'none';
         }
 
         if (balanceDue <= 0) {
@@ -2934,15 +2914,51 @@ document.addEventListener('input', function(e) {
         } else {
             amountEl.textContent = '\u20B1' + chargeAmount.toFixed(2);
             labelEl.textContent = creditAmount > 0 ? 'Balance Due' : 'Amount to Pay';
-            btn.textContent = 'Pay \u20B1' + Math.round(chargeAmount) + ' Now';
+            btn.textContent = 'Continue to GCash Details';
             btn.type = 'submit';
             btn.onclick = null;
             if (phoneSection) phoneSection.style.display = '';
             if (step1Title) step1Title.textContent = 'Pay with E-Wallet';
-            if (step1Hint) step1Hint.textContent = 'Provide the phone number registered with your preferred e-wallet (GCash, Maya, etc.).';
-            // Show min disclaimer if total is below ₱5 minimum (even without credit)
-            if (total < XENDIT_MIN && creditAmount === 0) {
-                minDisclaimer.style.display = 'block';
+            if (step1Hint) step1Hint.textContent = 'Provide the GCash number you will use to send the payment.';
+        }
+    }
+
+    function setPaymentInstructions(data) {
+        const recipientName = data.recipient_name || PAYMENT.paymentConfig?.recipientName || 'GCash Recipient';
+        const recipientNumber = data.recipient_number || PAYMENT.paymentConfig?.recipientNumber || '09XX XXX XXXX';
+        const qrUrl = data.recipient_qr_url || PAYMENT.paymentConfig?.recipientQrUrl || '';
+        const expiryMinutes = data.payment_expiry_minutes || PAYMENT.paymentConfig?.paymentExpiryMinutes || 10;
+        const amount = Number(data.amount || Math.max(0, PAYMENT.totalPrice - appliedCreditAmount));
+
+        PAYMENT.paymentConfig = {
+            recipientName: recipientName,
+            recipientNumber: recipientNumber,
+            recipientQrUrl: qrUrl,
+            paymentExpiryMinutes: expiryMinutes,
+        };
+        paymentOpenUrl = data.open_url || 'gcash://';
+        maxPollAttempts = Math.ceil((expiryMinutes * 60) / 5);
+
+        const recipientNameEl = document.getElementById('payment-recipient-name');
+        const recipientNumberEl = document.getElementById('payment-recipient-number');
+        const amountEl = document.getElementById('payment-send-amount');
+        const expiryEl = document.getElementById('payment-expiry-text');
+        const qrEl = document.getElementById('payment-recipient-qr');
+        const qrPlaceholder = document.getElementById('payment-qr-placeholder');
+
+        if (recipientNameEl) recipientNameEl.textContent = recipientName;
+        if (recipientNumberEl) recipientNumberEl.textContent = recipientNumber;
+        if (amountEl) amountEl.textContent = '₱' + amount.toFixed(2);
+        if (expiryEl) expiryEl.textContent = 'This payment attempt expires after ' + expiryMinutes + ' minutes.';
+
+        if (qrEl) {
+            if (qrUrl) {
+                qrEl.src = qrUrl;
+                qrEl.style.display = 'block';
+                if (qrPlaceholder) qrPlaceholder.style.display = 'none';
+            } else {
+                qrEl.style.display = 'none';
+                if (qrPlaceholder) qrPlaceholder.style.display = 'flex';
             }
         }
     }
@@ -3035,8 +3051,8 @@ document.addEventListener('input', function(e) {
     };
 
     /**
-     * STEP 1: Initiate payment
-     * Sends phone number + CID to Django → KLCiS voucher → opens GCash checkout
+    * STEP 1: Initiate payment
+    * Sends phone number + CID to Django → creates a payment intent → shows GCash instructions
      */
     window.initiatePayment = async function () {
         const phoneInput = document.getElementById('phone-number');
@@ -3094,26 +3110,18 @@ document.addEventListener('input', function(e) {
                 document.getElementById('payment-step-1').style.display = 'none';
                 document.getElementById('voucher-section').style.display = 'none';
                 document.getElementById('discount-summary').style.display = 'none';
-                document.getElementById('minimum-disclaimer').style.display = 'none';
                 document.getElementById('payment-step-2').style.display = 'flex';
+                setPaymentInstructions(data);
                 startAutoPolling();
-
-                if (data.checkout_url) {
-                    checkoutUrl = data.checkout_url;
-                    window.open(data.checkout_url, '_blank');
-                    // Always show redirect button (popup blockers may prevent opening)
-                    const redirectBtn = document.getElementById('redirect-payment-btn');
-                    if (redirectBtn) redirectBtn.style.display = '';
-                }
             } else {
                 alert(data.error || 'Payment setup failed. Please try again.');
                 btn.disabled = false;
-                btn.textContent = 'Pay \u20B1' + Math.round(PAYMENT.totalPrice) + ' Now';
+                btn.textContent = 'Continue to GCash Details';
             }
         } catch (err) {
             alert('Network error. Please check your connection and try again.');
             btn.disabled = false;
-            btn.textContent = 'Pay \u20B1' + Math.round(PAYMENT.totalPrice) + ' Now';
+            btn.textContent = 'Continue to GCash Details';
         } finally {
             hideOverlay();
         }
@@ -3121,7 +3129,7 @@ document.addEventListener('input', function(e) {
 
     /**
      * STEP 2: Verify payment
-     * Polls Django → KLCiS sold_vouchers → if paid, redirects to confirmation
+     * Polls Django → Firestore claim matcher → if paid, redirects to confirmation
      */
     window.verifyPayment = async function () {
         const btn = document.getElementById('verify-btn');
@@ -3151,7 +3159,7 @@ document.addEventListener('input', function(e) {
                 alert(data.message || 'Payment verified! Redirecting to print queue...');
                 window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
             } else {
-                if (data.status === 'pending') {
+                if (data.status === 'pending' || data.status === 'expired') {
                     alert('Payment not yet detected. If you already paid, please wait a moment and try again.');
                 } else {
                     alert(data.error || 'Verification failed.');
@@ -3175,7 +3183,7 @@ document.addEventListener('input', function(e) {
         pollAttempts = 0;
         pollInterval = setInterval(async () => {
             pollAttempts++;
-            if (pollAttempts > MAX_POLL_ATTEMPTS) {
+            if (pollAttempts > maxPollAttempts) {
                 stopAutoPolling();
                 return;
             }
@@ -3238,13 +3246,38 @@ document.addEventListener('input', function(e) {
     };
 
     /**
-     * Redirect to Payment - re-opens the checkout URL in a new tab
+     * Copy the recipient number so the user can paste it in GCash.
      */
-    window.redirectToPayment = function () {
-        if (checkoutUrl) {
-            window.open(checkoutUrl, '_blank');
-        } else {
-            alert('Payment link is not available. Please try paying again.');
+    window.copyPaymentNumber = async function () {
+        const recipientNumber = document.getElementById('payment-recipient-number')?.textContent?.trim();
+        if (!recipientNumber) {
+            alert('Recipient number is not available yet.');
+            return false;
+        }
+
+        try {
+            await navigator.clipboard.writeText(recipientNumber);
+            return true;
+        } catch (err) {
+            alert('Could not copy the GCash number automatically. Please copy it manually.');
+            return false;
+        }
+    };
+
+    window.openGCashApp = async function () {
+        const copied = await window.copyPaymentNumber();
+        if (!copied) return;
+
+        const targetUrl = paymentOpenUrl || 'gcash://';
+        try {
+            window.location.href = targetUrl;
+            window.setTimeout(function () {
+                if (document.visibilityState === 'visible') {
+                    window.open('https://www.gcash.com/', '_blank');
+                }
+            }, 1200);
+        } catch (err) {
+            window.open('https://www.gcash.com/', '_blank');
         }
     };
 
@@ -3304,8 +3337,5 @@ document.addEventListener('input', function(e) {
         if (printerCheckInterval) clearInterval(printerCheckInterval);
     });
 
-    // ── Initialize: show ₱5 minimum disclaimer if applicable ──
-    if (PAYMENT.totalPrice < XENDIT_MIN) {
-        updatePriceDisplay(0, null);
-    }
+    updatePriceDisplay(0, null);
 })();

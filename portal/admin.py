@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AdminUser, Printer, Document, Payment, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction, VoucherCredit, SiteSetting, TicketAuditLog, DocumentReprintLog, PrinterStatusLog, DocumentLifecycleLog, TicketProofImage
+from .models import AdminUser, Printer, Document, Payment, PaymentIntent, Feedback, RerouteHistory, NotificationSound, SupportTicket, UsedKLCiSTransaction, VoucherCredit, SiteSetting, TicketAuditLog, DocumentReprintLog, PrinterStatusLog, DocumentLifecycleLog, TicketProofImage
 import os
 
 admin.site.register(AdminUser)
@@ -16,6 +16,14 @@ class PaymentAdmin(admin.ModelAdmin):
     list_filter = ('payment_status', 'payment_method')
     search_fields = ('doc__doc_id', 'doc__customer_id', 'phone_number', 'voucher_code', 'klcis_transaction_id')
     readonly_fields = ('klcis_transaction_id', 'approved_at')
+
+
+@admin.register(PaymentIntent)
+class PaymentIntentAdmin(admin.ModelAdmin):
+    list_display = ('customer_id', 'expected_amount', 'payer_number', 'status', 'matched_notification_id', 'created_at', 'expires_at')
+    list_filter = ('status',)
+    search_fields = ('customer_id', 'payer_number', 'matched_notification_id')
+    readonly_fields = ('intent_id', 'matched_notification_id', 'matched_raw_text', 'matched_at', 'created_at', 'updated_at')
 
 
 @admin.register(SupportTicket)
@@ -54,7 +62,7 @@ class VoucherCreditAdmin(admin.ModelAdmin):
 
 @admin.register(SiteSetting)
 class SiteSettingAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'customer_completion_sound', 'customer_reroute_sound', 'verification_time_window', 'auto_ticket_timeout_minutes')
+    list_display = ('__str__', 'gcash_recipient_name', 'gcash_recipient_number', 'payment_expiry_minutes', 'block_payment_when_printers_unavailable', 'customer_completion_sound', 'customer_reroute_sound', 'verification_time_window', 'auto_ticket_timeout_minutes')
 
 
 @admin.register(TicketAuditLog)

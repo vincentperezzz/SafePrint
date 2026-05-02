@@ -24,6 +24,7 @@ env/
 
 # Ignore environment files
 .env
+*firebase-adminsdk*.json
 
 # Ignore pyc files in the main folder and SafePrint folders
 /main/*.pyc
