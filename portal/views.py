@@ -6,7 +6,7 @@ import logging
 import threading
 import subprocess
 from collections import deque
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 from django.db.models import Count, Q, Sum
 from .forms import FeedbackForm
@@ -153,6 +153,27 @@ def _attach_dashboard_ticket_display(ticket):
     return ticket
 
 
+def _local_day_bounds(target_date=None):
+    target_date = target_date or timezone.localdate()
+    current_tz = timezone.get_current_timezone()
+    day_start = timezone.make_aware(datetime.combine(target_date, time.min), current_tz)
+    next_day_start = day_start + timedelta(days=1)
+    return day_start, next_day_start
+
+
+def _month_start_bounds(target_date=None):
+    target_date = target_date or timezone.localdate()
+    month_start_date = target_date.replace(day=1)
+    current_tz = timezone.get_current_timezone()
+    month_start = timezone.make_aware(datetime.combine(month_start_date, time.min), current_tz)
+    if month_start_date.month == 12:
+        next_month_date = month_start_date.replace(year=month_start_date.year + 1, month=1, day=1)
+    else:
+        next_month_date = month_start_date.replace(month=month_start_date.month + 1, day=1)
+    next_month_start = timezone.make_aware(datetime.combine(next_month_date, time.min), current_tz)
+    return month_start, next_month_start
+
+
 def _admin_log_sources():
     base_dir = settings.BASE_DIR
     return {
@@ -224,11 +245,13 @@ def dashboard(request):
         _attach_dashboard_ticket_display(ticket)
     
     today = timezone.localdate()
+    today_start, tomorrow_start = _local_day_bounds(today)
     active_tickets_count = len(active_tickets)
     resolved_tickets_count = len(resolved_tickets)
     sales_today_amount = Payment.objects.filter(
         payment_status='Paid',
-        approved_at__date=today,
+        approved_at__gte=today_start,
+        approved_at__lt=tomorrow_start,
     ).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
     
     # Get recent completed documents with payment info and printed_at timestamp
@@ -413,10 +436,11 @@ def sales_dashboard(request):
     paid_payments = Payment.objects.select_related('doc').filter(payment_status='Paid')
 
     today = timezone.localdate()
-    month_start = today.replace(day=1)
+    today_start, tomorrow_start = _local_day_bounds(today)
+    month_start, next_month_start = _month_start_bounds(today)
 
-    today_sales = paid_payments.filter(approved_at__date=today).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
-    month_sales = paid_payments.filter(approved_at__date__gte=month_start).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+    today_sales = paid_payments.filter(approved_at__gte=today_start, approved_at__lt=tomorrow_start).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+    month_sales = paid_payments.filter(approved_at__gte=month_start, approved_at__lt=next_month_start).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
     lifetime_sales = paid_payments.aggregate(total=Sum('price'))['total'] or Decimal('0.00')
     paid_transactions_count = paid_payments.aggregate(total=Count('id'))['total'] or 0
     recent_sales = paid_payments.order_by('-approved_at', '-id')[:100]
@@ -759,6 +783,7 @@ def get_active_tickets_api(request):
                 'receipt_screenshot_url': ticket.receipt_screenshot.url if ticket.receipt_screenshot else '',
             })
         
+        today_start, tomorrow_start = _local_day_bounds()
         return JsonResponse({
             'success': True,
             'active_tickets': active_tickets_data,
@@ -767,7 +792,8 @@ def get_active_tickets_api(request):
             'resolved_count': len(resolved_tickets_data),
             'sales_today_amount': float(Payment.objects.filter(
                 payment_status='Paid',
-                approved_at__date=timezone.localdate(),
+                approved_at__gte=today_start,
+                approved_at__lt=tomorrow_start,
             ).aggregate(total=Sum('price'))['total'] or Decimal('0.00')),
         })
     except Exception as e:
@@ -2280,9 +2306,11 @@ def dashboard_status_event_stream():
             pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
             active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
             resolved_tickets_count = SupportTicket.objects.filter(status__in=['resolved', 'closed', 'voided', 'refunded']).count()
+            today_start, tomorrow_start = _local_day_bounds()
             sales_today_amount = Payment.objects.filter(
                 payment_status='Paid',
-                approved_at__date=timezone.localdate(),
+                approved_at__gte=today_start,
+                approved_at__lt=tomorrow_start,
             ).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
             # Get recent completed documents (limit 5, order by -printed_at)
             completed_documents = list(
