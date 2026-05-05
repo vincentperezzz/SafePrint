@@ -76,8 +76,13 @@ Sales
         <input type="text" name="q" value="{{ sales_search_query }}" placeholder="Search CID or DOC ID" class="sales-filter-input">
         <input type="date" name="date_from" value="{{ sales_date_from }}" class="sales-filter-input sales-filter-date">
         <input type="date" name="date_to" value="{{ sales_date_to }}" class="sales-filter-input sales-filter-date">
+        <select name="voucher_filter" class="sales-filter-input sales-filter-date">
+            <option value="exclude" {% if sales_voucher_filter == 'exclude' %}selected{% endif %}>Exclude Vouchers</option>
+            <option value="all" {% if sales_voucher_filter == 'all' %}selected{% endif %}>All Payments</option>
+            <option value="only" {% if sales_voucher_filter == 'only' %}selected{% endif %}>Only Vouchers</option>
+        </select>
         <button type="submit" class="sales-filter-btn">Apply</button>
-        <a href="{% url 'sales_dashboard' %}" class="sales-filter-clear">Clear</a>
+        <a href="{% url 'sales_dashboard' %}?voucher_filter=exclude" class="sales-filter-clear">Clear</a>
     </form>
     <p class="sales-meta">{{ paid_transactions_count }} paid transaction records shown.</p>
     <div class="printer-table sales-table">
