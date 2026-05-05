@@ -2742,26 +2742,31 @@ def _parse_cups_job_id(lp_output):
     return match.group(1) if match else None
 
 
+def _cups_job_list_contains(lpstat_output, job_id):
+    prefix = f'{job_id} '
+    return any(line.startswith(prefix) for line in (lpstat_output or '').splitlines())
+
+
 def _get_cups_job_state(job_id):
     if not job_id:
         return None
 
     pending = subprocess.run(
-        ['lpstat', '-W', 'not-completed', '-o', job_id],
+        ['lpstat', '-W', 'not-completed', '-o'],
         capture_output=True,
         text=True,
         check=False,
     )
-    if pending.stdout.strip():
+    if _cups_job_list_contains(pending.stdout, job_id):
         return 'pending'
 
     completed = subprocess.run(
-        ['lpstat', '-W', 'completed', '-o', job_id],
+        ['lpstat', '-W', 'completed', '-o'],
         capture_output=True,
         text=True,
         check=False,
     )
-    if completed.stdout.strip():
+    if _cups_job_list_contains(completed.stdout, job_id):
         return 'completed'
 
     return 'unknown'
