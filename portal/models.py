@@ -312,9 +312,9 @@ class Document(models.Model):
             if event:
                 printer_name = ''
                 if self.printer_assigned:
-                    printer_name = self.printer_assigned.name
+                    printer_name = self.printer_assigned.printer_name
                 elif self.printed_at:
-                    printer_name = self.printed_at.name
+                    printer_name = self.printed_at.printer_name
                 DocumentLifecycleLog.objects.create(
                     doc_id=self.doc_id,
                     customer_id=self.customer_id,
@@ -331,8 +331,8 @@ class Document(models.Model):
             customer_id=self.customer_id,
             doc_name=self.original_name or self.filename or '',
             event='deleted',
-            printer_name=(self.printer_assigned.name if self.printer_assigned else
-                          self.printed_at.name if self.printed_at else ''),
+            printer_name=(self.printer_assigned.printer_name if self.printer_assigned else
+                          self.printed_at.printer_name if self.printed_at else ''),
             details=f'Document deleted (was {self.doc_status})',
         )
         super().delete(*args, **kwargs)
@@ -359,7 +359,7 @@ class RerouteHistory(models.Model):
             self.customer_id_snapshot = self.customer_id_snapshot or self.document.customer_id
             self.doc_name_snapshot = self.doc_name_snapshot or self.document.original_name or self.document.filename or ''
         if self.printer:
-            self.printer_name_snapshot = self.printer_name_snapshot or self.printer.name
+            self.printer_name_snapshot = self.printer_name_snapshot or self.printer.printer_name
         super().save(*args, **kwargs)
 
     class Meta:
