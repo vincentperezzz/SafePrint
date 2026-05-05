@@ -6,7 +6,7 @@ import logging
 import threading
 import subprocess
 from collections import deque
-from datetime import datetime, time, timedelta
+from datetime import datetime, time as datetime_time, timedelta
 from decimal import Decimal
 from django.db.models import Count, Q, Sum
 from .forms import FeedbackForm
@@ -156,7 +156,7 @@ def _attach_dashboard_ticket_display(ticket):
 def _local_day_bounds(target_date=None):
     target_date = target_date or timezone.localdate()
     current_tz = timezone.get_current_timezone()
-    day_start = timezone.make_aware(datetime.combine(target_date, time.min), current_tz)
+    day_start = timezone.make_aware(datetime.combine(target_date, datetime_time.min), current_tz)
     next_day_start = day_start + timedelta(days=1)
     return day_start, next_day_start
 
@@ -165,12 +165,12 @@ def _month_start_bounds(target_date=None):
     target_date = target_date or timezone.localdate()
     month_start_date = target_date.replace(day=1)
     current_tz = timezone.get_current_timezone()
-    month_start = timezone.make_aware(datetime.combine(month_start_date, time.min), current_tz)
+    month_start = timezone.make_aware(datetime.combine(month_start_date, datetime_time.min), current_tz)
     if month_start_date.month == 12:
         next_month_date = month_start_date.replace(year=month_start_date.year + 1, month=1, day=1)
     else:
         next_month_date = month_start_date.replace(month=month_start_date.month + 1, day=1)
-    next_month_start = timezone.make_aware(datetime.combine(next_month_date, time.min), current_tz)
+    next_month_start = timezone.make_aware(datetime.combine(next_month_date, datetime_time.min), current_tz)
     return month_start, next_month_start
 
 
