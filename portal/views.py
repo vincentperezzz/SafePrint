@@ -3276,22 +3276,38 @@ def picked_up_document(request):
     try:
         data = json.loads(request.body)
         doc_id = data.get('doc_id')
+        force = bool(data.get('force', False))
 
         if not doc_id:
             return JsonResponse({'success': False, 'error': 'doc_id is required'})
 
         doc = Document.objects.get(doc_id=doc_id)
 
-        if doc.doc_status != 'Finished':
+        reroute_override = (
+            force and
+            doc.doc_status == 'Printing' and
+            RerouteHistory.objects.filter(document=doc).exists()
+        )
+
+        if doc.doc_status != 'Finished' and not reroute_override:
             return JsonResponse({
                 'success': False,
                 'error': f'Document is not finished (current status: {doc.doc_status})'
             })
 
+        if reroute_override:
+            if not doc.pages_printed:
+                doc.pages_printed = doc.get_page_list()
+            if not doc.printed_at and doc.printer_assigned:
+                doc.printed_at = doc.printer_assigned
+
         # Mark as Picked Up
         doc.doc_status = 'Picked Up'
         doc.status_updated_at = timezone.now()
-        doc.save()
+        if reroute_override:
+            doc.save(update_fields=['doc_status', 'status_updated_at', 'pages_printed', 'printed_at'])
+        else:
+            doc.save()
 
         # Delete the file from storage — direct path lookup (fast)
         if doc.stored_name:

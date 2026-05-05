@@ -1470,6 +1470,13 @@ function buildDocumentBadges(doc) {
         }
         const printerText = doc.printer_name ? ` (${escapeHtml(doc.printer_name)})` : '';
         badgesHtml += `<div class="badge status-info">Printing...${printerText}</div>`;
+        if (segments.length > 1) {
+            badgesHtml += `
+                <div class="status-group">
+                    <button class="picked-up-btn" onclick="pickedUpDocument('${escapeHtml(doc.doc_id)}', true)">Picked Up</button>
+                </div>
+            `;
+        }
     } else if (doc.doc_status === 'Finished') {
         // Completed - show history segments + completion badge with pickup button
         if (segments.length > 1) {
@@ -1614,7 +1621,7 @@ function updateConfirmationUI(data) {
     }
 }
 
-function pickedUpDocument(docId) {
+function pickedUpDocument(docId, force = false) {
     const btn = event.target;
     btn.disabled = true;
     btn.textContent = 'Processing...';
@@ -1625,7 +1632,7 @@ function pickedUpDocument(docId) {
             'Content-Type': 'application/json',
             'X-CSRFToken': getCsrfToken()
         },
-        body: JSON.stringify({ doc_id: docId })
+        body: JSON.stringify({ doc_id: docId, force })
     })
         .then(response => response.json())
         .then(data => {
