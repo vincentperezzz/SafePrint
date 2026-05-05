@@ -228,10 +228,12 @@ Printer Status
       <span class="popup-close" onclick="closeAddPrinterPopup()">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="addPrinterForm">
+        <form id="addPrinterForm" class="admin-popup-stack">
       <input type="text" id="addPrinterName" name="printer_name" class="popup-input" placeholder="Enter Printer Name" required>
       <input type="text" id="addPrinterIP" name="ip_address" class="popup-input" placeholder="Enter IP Address" required>
-      <button type="submit" class="popup-done-btn">Add Printer</button>
+            <div class="admin-popup-submit-row">
+                <button type="submit" class="popup-done-btn">Add Printer</button>
+            </div>
     </form>
   </div>
 </div>
@@ -242,10 +244,12 @@ Printer Status
       <span class="popup-close" onclick="closePrinterEditPopup()">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="printerEditForm">
+        <form id="printerEditForm" class="admin-popup-stack">
       <input type="text" id="editPrinterName" name="printer_name" class="popup-input" placeholder="Enter Printer Name" required>
       <input type="text" id="editPrinterIP" name="ip_address" class="popup-input" placeholder="Enter IP Address" required>
-      <button type="submit" class="popup-done-btn">Save Changes</button>
+            <div class="admin-popup-submit-row">
+                <button type="submit" class="popup-done-btn">Save Changes</button>
+            </div>
     </form>
   </div>
 </div>
