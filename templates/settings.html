@@ -337,11 +337,13 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('editNameOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="edit-name-form" method="post">
+    <form id="edit-name-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="text" name="new_name" class="popup-input" placeholder="Enter new Name" required autocomplete="name">
       <input type="text" name="confirm_name" class="popup-input" placeholder="Re-enter new Name" required autocomplete="name">
-      <button type="submit" class="popup-done-btn">Done</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Done</button>
+      </div>
     </form>
   </div>
 </div>
@@ -353,11 +355,13 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('editUsernameOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="edit-username-form" method="post">
+    <form id="edit-username-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="text" name="new_username" class="popup-input" placeholder="Enter new Username" required autocomplete="username">
       <input type="text" name="confirm_username" class="popup-input" placeholder="Re-enter new Username" required autocomplete="username">
-      <button type="submit" class="popup-done-btn">Done</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Done</button>
+      </div>
     </form>
   </div>
 </div>
@@ -369,13 +373,15 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('editPasswordOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="edit-password-form" method="post">
+    <form id="edit-password-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="text" name="username" autocomplete="username" style="display:none;">
       <input type="password" name="current_password" class="popup-input" placeholder="Current Password" required autocomplete="current-password">
       <input type="password" name="new_password" class="popup-input" placeholder="Enter new Password" required autocomplete="new-password">
       <input type="password" name="confirm_password" class="popup-input" placeholder="Re-enter new Password" required  autocomplete="new-password">
-      <button type="submit" class="popup-done-btn">Done</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Done</button>
+      </div>
     </form>
   </div>
 </div>
@@ -388,11 +394,13 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('editEmailOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="edit-email-form" method="post">
+    <form id="edit-email-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="email" name="new_email" class="popup-input" placeholder="Enter email address" autocomplete="email">
       <p style="font-size: 0.8rem; color: #6b7280; margin: 0 0 12px;">Leave blank to disable email notifications for this account.</p>
-      <button type="submit" class="popup-done-btn">Done</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Done</button>
+      </div>
     </form>
   </div>
 </div>
@@ -405,7 +413,7 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('editUserPasswordOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="edit-user-password-form" method="post">
+    <form id="edit-user-password-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="hidden" name="user_id" id="edit-user-password-id">
       <input type="text" name="username" id="edit-user-password-username" style="display:none;" autocomplete="username">
@@ -413,7 +421,9 @@ Account Settings
       <input type="password" name="new_user_password" id="new_user_password" class="popup-input" placeholder="Enter new password" required autocomplete="new-password">
       <label for="confirm_user_password">Re-enter New Password</label>
       <input type="password" name="confirm_user_password" id="confirm_user_password" class="popup-input" placeholder="Re-enter new password" required autocomplete="new-password">
-      <button type="submit" class="popup-done-btn">Done</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Done</button>
+      </div>
     </form>
   </div>
 </div>
@@ -440,14 +450,16 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('createAccountOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="create-account-form" method="post">
+    <form id="create-account-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="text" name="name" class="popup-input" placeholder="Enter Name" required autocomplete="name">
       <input type="email" name="email" class="popup-input" placeholder="Enter Email (for alerts)" autocomplete="email">
       <input type="text" name="username" class="popup-input" placeholder="Enter Username" required autocomplete="username">
       <input type="password" name="password" class="popup-input" placeholder="Enter Password" required autocomplete="new-password">
       <input type="password" name="confirm_password" class="popup-input" placeholder="Re-enter Password" required autocomplete="new-password">
-      <button type="submit" class="popup-done-btn">Create Account</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Create Account</button>
+      </div>
     </form>
     </div>
 </div>
