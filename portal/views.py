@@ -1965,18 +1965,24 @@ def approve_all_documents(request):
                 if doc.doc_status == 'Queued':
                     printer = assign_document_to_printer(doc)
                     if printer:
-                        def print_document_async(doc):
-                            # Always reload doc from DB before printing each page
-                            page_list = doc.get_page_list()
+                        def print_document_async(doc_id):
+                            # Always reload doc from DB before selecting pages so the assigned printer is current.
+                            try:
+                                current_doc = Document.objects.get(doc_id=doc_id)
+                            except Document.DoesNotExist:
+                                print(f"[CANCELLED] Document {doc_id} was deleted before printing started.")
+                                return
+
+                            page_list = current_doc.get_page_list()
                             page_list.reverse()
                             for page_num in page_list:
                                 try:
-                                    fresh_doc = Document.objects.get(doc_id=doc.doc_id)
+                                    fresh_doc = Document.objects.get(doc_id=doc_id)
                                 except Document.DoesNotExist:
-                                    print(f"[CANCELLED] Document {doc.doc_id} was deleted before printing page {page_num}.")
+                                    print(f"[CANCELLED] Document {doc_id} was deleted before printing page {page_num}.")
                                     break
                                 print_page(fresh_doc, page_num)
-                        threading.Thread(target=print_document_async, args=(doc,)).start()
+                        threading.Thread(target=print_document_async, args=(doc.doc_id,)).start()
             except Document.DoesNotExist:
                 print(f"[CANCELLED] Document {doc_id} was deleted or cancelled before printer assignment.")
 
@@ -2076,16 +2082,22 @@ def approve_document(request):
                 if doc.doc_status == 'Queued':
                     printer = assign_document_to_printer(doc)
                     if printer:
-                        def print_document_async(doc):
-                            page_list = doc.get_page_list()
+                        def print_document_async(doc_id):
+                            try:
+                                current_doc = Document.objects.get(doc_id=doc_id)
+                            except Document.DoesNotExist:
+                                print(f"[CANCELLED] Document {doc_id} was deleted before printing started.")
+                                return
+
+                            page_list = current_doc.get_page_list()
                             for page_num in page_list:
                                 try:
-                                    fresh_doc = Document.objects.get(doc_id=doc.doc_id)
+                                    fresh_doc = Document.objects.get(doc_id=doc_id)
                                 except Document.DoesNotExist:
-                                    print(f"[CANCELLED] Document {doc.doc_id} was deleted before printing page {page_num}.")
+                                    print(f"[CANCELLED] Document {doc_id} was deleted before printing page {page_num}.")
                                     break
                                 print_page(fresh_doc, page_num)
-                        threading.Thread(target=print_document_async, args=(doc,)).start()
+                        threading.Thread(target=print_document_async, args=(doc.doc_id,)).start()
             except Document.DoesNotExist:
                 print(f"[CANCELLED] Document {doc_id} was deleted or cancelled before printer assignment.")
 
@@ -2652,6 +2664,77 @@ def assign_document_to_printer(document):
             _time.sleep(5)
 
 
+def _sanitize_cups_queue_name(value):
+    return str(value or '').replace('-', '_').replace(' ', '_')
+
+
+def _get_cups_destinations():
+    result = subprocess.run(
+        ['lpstat', '-v'],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    destinations = set()
+    for line in result.stdout.splitlines():
+        match = re.match(r'^device for\s+(\S+):', line.strip())
+        if match:
+            destinations.add(match.group(1))
+    return destinations
+
+
+def _resolve_cups_queue_name(printer):
+    base_queue = _sanitize_cups_queue_name(printer.model_name or printer.printer_name)
+    destinations = _get_cups_destinations()
+
+    if printer.node_name:
+        node_suffix = printer.node_name.lower()
+        if node_suffix.startswith('brw'):
+            node_suffix = node_suffix[3:]
+        specific_queue = f"{base_queue}_{node_suffix}"
+        if specific_queue in destinations:
+            return specific_queue
+
+    if base_queue in destinations:
+        return base_queue
+
+    fallback_queue = _sanitize_cups_queue_name(printer.printer_name)
+    if fallback_queue in destinations:
+        return fallback_queue
+
+    return base_queue
+
+
+def _parse_cups_job_id(lp_output):
+    match = re.search(r'request id is\s+(\S+)', lp_output or '')
+    return match.group(1) if match else None
+
+
+def _get_cups_job_state(job_id):
+    if not job_id:
+        return None
+
+    pending = subprocess.run(
+        ['lpstat', '-W', 'not-completed', '-o', job_id],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if pending.stdout.strip():
+        return 'pending'
+
+    completed = subprocess.run(
+        ['lpstat', '-W', 'completed', '-o', job_id],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.stdout.strip():
+        return 'completed'
+
+    return 'unknown'
+
+
 def print_page(document, page_num):
     # Extract print preferences from document
     copies = getattr(document, 'copies', 1)
@@ -2730,14 +2813,8 @@ def print_page(document, page_num):
     # Send print job
     print(f"[PRINT] Sending page {page_num} of document {document.doc_id} to printer {printer.printer_name} ({printer.printer_status})")
     
-    if getattr(printer, 'model_name', None):
-        model_name = printer.model_name
-        # Convert spaces and dashes to underscores, preserving the Brother prefix
-        model_name = model_name.replace('-', '_').replace(' ', '_')
-    else:
-        model_name = printer.printer_name.replace(' ', '_')
-        
-    print(f"[PRINT] Using CUPS queue name: {model_name}")
+    queue_name = _resolve_cups_queue_name(printer)
+    print(f"[PRINT] Using CUPS queue name: {queue_name}")
     # Map paper_size to printer-compatible media
     if paper_size == 'Long':
         media_size = 'Folio'  
@@ -2745,7 +2822,7 @@ def print_page(document, page_num):
         media_size = paper_size
     lp_cmd = [
         'lp',
-        '-d', model_name,
+        '-d', queue_name,
         '-n', str(copies),
         '-o', f'page-ranges={page_num}',
         '-o', f'orientation-requested={"4" if orientation=="Landscape" else "3"}',
@@ -2754,7 +2831,11 @@ def print_page(document, page_num):
         file_path
     ]
     try:
-        subprocess.run(lp_cmd, check=True)
+        lp_result = subprocess.run(lp_cmd, check=True, capture_output=True, text=True)
+        lp_output = (lp_result.stdout or '') + (lp_result.stderr or '')
+        job_id = _parse_cups_job_id(lp_output)
+        if job_id:
+            print(f"[PRINT] Submitted CUPS job {job_id} for document {document.doc_id} page {page_num}")
     except Exception as e:
         print(f"[ERROR] Failed to print page {page_num} of document {document.doc_id} on printer {printer.printer_name}: {e}")
         printer.printer_status = 'Error'
@@ -2762,82 +2843,15 @@ def print_page(document, page_num):
         print(f"[REROUTE] Rerouting remaining pages of document {document.doc_id}")
         reroute_document_on_error(document)
         return
-    # Wait for printer status to become 'Printing', abort if document is canceled/deleted
     wait_cycles = 0
-    max_wait_cycles = 30  # Maximum time to wait for printer to start printing (30 seconds)
+    max_wait_cycles = 90
     error_cycles = 0
-    max_error_cycles = 3  # Maximum consecutive error cycles before rerouting (3 seconds)
+    max_error_cycles = 5
+    job_started = False
     
     while True:
         printer.refresh_from_db()
-        # Check if document still exists and is not canceled/deleted
-        try:
-            doc_check = Document.objects.get(doc_id=document.doc_id)
-            # Check if document has been rerouted to a different printer
-            if doc_check.printer_assigned and doc_check.printer_assigned.id != printer.id:
-                print(f"[REROUTED] Document {document.doc_id} was rerouted from {printer.printer_name} to {doc_check.printer_assigned.printer_name} during waiting phase. Stopping original print job.")
-                return
-        except Document.DoesNotExist:
-            print(f"[CANCELLED] Document {document.doc_id} was deleted during printing. Aborting print job for page {page_num}.")
-            return
-        if doc_check.doc_status not in ['Queued', 'Printing']:
-            print(f"[CANCELLED] Document {document.doc_id} status is {doc_check.doc_status}. Aborting print job for page {page_num}.")
-            return
-            
-        # If the printer starts printing, proceed
-        if printer.printer_status == 'Printing':
-            print(f"[SUCCESS] Printed page {page_num} of document {document.doc_id} on printer {printer.printer_name}")
-            break
-            
-        # Detect if printer is in error state or has issues (like no paper)
-        if printer.printer_status not in ['Ready', 'Sleep', 'Printing']:
-            wait_cycles += 1
-            error_cycles += 1
-            print(f"[WARNING] Printer {printer.printer_name} is in '{printer.printer_status}' state. Error cycle {error_cycles}/{max_error_cycles}, Wait cycle {wait_cycles}/{max_wait_cycles}")
-            
-            # If the printer remains in error state for several consecutive cycles, reroute the document
-            if error_cycles >= max_error_cycles:
-                print(f"[ERROR] Printer {printer.printer_name} failed to start printing and is in '{printer.printer_status}' state for {error_cycles} consecutive cycles. Rerouting document.")
-                # Log the error in reroute history
-                RerouteHistory.objects.create(
-                    document=document,
-                    printer=printer,
-                    status=f"Failed to start: {printer.printer_status}",
-                    timestamp=timezone.now()
-                )
-                # Reroute the document
-                reroute_document_on_error(document)
-                return
-        else:
-            # Reset error cycles if printer returns to a normal state
-            error_cycles = 0
-            wait_cycles += 1
-            
-        # If we've waited too long regardless of status, consider rerouting
-        if wait_cycles >= max_wait_cycles:
-            print(f"[TIMEOUT] Printer {printer.printer_name} has been waiting to start printing for too long ({max_wait_cycles} seconds). Rerouting document.")
-            RerouteHistory.objects.create(
-                document=document,
-                printer=printer,
-                status=f"Timeout waiting to start printing: {printer.printer_status}",
-                timestamp=timezone.now()
-            )
-            reroute_document_on_error(document)
-            return
-        else:
-            # Reset wait cycles if printer is in a normal state
-            wait_cycles = 0
-            
-        print(f"[WAIT] Waiting for printer {printer.printer_name} to start printing page {page_num}... (cycle {wait_cycles})")
-        time.sleep(1)
-    # Wait for printer status to become 'Ready' after printing
-    wait_cycles = 0
-    max_wait_cycles = 60  # Maximum time to wait for printer to finish (60 seconds)
-    error_cycles = 0
-    max_error_cycles = 5  # Maximum consecutive error cycles before rerouting (5 seconds)
-    
-    while True:
-        printer.refresh_from_db()
+        cups_job_state = _get_cups_job_state(job_id)
         
         # Also check if the document still exists and hasn't been canceled
         try:
@@ -2853,14 +2867,20 @@ def print_page(document, page_num):
         except Document.DoesNotExist:
             print(f"[CANCELLED] Document {document.doc_id} was deleted while waiting for printer to finish. Aborting.")
             return
+
+        if cups_job_state == 'completed':
+            print(f"[CUPS] Job {job_id} completed for document {document.doc_id} page {page_num}.")
+            break
+
+        if printer.printer_status == 'Printing' or cups_job_state == 'pending':
+            job_started = True
             
-        # If printer returned to Ready state, printing is successful
-        if printer.printer_status == 'Ready':
+        # If printer returned to Ready/Sleep after the job started, treat it as successful.
+        if job_started and printer.printer_status == 'Ready':
             print(f"[READY] Printer {printer.printer_name} is ready after printing page {page_num}.")
             break
             
-        # If printer is in Sleep state (some printers go to sleep after printing)
-        if printer.printer_status == 'Sleep':
+        if job_started and printer.printer_status == 'Sleep':
             print(f"[SLEEP] Printer {printer.printer_name} went to sleep after printing page {page_num}.")
             break
         
@@ -2889,25 +2909,29 @@ def print_page(document, page_num):
             error_cycles = 0
             wait_cycles += 1
             
-            # If the printer is still printing, log status periodically
-            if printer.printer_status == 'Printing' and wait_cycles % 10 == 0:
-                print(f"[PRINTING] Printer {printer.printer_name} is still printing page {page_num}... (wait cycle {wait_cycles}/{max_wait_cycles})")
+            if wait_cycles % 10 == 0:
+                print(
+                    f"[WAIT] Document {document.doc_id} page {page_num}: "
+                    f"printer={printer.printer_status}, cups_job={cups_job_state}, cycle={wait_cycles}/{max_wait_cycles}"
+                )
         
         # If we've waited too long regardless of status, consider rerouting
         if wait_cycles >= max_wait_cycles:
-            print(f"[TIMEOUT] Printer {printer.printer_name} has been printing for too long ({max_wait_cycles} seconds). Initiating reroute.")
+            print(
+                f"[TIMEOUT] Printer {printer.printer_name} did not confirm completion for page {page_num} "
+                f"within {max_wait_cycles} seconds (status={printer.printer_status}, cups_job={cups_job_state}). Initiating reroute."
+            )
             # Log the timeout in reroute history
             RerouteHistory.objects.create(
                 document=document, 
                 printer=printer,
-                status=f"Timeout: Stuck in {printer.printer_status}",
+                status=f"Timeout: printer={printer.printer_status}, cups={cups_job_state}",
                 timestamp=timezone.now()
             )
             # Reroute remaining pages
             reroute_document_on_error(document)
             return
             
-        print(f"[WAIT] Waiting for printer {printer.printer_name} to finish printing page {page_num}... (cycle {wait_cycles})")
         time.sleep(1)
     # Mark page as printed in DB only after successful print and status transitions
     document.mark_page_printed(page_num)
@@ -3050,10 +3074,12 @@ def check_queued_documents():
                 printer = assign_document_to_printer(document)
                 if printer:
                     print(f"[QUEUE-MONITOR] Successfully assigned document {document.doc_id} to printer {printer.printer_name}")
-                    # Print all document pages
-                    remaining_pages = document.get_remaining_pages()
+                    # Reload the document after assignment so print_page sees the assigned printer.
+                    current_doc = Document.objects.get(doc_id=document.doc_id)
+                    remaining_pages = current_doc.get_remaining_pages()
                     for page_num in remaining_pages:
-                        print_page(document, page_num)
+                        fresh_doc = Document.objects.get(doc_id=document.doc_id)
+                        print_page(fresh_doc, page_num)
                 else:
                     print(f"[QUEUE-MONITOR] Failed to assign document {document.doc_id} to a printer")
             except Exception as e:
