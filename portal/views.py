@@ -274,6 +274,32 @@ def _admin_log_sources():
     }
 
 
+def _normalize_sales_voucher_filter(raw_value):
+    voucher_filter = (raw_value or 'exclude').strip().lower()
+    if voucher_filter not in {'exclude', 'all', 'only'}:
+        return 'exclude'
+    return voucher_filter
+
+
+def _apply_sales_voucher_filter(queryset, voucher_filter):
+    voucher_filter = _normalize_sales_voucher_filter(voucher_filter)
+    if voucher_filter == 'exclude':
+        return queryset.exclude(payment_method='voucher_credit')
+    if voucher_filter == 'only':
+        return queryset.filter(payment_method='voucher_credit')
+    return queryset
+
+
+def _get_sales_voucher_filter(request):
+    raw_value = request.GET.get('voucher_filter')
+    if raw_value is None:
+        return _normalize_sales_voucher_filter(request.session.get('sales_voucher_filter', 'exclude'))
+
+    voucher_filter = _normalize_sales_voucher_filter(raw_value)
+    request.session['sales_voucher_filter'] = voucher_filter
+    return voucher_filter
+
+
 def _tail_log_lines(file_path, line_count):
     recent_lines = deque(maxlen=line_count)
 
@@ -316,13 +342,14 @@ def dashboard(request):
     
     today = timezone.localdate()
     today_start, tomorrow_start = _local_day_bounds(today)
+    sales_voucher_filter = _normalize_sales_voucher_filter(request.session.get('sales_voucher_filter', 'exclude'))
     active_tickets_count = len(active_tickets)
     resolved_tickets_count = len(resolved_tickets)
-    sales_today_amount = Payment.objects.filter(
+    sales_today_amount = _apply_sales_voucher_filter(Payment.objects.filter(
         payment_status='Paid',
         approved_at__gte=today_start,
         approved_at__lt=tomorrow_start,
-    ).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+    ), sales_voucher_filter).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
     
     # Get recent completed documents with payment info and printed_at timestamp
     completed_documents = Document.objects.filter(
@@ -515,11 +542,13 @@ def sales_dashboard(request):
     active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
     site = SiteSetting.load()
     paid_payments = Payment.objects.select_related('doc').filter(payment_status='Paid')
-    filtered_payments = paid_payments
 
     search_query = (request.GET.get('q') or '').strip()
     date_from = (request.GET.get('date_from') or '').strip()
     date_to = (request.GET.get('date_to') or '').strip()
+    voucher_filter = _get_sales_voucher_filter(request)
+    paid_payments = _apply_sales_voucher_filter(paid_payments, voucher_filter)
+    filtered_payments = paid_payments
 
     if search_query:
         normalized_search = search_query.strip().lstrip('#')
@@ -558,6 +587,7 @@ def sales_dashboard(request):
         'sales_search_query': search_query,
         'sales_date_from': date_from,
         'sales_date_to': date_to,
+        'sales_voucher_filter': voucher_filter,
         'pricing_config': _pricing_settings_context(site),
     })
 
@@ -888,17 +918,18 @@ def get_active_tickets_api(request):
             })
         
         today_start, tomorrow_start = _local_day_bounds()
+        sales_voucher_filter = _normalize_sales_voucher_filter(request.session.get('sales_voucher_filter', 'exclude'))
         return JsonResponse({
             'success': True,
             'active_tickets': active_tickets_data,
             'resolved_tickets': resolved_tickets_data,
             'active_count': len(active_tickets_data),
             'resolved_count': len(resolved_tickets_data),
-            'sales_today_amount': float(Payment.objects.filter(
+            'sales_today_amount': float(_apply_sales_voucher_filter(Payment.objects.filter(
                 payment_status='Paid',
                 approved_at__gte=today_start,
                 approved_at__lt=tomorrow_start,
-            ).aggregate(total=Sum('price'))['total'] or Decimal('0.00')),
+            ), sales_voucher_filter).aggregate(total=Sum('price'))['total'] or Decimal('0.00')),
         })
     except Exception as e:
         logger.error(f"Error fetching active tickets: {str(e)}")
@@ -2461,12 +2492,13 @@ def printer_status_event_stream():
 
 
 def dashboard_status_stream(request):
-    response = StreamingHttpResponse(dashboard_status_event_stream(), content_type='text/event-stream')
+    sales_voucher_filter = _normalize_sales_voucher_filter(request.session.get('sales_voucher_filter', 'exclude'))
+    response = StreamingHttpResponse(dashboard_status_event_stream(sales_voucher_filter), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
     return response
 
 
-def dashboard_status_event_stream():
+def dashboard_status_event_stream(sales_voucher_filter='exclude'):
     from django.db import close_old_connections
     last_data = None
     try:
@@ -2479,11 +2511,11 @@ def dashboard_status_event_stream():
             active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
             resolved_tickets_count = SupportTicket.objects.filter(status__in=['resolved', 'closed', 'voided', 'refunded']).count()
             today_start, tomorrow_start = _local_day_bounds()
-            sales_today_amount = Payment.objects.filter(
+            sales_today_amount = _apply_sales_voucher_filter(Payment.objects.filter(
                 payment_status='Paid',
                 approved_at__gte=today_start,
                 approved_at__lt=tomorrow_start,
-            ).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+            ), sales_voucher_filter).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
             # Get recent completed documents (limit 5, order by -printed_at)
             completed_documents = list(
                 Document.objects.filter(doc_status='Finished')
