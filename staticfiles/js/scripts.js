@@ -4,6 +4,71 @@ let isScanning = false; // Track if any file is being scanned for viruses
 const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
 document.addEventListener("touchstart", function () { }, true);
 
+function validateSpecificPageSelection(value, totalPages) {
+    const rawValue = (value || '').trim();
+
+    if (!rawValue) {
+        return { valid: false, error: 'Enter at least one page number.' };
+    }
+
+    if (!/^[\d,\-\s]+$/.test(rawValue)) {
+        return { valid: false, error: 'Use only page numbers, commas, and hyphens.' };
+    }
+
+    const parts = rawValue.split(',').map(part => part.trim()).filter(Boolean);
+    if (!parts.length) {
+        return { valid: false, error: 'Enter at least one valid page or range.' };
+    }
+
+    const normalizedParts = [];
+    let pageCount = 0;
+
+    for (const part of parts) {
+        if (part.includes('-')) {
+            const bounds = part.split('-').map(item => item.trim());
+            if (bounds.length !== 2 || !bounds[0] || !bounds[1]) {
+                return { valid: false, error: 'Use ranges like 1-3.' };
+            }
+
+            const start = Number(bounds[0]);
+            const end = Number(bounds[1]);
+            if (!Number.isInteger(start) || !Number.isInteger(end)) {
+                return { valid: false, error: 'Use whole page numbers only.' };
+            }
+
+            if (start > end) {
+                return { valid: false, error: `Invalid range ${start}-${end}.` };
+            }
+
+            if (start < 1 || end > totalPages) {
+                return { valid: false, error: `Pages must be between 1 and ${totalPages}.` };
+            }
+
+            normalizedParts.push(`${start}-${end}`);
+            pageCount += (end - start + 1);
+            continue;
+        }
+
+        const pageNumber = Number(part);
+        if (!Number.isInteger(pageNumber)) {
+            return { valid: false, error: 'Use whole page numbers only.' };
+        }
+
+        if (pageNumber < 1 || pageNumber > totalPages) {
+            return { valid: false, error: `Pages must be between 1 and ${totalPages}.` };
+        }
+
+        normalizedParts.push(String(pageNumber));
+        pageCount += 1;
+    }
+
+    if (pageCount === 0) {
+        return { valid: false, error: 'Enter at least one valid page or range.' };
+    }
+
+    return { valid: true, normalized: normalizedParts.join(',') };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 
     //Drag and Drop File Upload Functionality
@@ -515,7 +580,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const docDivs = uploadedFilesDiv.querySelectorAll('.file');
             let updates = [];
+            let pageValidationError = '';
             docDivs.forEach((fileDiv, idx) => {
+                if (pageValidationError) return;
                 const doc = docs[idx];
                 // Quantity
                 const quantityInput = fileDiv.querySelector('.quantity-input');
@@ -528,7 +595,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     pages = `1-${doc.num_pages}`;
                 } else if (specificPagesRadio && specificPagesRadio.checked) {
                     const pageInput = fileDiv.querySelector('.page-input');
-                    pages = pageInput ? pageInput.value : '';
+                    const validation = validateSpecificPageSelection(pageInput ? pageInput.value : '', doc.num_pages);
+                    if (!validation.valid) {
+                        pageValidationError = `${doc.filename}: ${validation.error}`;
+                        if (pageInput) {
+                            pageInput.focus();
+                            pageInput.select();
+                        }
+                        return;
+                    }
+                    if (pageInput) pageInput.style.borderColor = '';
+                    pages = validation.normalized;
                 }
                 // Orientation
                 const orientationRadio = fileDiv.querySelector('input[name="page-orientation-' + doc.doc_id + '"]:checked');
@@ -542,19 +619,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Paper size
                 const paperSizeSelect = fileDiv.querySelectorAll('.dropdown-select')[0];
                 const paperSize = paperSizeSelect ? paperSizeSelect.value : '';
-                // Paper quality
-                const paperQualitySelect = fileDiv.querySelectorAll('.dropdown-select')[1];
-                const paperQuality = paperQualitySelect ? paperQualitySelect.value : '';
                 updates.push({
                     doc_id: doc.doc_id,
                     quantity,
                     pages,
                     orientation,
                     grayscale,
-                    paper_size: paperSize,
-                    paper_quality: paperQuality
+                    paper_size: paperSize
                 });
             });
+            if (pageValidationError) {
+                if (overlay) overlay.style.display = 'none';
+                alert('Failed to update settings: ' + pageValidationError);
+                return;
+            }
             // Send updates to backend
             fetch('/api/update-document-settings/', {
                 method: 'POST',
@@ -1021,20 +1099,6 @@ function renderUploadedDocumentsPreview() {
                     </span>
                 </div>
             </div>
-            <div class="file-rows vertical-separator">
-                <h5>Quality of the Paper</h5>
-                <div class="dropdown">
-                    <select class="dropdown-select">
-                        <option value="80" ${doc.paper_quality == '80' || doc.paper_quality == '80gsm' ? 'selected' : ''}>80 GSM (thicker)</option>
-                        <option value="70" ${doc.paper_quality == '70' || doc.paper_quality == '70gsm' ? 'selected' : ''}>70 GSM (thinner)</option>
-                    </select>
-                    <span class="dropdown-arrow">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
-                            <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </span>
-                </div>
-            </div>
         `;
         uploadedFilesDiv.appendChild(fileDiv);
 
@@ -1161,7 +1225,44 @@ window.addEventListener('DOMContentLoaded', function () {
 
 // Global state for SSE documents (used by problem report)
 window.customerDocuments = [];
+window.customerDocumentArchive = [];
 let customerSSE = null;
+
+function getCustomerDocumentArchiveKey() {
+    const customerIdEl = document.getElementById('customer-id-data');
+    const customerId = customerIdEl ? customerIdEl.value : '';
+    return customerId ? `customerDocumentArchive:${customerId}` : 'customerDocumentArchive';
+}
+
+function loadCustomerDocumentArchive() {
+    try {
+        window.customerDocumentArchive = JSON.parse(sessionStorage.getItem(getCustomerDocumentArchiveKey()) || '[]');
+    } catch (error) {
+        window.customerDocumentArchive = [];
+    }
+    return window.customerDocumentArchive;
+}
+
+function storeCustomerDocumentArchive(documents) {
+    if (!Array.isArray(documents) || documents.length === 0) return;
+
+    const archive = loadCustomerDocumentArchive();
+    const archiveMap = new Map(archive.map(doc => [doc.doc_id, doc]));
+
+    documents.forEach(doc => {
+        if (doc && doc.doc_id) {
+            archiveMap.set(doc.doc_id, { ...archiveMap.get(doc.doc_id), ...doc });
+        }
+    });
+
+    window.customerDocumentArchive = Array.from(archiveMap.values());
+
+    try {
+        sessionStorage.setItem(getCustomerDocumentArchiveKey(), JSON.stringify(window.customerDocumentArchive));
+    } catch (error) {
+        console.warn('Could not store customer document archive:', error);
+    }
+}
 
 // --- Print completion sound & tab title flash ---
 const confirmationBaseTitle = document.title;
@@ -1385,6 +1486,7 @@ function initConfirmationSSE() {
         try {
             const data = JSON.parse(event.data);
             window.customerDocuments = data.documents || [];
+            storeCustomerDocumentArchive(window.customerDocuments);
             checkForNewCompletions(data.documents || []);
             checkForTimeoutCancellations(data.documents || []);
             checkForAutoTicketTrigger(data);
@@ -1470,13 +1572,6 @@ function buildDocumentBadges(doc) {
         }
         const printerText = doc.printer_name ? ` (${escapeHtml(doc.printer_name)})` : '';
         badgesHtml += `<div class="badge status-info">Printing...${printerText}</div>`;
-        if (segments.length > 1) {
-            badgesHtml += `
-                <div class="status-group">
-                    <button class="picked-up-btn" onclick="pickedUpDocument('${escapeHtml(doc.doc_id)}', true)">Picked Up</button>
-                </div>
-            `;
-        }
     } else if (doc.doc_status === 'Finished') {
         // Completed - show history segments + completion badge with pickup button
         if (segments.length > 1) {
@@ -1827,14 +1922,19 @@ function populateDocumentsList() {
     if (!documentsList) return;
 
     documentsList.innerHTML = '';
+    loadCustomerDocumentArchive();
 
     // Use SSE-sourced documents if available, otherwise fall back to DOM scraping
     let docs = [];
 
     if (window.customerDocuments && window.customerDocuments.length > 0) {
-        // Use SSE data - filter to show docs that are Queued, Printing, Finished, or Cancelled
+        // Use SSE data when available.
         docs = window.customerDocuments.filter(doc =>
-            ['Pending', 'Queued', 'Printing', 'Finished', 'Cancelled'].includes(doc.doc_status)
+            ['Pending', 'Queued', 'Printing', 'Finished', 'Cancelled', 'Picked Up'].includes(doc.doc_status)
+        );
+    } else if (window.customerDocumentArchive && window.customerDocumentArchive.length > 0) {
+        docs = window.customerDocumentArchive.filter(doc =>
+            ['Pending', 'Queued', 'Printing', 'Finished', 'Cancelled', 'Picked Up'].includes(doc.doc_status)
         );
     } else {
         // Fallback: scrape from DOM
@@ -3318,7 +3418,7 @@ document.addEventListener('input', function(e) {
                         msg = 'All printers are currently offline. Payment is temporarily unavailable. Please try again later.';
                     } else if (data.unavailable_docs && data.unavailable_docs.length > 0) {
                         const specs = data.unavailable_docs.map(function(d) {
-                            return d.paper_size + (d.paper_quality ? ' ' + d.paper_quality : '');
+                            return d.required_sheets ? `${d.paper_size} (${d.required_sheets} sheets needed)` : d.paper_size;
                         });
                         msg = 'No available printer for: ' + specs.join(', ') + '. Please try again later.';
                     } else {

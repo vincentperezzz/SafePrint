@@ -35,42 +35,78 @@ def analyze_pdf_colors(pdf_path, dpi=100, page_indices=None, full_color_threshol
     return results
 
 # Pricing defaults
-PRICE_BW_70 = 1
-PRICE_BW_80 = 2
-PRICE_COLOR_PARTIAL = 2
-PRICE_COLOR_FULL = 5
+PRICE_LETTER_BW = 1
+PRICE_LETTER_PARTIAL = 3
+PRICE_LETTER_FULL = 8
+PRICE_A4_BW = 1
+PRICE_A4_PARTIAL = 3
+PRICE_A4_FULL = 8
+PRICE_LONG_BW = 2
+PRICE_LONG_PARTIAL = 4
+PRICE_LONG_FULL = 10
+
+
+def _paper_pricing_key(paper_size):
+    normalized = str(paper_size or '').strip().lower()
+    if normalized == 'long':
+        return 'long'
+    if normalized == 'a4':
+        return 'a4'
+    return 'letter'
 
 def calculate_page_costs(
     color_results,
-    gsm=70,
+    paper_size='Letter',
     color_mode='Color',
     num_copies=1,
-    bw_price_70=PRICE_BW_70,
-    bw_price_80=PRICE_BW_80,
-    partial_color_price=PRICE_COLOR_PARTIAL,
-    full_color_price=PRICE_COLOR_FULL,
+    letter_bw_price=PRICE_LETTER_BW,
+    letter_partial_price=PRICE_LETTER_PARTIAL,
+    letter_full_price=PRICE_LETTER_FULL,
+    a4_bw_price=PRICE_A4_BW,
+    a4_partial_price=PRICE_A4_PARTIAL,
+    a4_full_price=PRICE_A4_FULL,
+    long_bw_price=PRICE_LONG_BW,
+    long_partial_price=PRICE_LONG_PARTIAL,
+    long_full_price=PRICE_LONG_FULL,
 ):
     """
-    Calculates per-page costs based on color analysis, GSM, and color mode.
+    Calculates per-page costs based on color analysis, paper size, and color mode.
     Factors in the number of copies requested.
     """
     costs = []
-    gsm = int(gsm)
     num_copies = int(num_copies) if num_copies else 1  # Ensure num_copies is at least 1
+    pricing_key = _paper_pricing_key(paper_size)
+    price_matrix = {
+        'letter': {
+            'bw': letter_bw_price,
+            'partial': letter_partial_price,
+            'full': letter_full_price,
+        },
+        'a4': {
+            'bw': a4_bw_price,
+            'partial': a4_partial_price,
+            'full': a4_full_price,
+        },
+        'long': {
+            'bw': long_bw_price,
+            'partial': long_partial_price,
+            'full': long_full_price,
+        },
+    }
+    selected_prices = price_matrix[pricing_key]
     
     if color_mode != 'Color':
         # B&W pricing logic
-        bw_price = bw_price_70 if gsm == 70 else bw_price_80
+        bw_price = selected_prices['bw']
         costs = [bw_price] * len(color_results)
     else:
         for page in color_results:
             if page.get('full_color'):
-                costs.append(full_color_price)
+                costs.append(selected_prices['full'])
             elif page.get('partial'):
-                costs.append(partial_color_price)
+                costs.append(selected_prices['partial'])
             else:  # pure B&W in color mode
-                bw_price = bw_price_70 if gsm == 70 else bw_price_80
-                costs.append(bw_price)
+                costs.append(selected_prices['bw'])
     
     # Calculate single copy cost and total cost
     single_copy_cost = sum(costs)

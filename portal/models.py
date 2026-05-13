@@ -78,6 +78,60 @@ class SiteSetting(models.Model):
         default=10,
         help_text='Minutes before a pending payment intent expires'
     )
+    letter_bw_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=1,
+        help_text='Black-and-white price for Short paper'
+    )
+    letter_partial_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=3,
+        help_text='Partial color price for Short paper'
+    )
+    letter_full_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=8,
+        help_text='Full color price for Short paper'
+    )
+    a4_bw_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=1,
+        help_text='Black-and-white price for A4 paper'
+    )
+    a4_partial_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=3,
+        help_text='Partial color price for A4 paper'
+    )
+    a4_full_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=8,
+        help_text='Full color price for A4 paper'
+    )
+    long_bw_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=2,
+        help_text='Black-and-white price for Long paper'
+    )
+    long_partial_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=4,
+        help_text='Partial color price for Long paper'
+    )
+    long_full_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=10,
+        help_text='Full color price for Long paper'
+    )
     bw_price_70 = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -157,6 +211,7 @@ class Printer(models.Model):
     ink_status = models.CharField(max_length=50, null=True, blank=True)
     paper_assigned = models.CharField(max_length=50, choices=PAPER_SIZE_CHOICES, blank=True, default='')
     paper_quality = models.CharField(max_length=50, choices=GSM_CHOICES, blank=True, default='')
+    is_temporarily_disabled = models.BooleanField(default=False)
     last_checked = models.DateTimeField()
     ip_address = models.CharField(max_length=255)
     node_name = models.CharField(max_length=255, null=True, blank=True)

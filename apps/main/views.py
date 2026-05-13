@@ -10,7 +10,7 @@ from .utils.pdf_color_detection import analyze_pdf_colors, calculate_page_costs
 def upload_pdf_view(request):
     if request.method == 'POST' and request.FILES.get('pdf'):
         pdf_file = request.FILES['pdf']
-        gsm = int(request.POST.get('gsm', 70))  # Default to 70 GSM
+        paper_size = request.POST.get('paper_size', 'Letter')
         # Save uploaded file temporarily
         temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_upload.pdf')
         with open(temp_path, 'wb+') as destination:
@@ -25,11 +25,16 @@ def upload_pdf_view(request):
             )
             total, costs = calculate_page_costs(
                 color_results,
-                gsm=gsm,
-                bw_price_70=site_settings.bw_price_70,
-                bw_price_80=site_settings.bw_price_80,
-                partial_color_price=site_settings.partial_color_price,
-                full_color_price=site_settings.full_color_price,
+                paper_size=paper_size,
+                letter_bw_price=site_settings.letter_bw_price,
+                letter_partial_price=site_settings.letter_partial_price,
+                letter_full_price=site_settings.letter_full_price,
+                a4_bw_price=site_settings.a4_bw_price,
+                a4_partial_price=site_settings.a4_partial_price,
+                a4_full_price=site_settings.a4_full_price,
+                long_bw_price=site_settings.long_bw_price,
+                long_partial_price=site_settings.long_partial_price,
+                long_full_price=site_settings.long_full_price,
             )
             os.remove(temp_path)
             return JsonResponse({

@@ -320,7 +320,7 @@ def dashboard(request):
         raise Http404("User not found")
     
     # Dashboard Stats
-    printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
+    printer_errors_count = _active_printer_error_count()
     
     # Ticket queries
     active_tickets = list(SupportTicket.objects.filter(
@@ -507,12 +507,55 @@ def _payment_gateway_context(site):
 
 def _pricing_settings_context(site):
     return {
-        'bw_price_70': str(site.bw_price_70),
-        'bw_price_80': str(site.bw_price_80),
-        'partial_color_price': str(site.partial_color_price),
-        'full_color_price': str(site.full_color_price),
+        'letter_bw_price': str(site.letter_bw_price),
+        'letter_partial_price': str(site.letter_partial_price),
+        'letter_full_price': str(site.letter_full_price),
+        'a4_bw_price': str(site.a4_bw_price),
+        'a4_partial_price': str(site.a4_partial_price),
+        'a4_full_price': str(site.a4_full_price),
+        'long_bw_price': str(site.long_bw_price),
+        'long_partial_price': str(site.long_partial_price),
+        'long_full_price': str(site.long_full_price),
         'color_full_threshold_percent': str(site.color_full_threshold_percent),
     }
+
+
+def _document_required_sheets(document):
+    try:
+        copies = max(1, int(getattr(document, 'num_copies', 1) or 1))
+    except (TypeError, ValueError):
+        copies = 1
+
+    total_pages = document.get_total_pages() or 0
+    return max(1, total_pages * copies)
+
+
+def _printer_has_required_stock(printer, document):
+    tray_level = (getattr(printer, 'tray_level', '') or '').strip()
+    tray_current_count = getattr(printer, 'tray_current_count', None)
+
+    if tray_level == 'Needs Refill':
+        return False
+
+    if tray_current_count is not None and tray_current_count < _document_required_sheets(document):
+        return False
+
+    return True
+
+
+def _get_matching_printers(document, *, allowed_statuses):
+    candidate_printers = Printer.objects.filter(
+        paper_assigned=document.paper_size,
+        is_temporarily_disabled=False,
+        printer_status__in=allowed_statuses,
+    )
+    return [printer for printer in candidate_printers if _printer_has_required_stock(printer, document)]
+
+
+def _active_printer_error_count():
+    return Printer.objects.filter(is_temporarily_disabled=False).exclude(
+        printer_status__in=['Sleep', 'Ready', 'Printing']
+    ).count()
 
 
 def voucher_management(request):
@@ -1076,15 +1119,14 @@ def payment(request):
                 if site.block_payment_when_printers_unavailable:
                     pending_docs = Document.objects.filter(doc_id__in=documents_ids, doc_status='Pending')
                     for doc in pending_docs:
-                        matching_printers = Printer.objects.filter(
-                            paper_assigned=doc.paper_size,
-                            paper_quality=doc.paper_quality,
-                            printer_status__in=['Ready', 'Printing', 'Sleep']
+                        matching_printers = _get_matching_printers(
+                            doc,
+                            allowed_statuses=['Ready', 'Printing', 'Sleep'],
                         )
-                        if not matching_printers.exists():
+                        if not matching_printers:
                             return JsonResponse({
                                 'success': False,
-                                'error': f'No available printer for {doc.paper_size} {doc.paper_quality} GSM. All matching printers are currently offline or unavailable. Please try again later.'
+                                'error': f'No available printer for {doc.paper_size} with enough paper loaded. Please try again later.'
                             })
 
                 # Calculate total price from Payment records
@@ -1566,11 +1608,9 @@ def printer_status(request):
             printer.ink_status = "N/A"
     
     paper_size_choices = Printer.PAPER_SIZE_CHOICES
-    gsm_choices = Printer.GSM_CHOICES
     return render(request, 'status.html', {
         'printers': printers,
         'paper_size_choices': paper_size_choices,
-        'gsm_choices': gsm_choices,
     })
 
 
@@ -1588,6 +1628,8 @@ def update_printer_field(request):
                 # When setting tray capacity, also initialize tray_current_count if not tracked yet
                 if value is not None and printer.tray_current_count is None:
                     printer.tray_current_count = value
+            elif field == 'is_temporarily_disabled':
+                value = str(value).lower() in ('1', 'true', 'yes', 'on')
             setattr(printer, field, value)
             printer.save()
             return JsonResponse({'success': True})
@@ -2322,30 +2364,55 @@ def update_pricing_settings(request):
     site = SiteSetting.load()
 
     try:
-        bw_price_70 = Decimal(request.POST.get('bw_price_70', '').strip())
-        bw_price_80 = Decimal(request.POST.get('bw_price_80', '').strip())
-        partial_color_price = Decimal(request.POST.get('partial_color_price', '').strip())
-        full_color_price = Decimal(request.POST.get('full_color_price', '').strip())
+        letter_bw_price = Decimal(request.POST.get('letter_bw_price', '').strip())
+        letter_partial_price = Decimal(request.POST.get('letter_partial_price', '').strip())
+        letter_full_price = Decimal(request.POST.get('letter_full_price', '').strip())
+        a4_bw_price = Decimal(request.POST.get('a4_bw_price', '').strip())
+        a4_partial_price = Decimal(request.POST.get('a4_partial_price', '').strip())
+        a4_full_price = Decimal(request.POST.get('a4_full_price', '').strip())
+        long_bw_price = Decimal(request.POST.get('long_bw_price', '').strip())
+        long_partial_price = Decimal(request.POST.get('long_partial_price', '').strip())
+        long_full_price = Decimal(request.POST.get('long_full_price', '').strip())
         color_full_threshold_percent = Decimal(request.POST.get('color_full_threshold_percent', '').strip())
     except Exception:
         return JsonResponse({'success': False, 'error': 'Pricing values must be valid numbers.'})
 
-    if any(value < 0 for value in [bw_price_70, bw_price_80, partial_color_price, full_color_price]):
+    if any(value < 0 for value in [
+        letter_bw_price,
+        letter_partial_price,
+        letter_full_price,
+        a4_bw_price,
+        a4_partial_price,
+        a4_full_price,
+        long_bw_price,
+        long_partial_price,
+        long_full_price,
+    ]):
         return JsonResponse({'success': False, 'error': 'Prices cannot be negative.'})
 
     if color_full_threshold_percent < 0 or color_full_threshold_percent > 100:
         return JsonResponse({'success': False, 'error': 'Full color cutoff must be between 0 and 100.'})
 
-    site.bw_price_70 = bw_price_70
-    site.bw_price_80 = bw_price_80
-    site.partial_color_price = partial_color_price
-    site.full_color_price = full_color_price
+    site.letter_bw_price = letter_bw_price
+    site.letter_partial_price = letter_partial_price
+    site.letter_full_price = letter_full_price
+    site.a4_bw_price = a4_bw_price
+    site.a4_partial_price = a4_partial_price
+    site.a4_full_price = a4_full_price
+    site.long_bw_price = long_bw_price
+    site.long_partial_price = long_partial_price
+    site.long_full_price = long_full_price
     site.color_full_threshold_percent = color_full_threshold_percent
     site.save(update_fields=[
-        'bw_price_70',
-        'bw_price_80',
-        'partial_color_price',
-        'full_color_price',
+        'letter_bw_price',
+        'letter_partial_price',
+        'letter_full_price',
+        'a4_bw_price',
+        'a4_partial_price',
+        'a4_full_price',
+        'long_bw_price',
+        'long_partial_price',
+        'long_full_price',
         'color_full_threshold_percent',
     ])
 
@@ -2478,7 +2545,7 @@ def printer_status_event_stream():
                     'printer_status': printer.printer_status,
                     'ink_status': ink_status,
                     'paper_assigned': getattr(printer, 'paper_assigned', ''),
-                    'paper_quality': getattr(printer, 'paper_quality', ''),
+                    'is_temporarily_disabled': bool(getattr(printer, 'is_temporarily_disabled', False)),
                 })
             json_data = json.dumps({'printers': data})
             if json_data != last_data:
@@ -2506,7 +2573,7 @@ def dashboard_status_event_stream(sales_voucher_filter='exclude'):
             close_old_connections()
             # Gather dashboard stats
             completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
-            printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
+            printer_errors_count = _active_printer_error_count()
             pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
             active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
             resolved_tickets_count = SupportTicket.objects.filter(status__in=['resolved', 'closed', 'voided', 'refunded']).count()
@@ -2648,16 +2715,24 @@ def assign_document_to_printer(document):
             return None
 
         printers = Printer.objects.all()
+        busy_printer_ids = set(
+            Document.objects.filter(
+                doc_status='Printing',
+                printer_assigned__isnull=False,
+            ).exclude(doc_id=doc.doc_id).values_list('printer_assigned_id', flat=True)
+        )
         
         # Check if this is a rerouted document (has reroute history)
         is_rerouted = RerouteHistory.objects.filter(document=doc).exists()
         
-        # Skip printers in error state or with non-operational status
+        # Skip printers in error state, incompatible paper specs, or insufficient paper stock.
         available = [
             p for p in printers
             if p.printer_status in ['Ready', 'Sleep']  # Only use printers in operational status
             and getattr(p, 'paper_assigned', None) == getattr(document, 'paper_size', None)
-            and getattr(p, 'paper_quality', None) == getattr(document, 'paper_quality', None)
+            and p.id not in busy_printer_ids
+            and not getattr(p, 'is_temporarily_disabled', False)
+            and _printer_has_required_stock(p, doc)
             # Skip the previous failed printer if rerouting due to error
             and (not hasattr(document, 'previous_failed_printer') or p.id != document.previous_failed_printer)
         ]
@@ -2692,7 +2767,10 @@ def assign_document_to_printer(document):
             print(f"[ASSIGNED] Document {doc.doc_id} assigned to {printer.printer_name}.")
             return printer
         else:
-            print(f"No available printer for {doc.paper_size} ({getattr(doc, 'paper_quality', None)}). Document {doc.doc_id} paused. Retrying in 5 seconds...")
+            print(
+                f"No available printer for {doc.paper_size}. "
+                f"Document {doc.doc_id} paused and will retry in 5 seconds."
+            )
             _time.sleep(5)
 
 
@@ -2774,7 +2852,7 @@ def _get_cups_job_state(job_id):
 
 def print_page(document, page_num):
     # Extract print preferences from document
-    copies = getattr(document, 'copies', 1)
+    copies = max(1, int(getattr(document, 'num_copies', 1) or 1))
     orientation = getattr(document, 'orientation', 'portrait')
     color_mode = getattr(document, 'color_mode', 'color')
     paper_size = getattr(document, 'paper_size', 'A4')
@@ -3089,7 +3167,10 @@ def check_queued_documents():
     print(f"[QUEUE-MONITOR] Found {queued_count} queued documents. Attempting to assign printers...")
     
     # Get all available printers
-    available_printers = Printer.objects.filter(printer_status__in=['Ready', 'Sleep'])
+    available_printers = Printer.objects.filter(
+        printer_status__in=['Ready', 'Sleep'],
+        is_temporarily_disabled=False,
+    )
     available_count = available_printers.count()
     
     if available_count == 0:
@@ -3381,7 +3462,7 @@ def picked_up_document(request):
 @csrf_exempt
 def finish_transaction(request):
     """
-    Mark all documents for a customer as 'Picked Up' and delete their files.
+    Mark completed documents for a customer as 'Picked Up' before deleting their files.
     This is the 'Picked Up All Printed Documents' action.
     
     If force=True (user confirmed disclaimer), ALL documents are processed
@@ -3418,6 +3499,26 @@ def finish_transaction(request):
         uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
 
         for doc in docs_to_process:
+            reroute_override = (
+                force and
+                doc.doc_status == 'Printing' and
+                RerouteHistory.objects.filter(document=doc).exists()
+            )
+
+            if doc.doc_status == 'Finished' or reroute_override:
+                if reroute_override:
+                    if not doc.pages_printed:
+                        doc.pages_printed = doc.get_page_list()
+                    if not doc.printed_at and doc.printer_assigned:
+                        doc.printed_at = doc.printer_assigned
+
+                doc.doc_status = 'Picked Up'
+                doc.status_updated_at = timezone.now()
+                update_fields = ['doc_status', 'status_updated_at']
+                if reroute_override:
+                    update_fields.extend(['pages_printed', 'printed_at'])
+                doc.save(update_fields=update_fields)
+
             # Delete the file from storage — direct path lookup (fast)
             if doc.stored_name:
                 customer_dir = os.path.join(uploads_dir, customer_id)
@@ -3968,20 +4069,19 @@ def check_printer_availability(request):
         if not docs.exists():
             return JsonResponse({'available': True, 'all_offline': False, 'unavailable_docs': []})
 
-        # Check each document's paper requirements against available printers
+        # Check each document's paper requirements against available printers.
         unavailable_docs = []
         for doc in docs:
-            matching_printers = Printer.objects.filter(
-                paper_assigned=doc.paper_size,
-                paper_quality=doc.paper_quality,
-                printer_status__in=['Ready', 'Printing', 'Sleep']
+            matching_printers = _get_matching_printers(
+                doc,
+                allowed_statuses=['Ready', 'Printing', 'Sleep'],
             )
-            if not matching_printers.exists():
+            if not matching_printers:
                 unavailable_docs.append({
                     'doc_id': doc.doc_id,
                     'filename': doc.filename,
                     'paper_size': doc.paper_size,
-                    'paper_quality': f'{doc.paper_quality} GSM' if doc.paper_quality else '',
+                    'required_sheets': _document_required_sheets(doc),
                 })
 
         all_printers_status = list(Printer.objects.values_list('printer_status', flat=True))

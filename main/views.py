@@ -710,10 +710,6 @@ def update_document_settings(request):
                     page_range_str = upd.get('pages', None)
                     site_settings = SiteSetting.load()
                     full_color_threshold_percent = site_settings.color_full_threshold_percent
-                    bw_price_70 = site_settings.bw_price_70
-                    bw_price_80 = site_settings.bw_price_80
-                    partial_color_price = site_settings.partial_color_price
-                    full_color_price = site_settings.full_color_price
                     if page_range_str and isinstance(page_range_str, str):
                         # Parse page indices before scanning
                         with default_storage.open(file_rel_path, 'rb') as f:
@@ -753,13 +749,18 @@ def update_document_settings(request):
                         filtered_color_results = color_results
                     total_cost, costs_per_page = calculate_page_costs(
                         filtered_color_results,
-                        gsm=int(doc.paper_quality),
+                        paper_size=doc.paper_size,
                         color_mode=doc.color_mode,
                         num_copies=doc.num_copies,
-                        bw_price_70=bw_price_70,
-                        bw_price_80=bw_price_80,
-                        partial_color_price=partial_color_price,
-                        full_color_price=full_color_price,
+                        letter_bw_price=site_settings.letter_bw_price,
+                        letter_partial_price=site_settings.letter_partial_price,
+                        letter_full_price=site_settings.letter_full_price,
+                        a4_bw_price=site_settings.a4_bw_price,
+                        a4_partial_price=site_settings.a4_partial_price,
+                        a4_full_price=site_settings.a4_full_price,
+                        long_bw_price=site_settings.long_bw_price,
+                        long_partial_price=site_settings.long_partial_price,
+                        long_full_price=site_settings.long_full_price,
                     )
                     new_price = total_cost
                     try:
