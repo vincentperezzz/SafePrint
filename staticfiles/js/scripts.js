@@ -1379,19 +1379,45 @@ function checkForNewCompletions(documents) {
 
 // Track which docs have already triggered the timeout popup
 var _timeoutPopupShown = {};
+var _voucherCancellationShown = {};
 
 function checkForTimeoutCancellations(documents) {
     if (!documents || documents.length === 0) return;
     documents.forEach(function(doc) {
         if (doc.doc_status === 'Cancelled' && !_timeoutPopupShown[doc.doc_id]) {
             var reason = (doc.cancel_reason || '').toLowerCase();
-            if (reason.indexOf('no printer available for') !== -1) {
+            if (reason.indexOf('no printer available for') !== -1 && reason.indexOf('auto voucher') === -1) {
                 _timeoutPopupShown[doc.doc_id] = true;
                 // Auto-show the problem report overlay for this timed-out document
                 if (typeof showProblemReportOverlay === 'function') {
                     showProblemReportOverlay();
                 }
             }
+        }
+    });
+}
+
+function checkForAutoVoucherCancellations(documents) {
+    if (!documents || documents.length === 0) return;
+
+    documents.forEach(function(doc) {
+        var reason = doc.cancel_reason || '';
+        var normalizedReason = reason.toLowerCase();
+        if (
+            doc.doc_status === 'Cancelled' &&
+            normalizedReason.indexOf('auto voucher') !== -1 &&
+            !_voucherCancellationShown[doc.doc_id]
+        ) {
+            _voucherCancellationShown[doc.doc_id] = true;
+            createAlert(
+                'Print Cancelled',
+                'Voucher generated for the affected document.',
+                reason,
+                'warning',
+                true,
+                false,
+                'pageMessages'
+            );
         }
     });
 }
@@ -1489,6 +1515,7 @@ function initConfirmationSSE() {
             storeCustomerDocumentArchive(window.customerDocuments);
             checkForNewCompletions(data.documents || []);
             checkForTimeoutCancellations(data.documents || []);
+            checkForAutoVoucherCancellations(data.documents || []);
             checkForAutoTicketTrigger(data);
             renderDocumentRows(data.documents);
             updateConfirmationUI(data);
@@ -1566,8 +1593,7 @@ function buildDocumentBadges(doc) {
         if (segments.length > 0) {
             badgesHtml = renderCompletedSegments(hasPageSegments ? segments : segments.slice(0, -1));
         }
-        const printerText = doc.printer_name ? ` (${escapeHtml(doc.printer_name)})` : '';
-        badgesHtml += `<div class="badge status-info">Printing...${printerText}</div>`;
+        badgesHtml += `<div class="badge status-info">${formatCurrentPrintingBadge(doc)}</div>`;
     } else if (doc.doc_status === 'Finished') {
         if (segments.length > 0) {
             badgesHtml = renderCompletedSegments(segments);
@@ -1605,7 +1631,7 @@ function buildDocumentBadges(doc) {
 
 function buildPrintSegments(doc, history) {
     const pageSegments = [];
-    const pageSegmentsByPrinter = new Map();
+    let currentPageSegment = null;
 
     history.forEach((entry) => {
         const match = /^Printed page\s+(\d+)$/i.exec(entry.status || '');
@@ -1619,18 +1645,16 @@ function buildPrintSegments(doc, history) {
             return;
         }
 
-        if (!pageSegmentsByPrinter.has(printerName)) {
-            const segment = {
+        if (!currentPageSegment || currentPageSegment.printer_name !== printerName) {
+            currentPageSegment = {
                 printer_name: printerName,
                 pages: [],
             };
-            pageSegmentsByPrinter.set(printerName, segment);
-            pageSegments.push(segment);
+            pageSegments.push(currentPageSegment);
         }
 
-        const segment = pageSegmentsByPrinter.get(printerName);
-        if (!segment.pages.includes(pageNumber)) {
-            segment.pages.push(pageNumber);
+        if (!currentPageSegment.pages.includes(pageNumber)) {
+            currentPageSegment.pages.push(pageNumber);
         }
     });
 
@@ -1680,11 +1704,17 @@ function buildPrintSegments(doc, history) {
 
 function renderCompletedSegments(segments) {
     let html = '';
+    const seenLegacySegments = new Set();
     segments.forEach(segment => {
         const printerText = segment.printer_name ? ` (${escapeHtml(segment.printer_name)})` : '';
         if (Array.isArray(segment.pages) && segment.pages.length > 0) {
             html += `<div class="badge status-primary">${formatPrintedPageRanges(segment.pages)}${printerText}</div>`;
         } else if (segment.status === 'error' || segment.status === 'rerouted') {
+            const key = `${segment.status}:${segment.printer_name || ''}`;
+            if (seenLegacySegments.has(key)) {
+                return;
+            }
+            seenLegacySegments.add(key);
             html += `<div class="badge status-primary">Rerouted from${printerText}</div>`;
         }
     });
@@ -1715,6 +1745,49 @@ function formatPrintedPageRanges(pages) {
     ranges.push(start === end ? `${start}` : `${start}-${end}`);
     const label = ranges.length > 1 ? 'Pages' : 'Page';
     return `${label} ${ranges.join(', ')}`;
+}
+
+function getDocumentPageList(pagesNum) {
+    if (!pagesNum) {
+        return [];
+    }
+
+    const pages = [];
+    String(pagesNum).split(',').forEach((part) => {
+        const trimmed = part.trim();
+        if (!trimmed) {
+            return;
+        }
+
+        if (trimmed.includes('-')) {
+            const [start, end] = trimmed.split('-').map((value) => Number.parseInt(value, 10));
+            if (Number.isNaN(start) || Number.isNaN(end)) {
+                return;
+            }
+            for (let page = start; page <= end; page++) {
+                pages.push(page);
+            }
+            return;
+        }
+
+        const page = Number.parseInt(trimmed, 10);
+        if (!Number.isNaN(page)) {
+            pages.push(page);
+        }
+    });
+
+    return pages;
+}
+
+function formatCurrentPrintingBadge(doc) {
+    const pageList = getDocumentPageList(doc.pages_num);
+    const printedPages = new Set((doc.pages_printed || []).map((page) => Number(page)));
+    const nextPage = pageList.find((page) => !printedPages.has(page));
+    const printerText = doc.printer_name ? ` (${escapeHtml(doc.printer_name)})` : '';
+    if (typeof nextPage === 'number') {
+        return `Printing Page ${escapeHtml(String(nextPage))}...${printerText}`;
+    }
+    return `Printing...${printerText}`;
 }
 
 function updateConfirmationUI(data) {

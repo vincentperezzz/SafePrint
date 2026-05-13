@@ -39,7 +39,7 @@ cleanup() {
 # Register cleanup function
 trap cleanup SIGTERM SIGINT
 
-# Main loop - activate venv and poll every second
+# Main loop - activate venv and poll continuously with a short gap
 cd "$PROJECT_DIR"
 echo "$(date '+%Y-%m-%d %H:%M:%S'): Starting printer polling daemon" >> $LOG_FILE
 
@@ -57,6 +57,6 @@ while true; do
     # Activate venv and run the command
     source "$VENV_DIR/bin/activate" && python manage.py poll_printer_snmp >> $LOG_FILE 2>&1
 
-    # Sleep for 1 second before next poll
-    sleep 1
+    # Keep the gap short so status changes reach the admin page faster.
+    sleep 0.2
 done
