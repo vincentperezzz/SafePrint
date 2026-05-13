@@ -1573,7 +1573,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     })
 
-    // Printer Status Dropdowns Update Database
+    // Printer status controls update the database.
     const dropdownSelects = document.querySelectorAll('.dropdown-select');
     if (dropdownSelects.length > 0) {
         dropdownSelects.forEach(function (select) {
@@ -1611,7 +1611,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     .then(data => {
                         // Show appropriate success message based on field
                         let fieldLabel = field === 'paper_assigned' ? 'Paper Assigned' : 
-                                         field === 'paper_quality' ? 'GSM' : 'Printer setting';
+                                         field === 'is_temporarily_disabled' ? 'Printer availability' : 'Printer setting';
                         createAlert('Success', 'Printer Updated', `${fieldLabel} has been updated successfully.`, 'success', true, true, 'pageMessages');
                         // Reload page after short delay to reflect changes in Paper Refill section
                         setTimeout(() => {
@@ -1621,6 +1621,52 @@ document.addEventListener('DOMContentLoaded', () => {
                     .catch(error => {
                         console.error('Error updating printer setting:', error);
                         createAlert('Error', 'Update Failed', 'Failed to update printer setting. Please try again or contact support.', 'danger', true, true, 'pageMessages');
+                    });
+            });
+        });
+    }
+
+    const printerToggleInputs = document.querySelectorAll('.printer-toggle-input');
+    if (printerToggleInputs.length > 0) {
+        printerToggleInputs.forEach(function (toggle) {
+            toggle.addEventListener('change', function () {
+                const printerId = this.dataset.printerId;
+                const field = this.dataset.field;
+                if (!printerId || !field) {
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('printer_id', printerId);
+                formData.append('field', field);
+                formData.append('value', this.checked ? 'false' : 'true');
+
+                fetch('/portal/api/update_printer_field/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.success) {
+                            throw new Error(data.error || 'Update failed');
+                        }
+                        const row = toggle.closest('.printer-table-row');
+                        const label = row ? row.querySelector('.printer-toggle-text') : null;
+                        if (label) {
+                            label.textContent = toggle.checked ? 'Enabled' : 'Disabled';
+                        }
+                        createAlert('Success', 'Printer Updated', 'Printer availability has been updated successfully.', 'success', true, true, 'pageMessages');
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    })
+                    .catch(error => {
+                        console.error('Error updating printer availability:', error);
+                        toggle.checked = !toggle.checked;
+                        createAlert('Error', 'Update Failed', 'Failed to update printer availability. Please try again or contact support.', 'danger', true, true, 'pageMessages');
                     });
             });
         });
@@ -2053,14 +2099,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
         const salesFullThresholdInput = document.getElementById('sales-full-threshold-setting');
-        const salesBwPrice70Input = document.getElementById('sales-bw-price-70-setting');
-        const salesBwPrice80Input = document.getElementById('sales-bw-price-80-setting');
-        const salesPartialColorPriceInput = document.getElementById('sales-partial-color-price-setting');
-        const salesFullColorPriceInput = document.getElementById('sales-full-color-price-setting');
+        const salesPricingFieldMap = [
+            { key: 'letter_bw_price', input: document.getElementById('sales-letter-bw-price-setting'), defaultValue: '1' },
+            { key: 'letter_partial_price', input: document.getElementById('sales-letter-partial-price-setting'), defaultValue: '3' },
+            { key: 'letter_full_price', input: document.getElementById('sales-letter-full-price-setting'), defaultValue: '8' },
+            { key: 'a4_bw_price', input: document.getElementById('sales-a4-bw-price-setting'), defaultValue: '1' },
+            { key: 'a4_partial_price', input: document.getElementById('sales-a4-partial-price-setting'), defaultValue: '3' },
+            { key: 'a4_full_price', input: document.getElementById('sales-a4-full-price-setting'), defaultValue: '8' },
+            { key: 'long_bw_price', input: document.getElementById('sales-long-bw-price-setting'), defaultValue: '2' },
+            { key: 'long_partial_price', input: document.getElementById('sales-long-partial-price-setting'), defaultValue: '4' },
+            { key: 'long_full_price', input: document.getElementById('sales-long-full-price-setting'), defaultValue: '10' },
+        ];
         const salesThresholdRuleText = document.getElementById('sales-threshold-rule-text');
         const editSalesPricingBtn = document.getElementById('edit-sales-pricing-btn');
         const salesPricingCard = document.querySelector('.sales-pricing-card');
-        const salesPricingInputs = [salesFullThresholdInput, salesBwPrice70Input, salesBwPrice80Input, salesPartialColorPriceInput, salesFullColorPriceInput].filter(Boolean);
+        const salesPricingInputs = [salesFullThresholdInput].concat(salesPricingFieldMap.map((field) => field.input)).filter(Boolean);
         let salesPricingOriginalValues = null;
 
         const formatThresholdPercent = (value) => {
@@ -2069,13 +2122,15 @@ document.addEventListener('DOMContentLoaded', () => {
             return String(Math.round(numericValue));
         };
 
-        const getSalesPricingValues = () => ({
-            color_full_threshold_percent: salesFullThresholdInput ? formatThresholdPercent(salesFullThresholdInput.value) : '10',
-            bw_price_70: salesBwPrice70Input ? salesBwPrice70Input.value.trim() : '1',
-            bw_price_80: salesBwPrice80Input ? salesBwPrice80Input.value.trim() : '2',
-            partial_color_price: salesPartialColorPriceInput ? salesPartialColorPriceInput.value.trim() : '2',
-            full_color_price: salesFullColorPriceInput ? salesFullColorPriceInput.value.trim() : '5',
-        });
+        const getSalesPricingValues = () => {
+            const values = {
+                color_full_threshold_percent: salesFullThresholdInput ? formatThresholdPercent(salesFullThresholdInput.value) : '10',
+            };
+            salesPricingFieldMap.forEach((field) => {
+                values[field.key] = field.input ? field.input.value.trim() : field.defaultValue;
+            });
+            return values;
+        };
 
         const syncSalesThresholdValue = () => {
             const thresholdValue = formatThresholdPercent(salesFullThresholdInput ? salesFullThresholdInput.value : '10');
@@ -2113,10 +2168,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const applySalesPricingConfig = (pricingConfig) => {
             const savedThresholdValue = formatThresholdPercent(pricingConfig.color_full_threshold_percent || '10');
             if (salesFullThresholdInput) salesFullThresholdInput.value = savedThresholdValue;
-            if (salesBwPrice70Input) salesBwPrice70Input.value = pricingConfig.bw_price_70 || '1';
-            if (salesBwPrice80Input) salesBwPrice80Input.value = pricingConfig.bw_price_80 || '2';
-            if (salesPartialColorPriceInput) salesPartialColorPriceInput.value = pricingConfig.partial_color_price || '2';
-            if (salesFullColorPriceInput) salesFullColorPriceInput.value = pricingConfig.full_color_price || '5';
+            salesPricingFieldMap.forEach((field) => {
+                if (field.input) {
+                    field.input.value = pricingConfig[field.key] || field.defaultValue;
+                }
+            });
             syncSalesThresholdValue();
         };
 
@@ -2154,11 +2210,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 const formData = new FormData();
-                formData.append('color_full_threshold_percent', currentPricingValues.color_full_threshold_percent);
-                formData.append('bw_price_70', currentPricingValues.bw_price_70);
-                formData.append('bw_price_80', currentPricingValues.bw_price_80);
-                formData.append('partial_color_price', currentPricingValues.partial_color_price);
-                formData.append('full_color_price', currentPricingValues.full_color_price);
+                Object.entries(currentPricingValues).forEach(([key, value]) => {
+                    formData.append(key, value);
+                });
 
                 setSalesPricingButtonState('save', true);
 
@@ -2185,6 +2239,33 @@ document.addEventListener('DOMContentLoaded', () => {
                         setSalesPricingButtonState('save');
                         createAlert('Error', 'Update Failed', 'An error occurred while saving pricing rules.', 'danger', true, true, 'pageMessages');
                     });
+            });
+        }
+
+        const salesTabButtons = document.querySelectorAll('.sales-tab-btn');
+        const salesTabPanels = document.querySelectorAll('.sales-tab-panel');
+
+        if (salesTabButtons.length && salesTabPanels.length) {
+            const setActiveSalesTab = (tabName) => {
+                salesTabButtons.forEach((button) => {
+                    const isActive = button.dataset.salesTab === tabName;
+                    button.classList.toggle('is-active', isActive);
+                    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                });
+
+                salesTabPanels.forEach((panel) => {
+                    const isActive = panel.dataset.salesPanel === tabName;
+                    panel.classList.toggle('is-active', isActive);
+                    panel.hidden = !isActive;
+                });
+            };
+
+            setActiveSalesTab('transactions');
+
+            salesTabButtons.forEach((button) => {
+                button.addEventListener('click', function () {
+                    setActiveSalesTab(button.dataset.salesTab || 'transactions');
+                });
             });
         }
 
@@ -2744,7 +2825,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const row = btn.closest('.completed-row');
             const docId = row ? row.getAttribute('data-doc-id') : null;
             if (!docId) return;
-            fetch('/api/deny-document/', {
+            fetch('/api/picked-up-document/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -2790,7 +2871,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const jobsItem = wrapper ? wrapper.parentElement : null;
             const docId = btn.getAttribute('data-doc-id');
             if (!docId) return;
-            fetch('/api/deny-document/', {
+            fetch('/api/picked-up-document/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -2938,7 +3019,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        // Update paper assigned and GSM dropdowns if needed
+        // Update paper assignment and temporary availability controls if needed.
         if (printer.paper_assigned) {
             const paperSelect = row.querySelector('select[data-field="paper_assigned"]');
             if (paperSelect) {
@@ -2946,10 +3027,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        if (printer.paper_quality) {
-            const gsmSelect = row.querySelector('select[data-field="paper_quality"]');
-            if (gsmSelect) {
-                gsmSelect.value = printer.paper_quality;
+        const availabilityToggle = row.querySelector('input[data-field="is_temporarily_disabled"]');
+        if (availabilityToggle) {
+            availabilityToggle.checked = !printer.is_temporarily_disabled;
+            const label = row.querySelector('.printer-toggle-text');
+            if (label) {
+                label.textContent = availabilityToggle.checked ? 'Enabled' : 'Disabled';
             }
         }
     }
@@ -3968,9 +4051,16 @@ if (addPrinterForm) {
                     const activeCount = data.active_count || 0;
                     const salesTodayAmount = Number(data.sales_today_amount || 0);
 
-                    // Update counts in stat cards
-                    document.getElementById('active-tickets-count').textContent = activeCount;
-                    document.getElementById('sales-today-count').textContent = '₱' + salesTodayAmount.toFixed(2);
+                    // Update dashboard-only stat cards when present.
+                    const activeTicketsCountEl = document.getElementById('active-tickets-count');
+                    if (activeTicketsCountEl) {
+                        activeTicketsCountEl.textContent = activeCount;
+                    }
+
+                    const salesTodayCountEl = document.getElementById('sales-today-count');
+                    if (salesTodayCountEl) {
+                        salesTodayCountEl.textContent = '₱' + salesTodayAmount.toFixed(2);
+                    }
 
                     // Update notification bell badge if present
                     const notifCountEl = document.getElementById('notification-count');
@@ -4102,11 +4192,14 @@ if (addPrinterForm) {
 
     // Create notification dropdown panel dynamically
     const bellParent = bell.closest('div[style*="position:relative"]') || bell.parentElement;
+    if (bellParent) {
+        bellParent.style.position = 'relative';
+    }
     let panel = document.getElementById('notification-panel');
     if (!panel) {
         panel = document.createElement('div');
         panel.id = 'notification-panel';
-        panel.style.cssText = 'display:none; position:absolute; top:100%; right:0; width:320px; max-height:400px; overflow-y:auto; background:#fff; border:2px solid #18191F; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:2000; font-family:Montserrat,sans-serif;';
+        panel.style.cssText = 'display:none; position:absolute; top:100%; right:0; width:320px; max-height:400px; overflow-y:auto; background:#fff; border:2px solid #18191F; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:2600; font-family:Montserrat,sans-serif;';
         panel.innerHTML = '<div id="notification-panel-list" style="padding:8px;"><div style="padding:8px;color:#666;">Loading...</div></div>';
         bellParent.appendChild(panel);
     }
@@ -4164,6 +4257,7 @@ if (addPrinterForm) {
         e.stopPropagation();
         var isOpen = panel.style.display === 'block';
         panel.style.display = isOpen ? 'none' : 'block';
+        bell.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
         if (!isOpen) fetchAndPopulatePanel();
     });
 
@@ -4187,6 +4281,7 @@ if (addPrinterForm) {
     const pauseBtn = document.getElementById('live-logs-pause');
     const lineCountSelect = document.getElementById('live-logs-line-count');
     const bell = document.getElementById('notification-bell');
+    const navLogsButton = document.getElementById('live-logs-toggle-nav');
     const terminalIconPath = document.body.dataset.terminalIcon || '/static/assets/terminal.svg';
 
     if (!drawer || !backdrop || !statusText || !sourceSelect || !content || !closeBtn || !refreshBtn || !pauseBtn || !lineCountSelect || !bell) {
@@ -4199,21 +4294,25 @@ if (addPrinterForm) {
     let refreshTimer = null;
 
     const bellContainer = bell.closest('div[style*="position:relative"]') || bell.parentElement;
-    if (bellContainer) {
-        bellContainer.style.display = 'inline-flex';
-        bellContainer.style.alignItems = 'center';
-        bellContainer.style.gap = '10px';
-    }
+    let logsButton = navLogsButton;
 
-    const logsButton = document.createElement('button');
-    logsButton.type = 'button';
-    logsButton.id = 'live-logs-toggle';
-    logsButton.className = 'live-logs-toggle';
-    logsButton.setAttribute('aria-label', 'Hide or show live terminal logs');
-    logsButton.innerHTML = '<img src="' + terminalIconPath + '" alt="" class="live-logs-toggle-icon" aria-hidden="true">';
-    logsButton.title = 'Terminal logs';
-    if (bellContainer) {
-        bellContainer.appendChild(logsButton);
+    if (!logsButton) {
+        if (bellContainer) {
+            bellContainer.style.display = 'inline-flex';
+            bellContainer.style.alignItems = 'center';
+            bellContainer.style.gap = '10px';
+        }
+
+        logsButton = document.createElement('button');
+        logsButton.type = 'button';
+        logsButton.id = 'live-logs-toggle';
+        logsButton.className = 'live-logs-toggle';
+        logsButton.setAttribute('aria-label', 'Hide or show live terminal logs');
+        logsButton.innerHTML = '<img src="' + terminalIconPath + '" alt="" class="live-logs-toggle-icon" aria-hidden="true">';
+        logsButton.title = 'Terminal logs';
+        if (bellContainer) {
+            bellContainer.appendChild(logsButton);
+        }
     }
 
     function setDrawerOpen(nextOpen) {
@@ -4222,6 +4321,7 @@ if (addPrinterForm) {
         drawer.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
         backdrop.hidden = !nextOpen;
         logsButton.classList.toggle('is-active', nextOpen);
+        logsButton.classList.toggle('active', nextOpen);
 
         if (!nextOpen) {
             window.clearInterval(refreshTimer);

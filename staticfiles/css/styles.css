@@ -1568,7 +1568,7 @@ input:focus::placeholder {
     height: 28px; 
     border-radius: 52px; 
     border: 2px solid var(--Colors-Black, #18191F); 
-    background: var(--Contra-Blue-100, #E9E7FC); 
+    background: #E5E7EB; 
     cursor: pointer;
     display: inline-block;
 }
@@ -1609,7 +1609,7 @@ input:focus::placeholder {
 }
 
 .switch-input:checked + .switch-label {
-    background: var(--primary-color); 
+    background: #22C55E;
 }
 
 .switch-input:checked + .switch-label .switch-circle {
@@ -5250,6 +5250,39 @@ input:focus::placeholder {
     padding: 20px;
 }
 
+.sales-tabs {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 10px 0 18px;
+}
+
+.sales-tab-btn {
+    min-height: 46px;
+    padding: 10px 18px;
+    border: 1.5px solid #18191F;
+    border-radius: 14px;
+    background: #ffffff;
+    color: #18191F;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 4px 0 #18191F;
+    transition: transform 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.sales-tab-btn:hover {
+    transform: translateY(1px);
+}
+
+.sales-tab-btn.is-active {
+    background: #FBB41D;
+}
+
+.sales-tab-panel[hidden] {
+    display: none !important;
+}
+
 .sales-pricing-card {
     margin-bottom: 22px;
     padding-top: 16px;
@@ -5270,6 +5303,19 @@ input:focus::placeholder {
 
 .sales-pricing-field-action {
     justify-content: flex-start;
+    align-items: flex-end;
+    margin-left: auto;
+}
+
+.sales-pricing-field-action-top {
+    grid-column: 5;
+    justify-self: end;
+    margin-left: 0;
+}
+
+.sales-pricing-field-action .sales-edit-btn {
+    width: auto;
+    min-width: 230px;
 }
 
 .sales-pricing-field label {
@@ -8306,11 +8352,34 @@ body.admin-shell .admin-popup-submit-row .popup-done-btn {
         padding: 14px;
     }
 
+    .sales-tabs {
+        flex-direction: column;
+    }
+
+    .sales-tab-btn {
+        width: 100%;
+    }
+
     .sales-pricing-grid {
         grid-template-columns: 1fr;
     }
 
     .sales-edit-btn {
+        width: 100%;
+    }
+
+    .sales-pricing-field-action {
+        margin-left: 0;
+        align-items: stretch;
+    }
+
+    .sales-pricing-field-action-top {
+        grid-column: auto;
+        justify-self: stretch;
+    }
+
+    .sales-pricing-field-action .sales-edit-btn {
+        min-width: 0;
         width: 100%;
     }
 
