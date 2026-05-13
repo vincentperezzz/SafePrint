@@ -462,6 +462,99 @@ def _refund_reserved_voucher(intent):
     )
 
 
+def _generate_unique_voucher_code():
+    import secrets
+    import string
+
+    for _ in range(10):
+        code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+        if not VoucherCredit.objects.filter(code=code).exists():
+            return code
+    raise ValueError('Failed to generate unique voucher code')
+
+
+def _get_document_payment_record(document):
+    return Payment.objects.filter(
+        Q(doc=document) | Q(doc_id_snapshot=document.doc_id)
+    ).order_by('-approved_at', '-id').first()
+
+
+def _calculate_unprinted_refund_amount(document):
+    payment = _get_document_payment_record(document)
+    if not payment:
+        return Decimal('0.00')
+
+    total_pages = max(1, document.get_total_pages() or 0)
+    remaining_pages = len(document.get_remaining_pages())
+    if remaining_pages <= 0:
+        return Decimal('0.00')
+
+    total_paid = Decimal(payment.price or 0)
+    if remaining_pages >= total_pages:
+        return total_paid.quantize(Decimal('0.01'))
+
+    refund_amount = (total_paid * Decimal(remaining_pages) / Decimal(total_pages)).quantize(Decimal('0.01'))
+    return max(Decimal('0.00'), refund_amount)
+
+
+def _issue_auto_refund_voucher(document, amount, *, details):
+    normalized_amount = Decimal(amount).quantize(Decimal('0.01'))
+    if normalized_amount <= Decimal('0.00'):
+        return None
+
+    voucher = VoucherCredit.objects.create(
+        code=_generate_unique_voucher_code(),
+        original_amount=normalized_amount,
+        remaining_balance=normalized_amount,
+        is_active=True,
+        last_customer_id=document.customer_id,
+        expires_at=timezone.now() + timedelta(days=VOUCHER_CREDIT_EXPIRY_DAYS),
+    )
+    _log_voucher_audit(
+        voucher,
+        action='created',
+        amount=normalized_amount,
+        customer_id=document.customer_id,
+        performed_by='SYSTEM',
+        reference=document.doc_id,
+        details=details,
+    )
+    return voucher
+
+
+def _cancel_document_with_auto_voucher(document, *, reason):
+    document.refresh_from_db()
+    refund_amount = _calculate_unprinted_refund_amount(document)
+    voucher = _issue_auto_refund_voucher(
+        document,
+        refund_amount,
+        details=f'Automatic voucher issued after unrecoverable print failure. {reason}',
+    )
+
+    message = reason
+    if voucher:
+        message = f'{reason} Auto voucher {voucher.code} generated for ₱{refund_amount:.2f}.'
+
+    document.doc_status = 'Cancelled'
+    document.printer_assigned = None
+    document.status_updated_at = timezone.now()
+    document.save(update_fields=['doc_status', 'printer_assigned', 'status_updated_at'])
+
+    RerouteHistory.objects.create(
+        document=document,
+        printer=None,
+        status=f'Error: {message}',
+        timestamp=timezone.now(),
+    )
+    Feedback.objects.create(
+        category='Report a Problem',
+        name='[SYSTEM GENERATED]',
+        message=f'Automatic voucher flow triggered for {document.doc_id}. {message}',
+    )
+    print(f"[AUTO-VOUCHER] Document {document.doc_id} cancelled. {message}")
+    return voucher
+
+
 def _expire_stale_payment_intents(customer_id=None):
     stale_intents = PaymentIntent.objects.filter(
         status=PaymentIntent.STATUS_PENDING,
@@ -526,8 +619,9 @@ def _document_required_sheets(document):
     except (TypeError, ValueError):
         copies = 1
 
-    total_pages = document.get_total_pages() or 0
-    return max(1, total_pages * copies)
+    remaining_pages = document.get_remaining_pages() if hasattr(document, 'get_remaining_pages') else []
+    total_pages = len(remaining_pages) if remaining_pages else (document.get_total_pages() or 0)
+    return max(0, total_pages * copies)
 
 
 def _printer_has_required_stock(printer, document):
@@ -550,6 +644,27 @@ def _get_matching_printers(document, *, allowed_statuses):
         printer_status__in=allowed_statuses,
     )
     return [printer for printer in candidate_printers if _printer_has_required_stock(printer, document)]
+
+
+def _available_printers_for_document(document, *, allowed_statuses, exclude_printer_id=None):
+    busy_printer_ids = set(
+        Document.objects.filter(
+            doc_status='Printing',
+            printer_assigned__isnull=False,
+        ).exclude(doc_id=document.doc_id).values_list('printer_assigned_id', flat=True)
+    )
+
+    candidate_printers = Printer.objects.filter(
+        paper_assigned=document.paper_size,
+        is_temporarily_disabled=False,
+        printer_status__in=allowed_statuses,
+    )
+    return [
+        printer for printer in candidate_printers
+        if printer.id not in busy_printer_ids
+        and (exclude_printer_id is None or printer.id != exclude_printer_id)
+        and _printer_has_required_stock(printer, document)
+    ]
 
 
 def _active_printer_error_count():
@@ -2492,6 +2607,7 @@ def printer_status_stream(request):
     # SSE headers
     response = StreamingHttpResponse(printer_status_event_stream(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'
     return response
 
 
@@ -2725,28 +2841,14 @@ def assign_document_to_printer(document, *, wait_for_availability=True):
             print(f"[TIMEOUT] Document {doc.doc_id} cancelled. Customer will be prompted to file a ticket.")
             return None
 
-        printers = Printer.objects.all()
-        busy_printer_ids = set(
-            Document.objects.filter(
-                doc_status='Printing',
-                printer_assigned__isnull=False,
-            ).exclude(doc_id=doc.doc_id).values_list('printer_assigned_id', flat=True)
-        )
-        
         # Check if this is a rerouted document (has reroute history)
         is_rerouted = RerouteHistory.objects.filter(document=doc).exists()
         
-        # Skip printers in error state, incompatible paper specs, or insufficient paper stock.
-        available = [
-            p for p in printers
-            if p.printer_status in ['Ready', 'Sleep']  # Only use printers in operational status
-            and getattr(p, 'paper_assigned', None) == getattr(document, 'paper_size', None)
-            and p.id not in busy_printer_ids
-            and not getattr(p, 'is_temporarily_disabled', False)
-            and _printer_has_required_stock(p, doc)
-            # Skip the previous failed printer if rerouting due to error
-            and (not hasattr(document, 'previous_failed_printer') or p.id != document.previous_failed_printer)
-        ]
+        available = _available_printers_for_document(
+            doc,
+            allowed_statuses=['Ready', 'Sleep'],
+            exclude_printer_id=getattr(document, 'previous_failed_printer', None),
+        )
         if available:
             # Sort by idle time (longer idle time first)
             # For rerouted documents, prioritize by idle time (WRR nonpreemptive approach)
@@ -3222,7 +3324,23 @@ def reroute_document_on_error(document, failed_printer=None, failed_job_id=None)
     document.printer_assigned = None
     document.save(update_fields=['doc_status', 'printer_assigned', 'status_updated_at'])
 
-    # Try an immediate reassignment once. If none is available now, leave the queued monitor to retry later.
+    replacement_candidates = _available_printers_for_document(
+        document,
+        allowed_statuses=['Ready', 'Sleep'],
+        exclude_printer_id=getattr(document, 'previous_failed_printer', None),
+    )
+    if not replacement_candidates:
+        remaining_count = len(remaining_pages)
+        _cancel_document_with_auto_voucher(
+            document,
+            reason=(
+                f'No eligible printer can finish the remaining {remaining_count} '
+                f'page(s) for {document.paper_size}.'
+            ),
+        )
+        return
+
+    # Try an immediate reassignment once using the same candidate rules.
     next_printer = assign_document_to_printer(document, wait_for_availability=False)
     if next_printer:
         # Continue printing remaining pages

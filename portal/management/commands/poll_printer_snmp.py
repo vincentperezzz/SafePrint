@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from portal.models import Printer
+from datetime import timedelta
 import time
 import subprocess
 
@@ -13,8 +14,63 @@ def _send_alert_safe(func, *args, **kwargs):
         pass  # Email failure must never crash the polling loop
 
 
+def _snmpget(ip_address, oid, *, timeout=2):
+    try:
+        return subprocess.check_output(
+            ['snmpget', '-v2c', '-c', 'public', ip_address, oid],
+            timeout=timeout,
+        ).decode(errors='ignore').strip()
+    except Exception:
+        return None
+
+
+def _snmpget_many(ip_address, oids, *, timeout=2):
+    try:
+        output = subprocess.check_output(
+            ['snmpget', '-v2c', '-c', 'public', ip_address, *oids],
+            timeout=timeout,
+        ).decode(errors='ignore')
+    except Exception:
+        return []
+
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
+def _extract_value(raw_value):
+    import re
+
+    if not raw_value:
+        return None
+
+    match = re.search(r'"(.*?)"', raw_value)
+    return match.group(1).strip() if match else raw_value.strip()
+
+
+def _extract_int(raw_value):
+    import re
+
+    if not raw_value:
+        return None
+
+    match = re.search(r'INTEGER: (-?\d+)', raw_value)
+    return int(match.group(1)) if match else None
+
+
+def _normalize_status(status_value, previous_status):
+    status_value = (status_value or '').strip()
+    if status_value == 'Please wait.':
+        if previous_status in {'Ready', 'Sleep', 'Printing'}:
+            return previous_status
+        return 'Ready'
+    return status_value
+
+
 class Command(BaseCommand):
     help = 'Poll SNMP for printer status, model, and node name every 3 seconds until successful, then save to database.'
+
+    STATUS_RETRY_LIMIT = 3
+    RETRY_DELAY_SECONDS = 1
+    OFFLINE_GRACE_PERIOD = timedelta(seconds=15)
 
     def handle(self, *args, **kwargs):
         status_oid = 'iso.3.6.1.2.1.43.18.1.1.8.1.1'
@@ -54,70 +110,40 @@ class Command(BaseCommand):
             prev_ink = printer.ink_status
             prev_tray = printer.tray_level
 
-            offline = False
+            status_failures = 0
             while True:
-                try:
-                    status = subprocess.check_output([
-                        'snmpget', '-v2c', '-c', 'public', ip_address, status_oid
-                    ], timeout=2).decode(errors='ignore').strip()
-                except Exception:
-                    status = None
-                    offline = True
-                try:
-                    model = subprocess.check_output([
-                        'snmpget', '-v2c', '-c', 'public', ip_address, model_oid
-                    ], timeout=2).decode(errors='ignore').strip()
-                except Exception:
-                    model = None
-                    offline = True
-                try:
-                    node = subprocess.check_output([
-                        'snmpget', '-v2c', '-c', 'public', ip_address, node_oid
-                    ], timeout=2).decode(errors='ignore').strip()
-                except Exception:
-                    node = None
-                    offline = True
+                base_details = _snmpget_many(ip_address, [status_oid, model_oid, node_oid])
+                status = base_details[0] if len(base_details) > 0 else None
+                if not status:
+                    status_failures += 1
+                    now = timezone.now()
+                    recent_success_cutoff = now - self.OFFLINE_GRACE_PERIOD
 
-                # Poll ink levels and low thresholds
-                ink_levels = []
-                ink_lows = []
-                ink_ok = True
-                ink_low_indices = []
-                for idx in range(4):
-                    try:
-                        ink_level_raw = subprocess.check_output([
-                            'snmpget', '-v2c', '-c', 'public', ip_address, ink_level_oids[idx]
-                        ], timeout=2).decode(errors='ignore').strip()
-                        ink_low_raw = subprocess.check_output([
-                            'snmpget', '-v2c', '-c', 'public', ip_address, ink_low_oids[idx]
-                        ], timeout=2).decode(errors='ignore').strip()
-                        import re
-                        def extract_int(s):
-                            match = re.search(r'INTEGER: (-?\d+)', s)
-                            return int(match.group(1)) if match else None
-                        ink_level = extract_int(ink_level_raw)
-                        ink_low = extract_int(ink_low_raw)
-                        ink_levels.append(ink_level)
-                        ink_lows.append(ink_low)
-                        # Color mapping: 0=black, 1=yellow, 2=cyan, 3=magenta
-                        color_names = ['b', 'y', 'c', 'm']
-                        if ink_level is not None and ink_low is not None and ink_level <= ink_low:
-                            ink_ok = False
-                            ink_low_indices.append(color_names[idx])
-                    except Exception:
-                        # If polling fails, treat as not low
-                        ink_levels.append(None)
-                        ink_lows.append(None)
+                    if status_failures < self.STATUS_RETRY_LIMIT:
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f"SNMP status poll failed for {ip_address} "
+                                f"({status_failures}/{self.STATUS_RETRY_LIMIT}). Retrying in {self.RETRY_DELAY_SECONDS} second..."
+                            )
+                        )
+                        time.sleep(self.RETRY_DELAY_SECONDS)
+                        continue
 
-                if offline:
-                    # Check if printer still exists in database before updating
+                    if printer.last_checked and printer.last_checked >= recent_success_cutoff:
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f"Transient SNMP status failure for {ip_address}; keeping previous status "
+                                f"'{prev_status}' because the last successful poll was recent."
+                            )
+                        )
+                        break
+
                     try:
                         current_printer = Printer.objects.get(id=printer.id)
                         current_printer.printer_status = 'Offline'
-                        current_printer.last_checked = timezone.now()
-                        current_printer.save()
+                        current_printer.last_checked = now
+                        current_printer.save(update_fields=['printer_status', 'last_checked'])
                         self.stdout.write(self.style.WARNING(f"Printer at {ip_address} is Offline."))
-                        # Log status change to PrinterStatusLog
                         if prev_status != 'Offline':
                             try:
                                 from portal.models import PrinterStatusLog
@@ -131,23 +157,58 @@ class Command(BaseCommand):
                                 pass
                             from portal.services.email_notify import alert_printer_offline
                             _send_alert_safe(alert_printer_offline, current_printer.printer_name, ip_address)
-                        # Alert on paper tray needing refill
                         if current_printer.tray_level in ('Needs Refill', 'Low') and prev_tray not in ('Needs Refill', 'Low'):
                             from portal.services.email_notify import alert_paper_refill
                             _send_alert_safe(alert_paper_refill, current_printer.printer_name, current_printer.tray_level)
                     except Printer.DoesNotExist:
                         self.stdout.write(self.style.WARNING(f"Printer ID {printer.id} no longer exists in database. Skipping update."))
                     break
-                elif status and model and node:
-                    import re
-                    def extract_value(s):
-                        match = re.search(r'"(.*?)"', s)
-                        return match.group(1) if match else s
 
-                    status_val = extract_value(status)
-                    model_val = extract_value(model)
-                    node_val = extract_value(node)
+                status_failures = 0
+                model = base_details[1] if len(base_details) > 1 else None
+                node = base_details[2] if len(base_details) > 2 else None
+                status_val = _normalize_status(_extract_value(status), prev_status)
+                model_val = _extract_value(model) or printer.model_name or ''
+                node_val = _extract_value(node) or printer.node_name or ''
 
+                try:
+                    current_printer = Printer.objects.get(id=printer.id)
+                    current_printer.printer_status = status_val
+                    current_printer.model_name = model_val
+                    current_printer.node_name = node_val
+                    current_printer.last_checked = timezone.now()
+                    current_printer.save(update_fields=['printer_status', 'model_name', 'node_name', 'last_checked'])
+                    printer = current_printer
+                except Printer.DoesNotExist:
+                    self.stdout.write(self.style.WARNING(f"Printer ID {printer.id} no longer exists in database. Skipping update."))
+                    break
+
+                # Poll ink levels and low thresholds
+                ink_levels = []
+                ink_lows = []
+                ink_ok = True
+                ink_low_indices = []
+                ink_level_values = _snmpget_many(ip_address, ink_level_oids)
+                ink_low_values = _snmpget_many(ip_address, ink_low_oids)
+                for idx in range(4):
+                    try:
+                        ink_level_raw = ink_level_values[idx] if idx < len(ink_level_values) else None
+                        ink_low_raw = ink_low_values[idx] if idx < len(ink_low_values) else None
+                        ink_level = _extract_int(ink_level_raw)
+                        ink_low = _extract_int(ink_low_raw)
+                        ink_levels.append(ink_level)
+                        ink_lows.append(ink_low)
+                        # Color mapping: 0=black, 1=yellow, 2=cyan, 3=magenta
+                        color_names = ['b', 'y', 'c', 'm']
+                        if ink_level is not None and ink_low is not None and ink_level <= ink_low:
+                            ink_ok = False
+                            ink_low_indices.append(color_names[idx])
+                    except Exception:
+                        # If polling fails, treat as not low
+                        ink_levels.append(None)
+                        ink_lows.append(None)
+
+                if status:
                     self.stdout.write(self.style.SUCCESS(f"Status: {status_val}"))
                     self.stdout.write(self.style.SUCCESS(f"Model: {model_val}"))
                     self.stdout.write(self.style.SUCCESS(f"Node: {node_val}"))
@@ -156,12 +217,9 @@ class Command(BaseCommand):
                     # Check if printer still exists in database before updating
                     try:
                         current_printer = Printer.objects.get(id=printer.id)
-                        current_printer.printer_status = status_val
-                        current_printer.model_name = model_val
-                        current_printer.node_name = node_val
                         current_printer.ink_status = ink_status
                         current_printer.last_checked = timezone.now()
-                        current_printer.save()
+                        current_printer.save(update_fields=['ink_status', 'last_checked'])
                         self.stdout.write(self.style.SUCCESS(f"Printer info updated in database for {ip_address}. Ink status: {ink_status}"))
                         # Log status change to PrinterStatusLog
                         if status_val != prev_status or ink_status != prev_ink or current_printer.tray_level != prev_tray:
