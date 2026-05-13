@@ -2087,7 +2087,17 @@ def deny_document(request):
         if not doc_id:
             return JsonResponse({'success': False, 'error': 'Document ID is required'})
         try:
-            doc = Document.objects.get(doc_id=doc_id)
+            doc = Document.objects.select_related('printer_assigned').get(doc_id=doc_id)
+
+            cancelled_jobs = []
+            if doc.doc_status in ['Queued', 'Printing'] and doc.printer_assigned:
+                cancelled_jobs = _cancel_jobs_for_printer(doc.printer_assigned)
+                RerouteHistory.objects.create(
+                    document=doc,
+                    printer=doc.printer_assigned,
+                    status='Cancelled by admin'
+                )
+
             # Try to delete the file from disk using stored_name
             if doc.stored_name:
                 uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
@@ -2097,10 +2107,11 @@ def deny_document(request):
                         if os.path.isfile(file_path):
                             os.remove(file_path)
                             break
+            _preserve_or_delete_document_payment(doc)
             doc.delete()
             # Trigger folder cleanup after deleting a document
             subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
-            return JsonResponse({'success': True, 'deleted_count': 1})
+            return JsonResponse({'success': True, 'deleted_count': 1, 'cancelled_jobs': cancelled_jobs})
         except Document.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Document not found'})
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
@@ -2684,7 +2695,7 @@ def delete_printer(request):
 
 
 @transaction.atomic
-def assign_document_to_printer(document):
+def assign_document_to_printer(document, *, wait_for_availability=True):
     import time as _time
     TIMEOUT_SECONDS = 1800  # 30 minutes
     start_time = _time.monotonic()
@@ -2767,6 +2778,12 @@ def assign_document_to_printer(document):
             print(f"[ASSIGNED] Document {doc.doc_id} assigned to {printer.printer_name}.")
             return printer
         else:
+            if not wait_for_availability:
+                print(
+                    f"[ASSIGN] No printer currently available for {doc.doc_id} ({doc.paper_size}). "
+                    "Leaving document queued for a later retry."
+                )
+                return None
             print(
                 f"No available printer for {doc.paper_size}. "
                 f"Document {doc.doc_id} paused and will retry in 5 seconds."
@@ -2850,13 +2867,64 @@ def _get_cups_job_state(job_id):
     return 'unknown'
 
 
+def _cancel_cups_job(job_id):
+    if not job_id:
+        return False
+
+    result = subprocess.run(
+        ['cancel', job_id],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        print(f"[CUPS] Cancelled job {job_id} before reroute.")
+        return True
+
+    stderr = (result.stderr or '').strip()
+    stdout = (result.stdout or '').strip()
+    print(f"[CUPS] Failed to cancel job {job_id} before reroute. stdout={stdout!r} stderr={stderr!r}")
+    return False
+
+
+def _get_cups_jobs_for_queue(queue_name):
+    if not queue_name:
+        return []
+
+    result = subprocess.run(
+        ['lpstat', '-W', 'not-completed', '-o', queue_name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    jobs = []
+    for line in (result.stdout or '').splitlines():
+        token = line.strip().split(' ', 1)[0]
+        if token:
+            jobs.append(token)
+    return jobs
+
+
+def _cancel_jobs_for_printer(printer):
+    if not printer:
+        return []
+
+    queue_name = _resolve_cups_queue_name(printer)
+    job_ids = _get_cups_jobs_for_queue(queue_name)
+    cancelled = [job_id for job_id in job_ids if _cancel_cups_job(job_id)]
+    if cancelled:
+        print(f"[CUPS] Cancelled jobs for printer {printer.printer_name}: {', '.join(cancelled)}")
+    else:
+        print(f"[CUPS] No active jobs found to cancel for printer {printer.printer_name} ({queue_name}).")
+    return cancelled
+
+
 def print_page(document, page_num):
     # Extract print preferences from document
     copies = max(1, int(getattr(document, 'num_copies', 1) or 1))
     orientation = getattr(document, 'orientation', 'portrait')
     color_mode = getattr(document, 'color_mode', 'color')
     paper_size = getattr(document, 'paper_size', 'A4')
-    paper_quality = getattr(document, 'paper_quality', 'Standard')
     stored_name = getattr(document, 'stored_name', None)
     session_key = getattr(document, 'session_key', None)
     # Find the file path
@@ -2920,11 +2988,11 @@ def print_page(document, page_num):
                     printer=printer,
                     status=f"Error: {printer.printer_status}"
                 )
-            
-            # Implement preemptive approach - immediately reroute the document
-            print(f"[PREEMPTIVE] Initiating preemptive rerouting for document {document.doc_id} from printer {printer.printer_name}")
-            reroute_document_on_error(document)
-            return
+
+                # Implement preemptive approach only after repeated non-operational checks.
+                print(f"[PREEMPTIVE] Initiating preemptive rerouting for document {document.doc_id} from printer {printer.printer_name}")
+                reroute_document_on_error(document, failed_printer=printer)
+                return
     # Send print job
     print(f"[PRINT] Sending page {page_num} of document {document.doc_id} to printer {printer.printer_name} ({printer.printer_status})")
     
@@ -2956,13 +3024,15 @@ def print_page(document, page_num):
         printer.printer_status = 'Error'
         printer.save()
         print(f"[REROUTE] Rerouting remaining pages of document {document.doc_id}")
-        reroute_document_on_error(document)
+        reroute_document_on_error(document, failed_printer=printer)
         return
     wait_cycles = 0
     max_wait_cycles = 90
     error_cycles = 0
     max_error_cycles = 5
     job_started = False
+    ready_fallback_cycles = 0
+    pending_stall_cycles = 0
     
     while True:
         printer.refresh_from_db()
@@ -2989,15 +3059,40 @@ def print_page(document, page_num):
 
         if printer.printer_status == 'Printing' or cups_job_state == 'pending':
             job_started = True
+            ready_fallback_cycles = 0
+
+        if job_started and cups_job_state == 'pending' and printer.printer_status in ['Ready', 'Sleep']:
+            pending_stall_cycles += 1
+            if pending_stall_cycles >= 15:
+                print(
+                    f"[STALL] Job {job_id or 'unknown'} for document {document.doc_id} stayed pending "
+                    f"while printer {printer.printer_name} remained {printer.printer_status}. Initiating reroute."
+                )
+                RerouteHistory.objects.create(
+                    document=document,
+                    printer=printer,
+                    status=f"Stalled: printer={printer.printer_status}, cups={cups_job_state}",
+                    timestamp=timezone.now()
+                )
+                reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
+                return
+        else:
+            pending_stall_cycles = 0
             
-        # If printer returned to Ready/Sleep after the job started, treat it as successful.
-        if job_started and printer.printer_status == 'Ready':
-            print(f"[READY] Printer {printer.printer_name} is ready after printing page {page_num}.")
+        # Only fall back to Ready/Sleep-based completion when CUPS no longer reports the job.
+        if job_started and cups_job_state == 'unknown' and printer.printer_status in ['Ready', 'Sleep']:
+            ready_fallback_cycles += 1
+            if ready_fallback_cycles >= 3:
+                print(
+                    f"[FALLBACK] Printer {printer.printer_name} returned to {printer.printer_status} "
+                    f"and CUPS no longer reports job {job_id or 'unknown'} for document {document.doc_id} page {page_num}."
+                )
+                break
+        elif not job_id and job_started and printer.printer_status in ['Ready', 'Sleep']:
+            print(f"[FALLBACK] Printer {printer.printer_name} returned to {printer.printer_status} after printing page {page_num}.")
             break
-            
-        if job_started and printer.printer_status == 'Sleep':
-            print(f"[SLEEP] Printer {printer.printer_name} went to sleep after printing page {page_num}.")
-            break
+        else:
+            ready_fallback_cycles = 0
         
         # If printer is in error state or stuck in a non-operational state
         if printer.printer_status not in ['Printing', 'Sleep', 'Ready']:
@@ -3017,7 +3112,7 @@ def print_page(document, page_num):
                     timestamp=timezone.now()
                 )
                 # Reroute remaining pages (preemptive approach)
-                reroute_document_on_error(document)
+                reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
                 return
         else:
             # Reset error cycles if printer returns to a normal state
@@ -3044,12 +3139,19 @@ def print_page(document, page_num):
                 timestamp=timezone.now()
             )
             # Reroute remaining pages
-            reroute_document_on_error(document)
+            reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
             return
             
         time.sleep(1)
     # Mark page as printed in DB only after successful print and status transitions
+    page_was_already_recorded = page_num in (document.pages_printed or [])
     document.mark_page_printed(page_num)
+    if not page_was_already_recorded:
+        RerouteHistory.objects.create(
+            document=document,
+            printer=printer,
+            status=f'Printed page {page_num}'
+        )
     print(f"[MARKED] Page {page_num} of document {document.doc_id} marked as printed.")
 
     # Subtract 1 sheet from the printer's tray and update tray level
@@ -3074,44 +3176,54 @@ def print_page(document, page_num):
         document.doc_status = 'Finished'
         document.status_updated_at = timezone.now()
         # Set printed_at to the last printer used
-        document.printed_at = document.printer_assigned
+        document.printed_at = printer
         document.save()
         print(f"[COMPLETE] Document {document.doc_id} printing complete. Printed at: {document.printed_at}")
 
 
-def reroute_document_on_error(document):
+def reroute_document_on_error(document, failed_printer=None, failed_job_id=None):
     """
     Implements the Weighted Round Robin (WRR) approach for rerouting:
     - Preemptive: Document with error is immediately stopped and rerouted (already handled by caller)
     - Nonpreemptive: Rerouted document gets priority in the queue but doesn't interrupt current printing
     """
+    document.refresh_from_db()
     remaining_pages = document.get_remaining_pages()
     
     # Store current printer ID as previous failed printer to avoid choosing it again
     current_printer_name = "Unknown"
-    if document.printer_assigned:
+    if failed_printer is None:
+        failed_printer = document.printer_assigned
+
+    if failed_printer:
         # We'll use a temporary attribute to track the failed printer
         # This won't be persisted to database but will be used during this rerouting process
-        document.previous_failed_printer = document.printer_assigned.id
-        current_printer_name = document.printer_assigned.printer_name
+        document.previous_failed_printer = failed_printer.id
+        current_printer_name = failed_printer.printer_name
         print(f"[REROUTE] Marked printer {current_printer_name} as failed for document {document.doc_id}")
+
+        _cancel_cups_job(failed_job_id)
         
         # Record the error printer in reroute history (if not already done by caller)
         # We can't use get_or_create here because timestamp makes entries unique
         # and we might have multiple error entries for the same printer/document
-        error_status = f"Error: {document.printer_assigned.printer_status}"
+        error_status = f"Error: {failed_printer.printer_status}"
         
         # Create a new reroute history entry with current timestamp
         RerouteHistory.objects.create(
             document=document,
-            printer=document.printer_assigned,
+            printer=failed_printer,
             status=error_status,
             timestamp=timezone.now()
         )
     
-    # Try to find a new printer - the WRR nonpreemptive approach is implemented in assign_document_to_printer
-    # where we select printers with longest idle time and set the document to highest priority
-    next_printer = assign_document_to_printer(document)
+    # Move the document back to the queue before attempting reassignment.
+    document.doc_status = 'Queued'
+    document.printer_assigned = None
+    document.save(update_fields=['doc_status', 'printer_assigned', 'status_updated_at'])
+
+    # Try an immediate reassignment once. If none is available now, leave the queued monitor to retry later.
+    next_printer = assign_document_to_printer(document, wait_for_availability=False)
     if next_printer:
         # Continue printing remaining pages
         print(f"[REROUTE] Successfully rerouted document {document.doc_id} from {current_printer_name} to {next_printer.printer_name}")
@@ -3136,8 +3248,10 @@ def reroute_document_on_error(document):
         )
         # If we can't find a suitable printer, reset the document status to Queued
         # so it can be retried later when a printer becomes available
-        document.doc_status = 'Queued'
-        document.save()
+        document.refresh_from_db()
+        if document.doc_status != 'Queued':
+            document.doc_status = 'Queued'
+            document.save(update_fields=['doc_status', 'status_updated_at'])
         
         # Notify about reroute failure
         print(f"[QUEUED] Document {document.doc_id} placed back in queue for later processing when printers become available.")
@@ -3189,7 +3303,7 @@ def check_queued_documents():
         def process_document(document):
             try:
                 # Assign printer and start printing
-                printer = assign_document_to_printer(document)
+                printer = assign_document_to_printer(document, wait_for_availability=False)
                 if printer:
                     print(f"[QUEUE-MONITOR] Successfully assigned document {document.doc_id} to printer {printer.printer_name}")
                     # Reload the document after assignment so print_page sees the assigned printer.

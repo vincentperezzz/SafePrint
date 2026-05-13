@@ -5748,7 +5748,7 @@ input:focus::placeholder {
 
 .on-queue-header {
     display: grid;
-    grid-template-columns: 1.5fr 1.2fr 1fr 1fr 1fr;
+    grid-template-columns: 1.5fr 1.2fr 1fr 1fr 1fr 0.9fr;
     align-items: center;
     width: 100%;
     font-family: 'Montserrat', sans-serif;
@@ -5762,7 +5762,7 @@ input:focus::placeholder {
 
 .on-queue-row {
     display: grid;
-    grid-template-columns: 1.5fr 1.2fr 1fr 1fr 0.95fr;
+    grid-template-columns: 1.5fr 1.2fr 1fr 1fr 0.95fr 0.9fr;
     align-items: center;
     width: 100%;
     height: auto;
@@ -5780,11 +5780,13 @@ input:focus::placeholder {
 .on-queue-header .doc-printer     { flex: 1.6; min-width: 0; }
 .on-queue-header .doc-status      { flex: 0.8; min-width: 120px; text-align: left; }
 .on-queue-header .doc-customer    { flex: 0.8; min-width: 120px; text-align: left; }
+.on-queue-header .doc-actions     { min-width: 150px; text-align: left; }
 
 .on-queue-row .doc-name        { flex: 2.5; min-width: 0; }
 .on-queue-row .doc-printer     { flex: 1.6; min-width: 0; }
 .on-queue-row .doc-status      { flex: 0.8; min-width: 120px; text-align: left; }
 .on-queue-row .doc-customer    { flex: 0.8; min-width: 120px; text-align: left; }
+.on-queue-row .doc-actions     { min-width: 150px; display: flex; justify-content: flex-start; }
 
 /* Remove conflicting/duplicate flex rules below this section for .on-queue-header and .on-queue-row columns */
 

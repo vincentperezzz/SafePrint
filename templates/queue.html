@@ -50,6 +50,7 @@ Printing Queue
                         <div class="queue-col doc-status">Status</div>
                         <div class="queue-col doc-customer">Customer ID</div>
                         <div class="queue-col doc-id">Document ID</div>
+                        <div class="queue-col doc-actions">Actions</div>
                     </div>
                 </div>
 
@@ -84,6 +85,19 @@ Printing Queue
                         </div>
                         <div class="queue-col doc-customer">#{{ doc.customer_id }}</div>
                         <div class="queue-col doc-id">#{{ doc.doc_id }}</div>
+                        <div class="queue-col doc-actions">
+                            {% if doc.doc_status == 'Pending' or doc.doc_status == 'Queued' or doc.doc_status == 'Printing' %}
+                            <button class="queue-cancel-btn" type="button" onclick="cancelQueueDocument('{{ doc.doc_id }}', this)">
+                                {% if doc.doc_status == 'Pending' %}
+                                Cancel Pending
+                                {% elif doc.doc_status == 'Queued' %}
+                                Cancel Queued
+                                {% else %}
+                                Cancel Print
+                                {% endif %}
+                            </button>
+                            {% endif %}
+                        </div>
                     </div>
                     {% empty %}
                         <div class="on-queue-row on-queue-empty" id="no-onqueue-documents-row">

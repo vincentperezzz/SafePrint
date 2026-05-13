@@ -1548,9 +1548,8 @@ function buildDocumentBadges(doc) {
     let badgesHtml = '';
     const history = doc.reroute_history || [];
 
-    // Group reroute history into "print segments" by printer
-    // Each "Assigned" entry followed by an "Error" or "Rerouted" means that segment was on that printer
     const segments = buildPrintSegments(doc, history);
+    const hasPageSegments = segments.some(segment => Array.isArray(segment.pages) && segment.pages.length > 0);
 
     if (doc.doc_status === 'Pending') {
         // Waiting for admin approval
@@ -1558,24 +1557,20 @@ function buildDocumentBadges(doc) {
     } else if (doc.doc_status === 'Queued') {
         // In queue, no printer assigned yet
         if (segments.length > 0) {
-            // Was rerouted - show completed segments, then waiting
             badgesHtml = renderCompletedSegments(segments);
             badgesHtml += `<div class="badge status-info">Waiting...</div>`;
         } else {
             badgesHtml = `<div class="badge status-info">Waiting...</div>`;
         }
     } else if (doc.doc_status === 'Printing') {
-        // Currently printing
-        if (segments.length > 1) {
-            // Has reroute history - show completed segments + current printing
-            badgesHtml = renderCompletedSegments(segments.slice(0, -1));
+        if (segments.length > 0) {
+            badgesHtml = renderCompletedSegments(hasPageSegments ? segments : segments.slice(0, -1));
         }
         const printerText = doc.printer_name ? ` (${escapeHtml(doc.printer_name)})` : '';
         badgesHtml += `<div class="badge status-info">Printing...${printerText}</div>`;
     } else if (doc.doc_status === 'Finished') {
-        // Completed - show history segments + completion badge with pickup button
-        if (segments.length > 1) {
-            badgesHtml = renderCompletedSegments(segments.slice(0, -1));
+        if (segments.length > 0) {
+            badgesHtml = renderCompletedSegments(segments);
         }
         const printerText = doc.printed_at ? ` (${escapeHtml(doc.printed_at)})` : '';
         badgesHtml += `
@@ -1609,23 +1604,49 @@ function buildDocumentBadges(doc) {
 }
 
 function buildPrintSegments(doc, history) {
-    /**
-     * Build print segments from reroute history.
-     * Each segment represents a printer that was assigned and what happened there.
-     * Segments show: "Page X-Y (Printer Name)" for completed portions on rerouted printers.
-     */
+    const pageSegments = [];
+    const pageSegmentsByPrinter = new Map();
+
+    history.forEach((entry) => {
+        const match = /^Printed page\s+(\d+)$/i.exec(entry.status || '');
+        if (!match) {
+            return;
+        }
+
+        const printerName = entry.printer_name || 'Unknown';
+        const pageNumber = Number.parseInt(match[1], 10);
+        if (Number.isNaN(pageNumber)) {
+            return;
+        }
+
+        if (!pageSegmentsByPrinter.has(printerName)) {
+            const segment = {
+                printer_name: printerName,
+                pages: [],
+            };
+            pageSegmentsByPrinter.set(printerName, segment);
+            pageSegments.push(segment);
+        }
+
+        const segment = pageSegmentsByPrinter.get(printerName);
+        if (!segment.pages.includes(pageNumber)) {
+            segment.pages.push(pageNumber);
+        }
+    });
+
+    if (pageSegments.length > 0) {
+        return pageSegments;
+    }
+
     const segments = [];
     let currentPrinter = null;
-    let segmentStart = null;
 
     for (let i = 0; i < history.length; i++) {
         const entry = history[i];
 
         if (entry.status === 'Assigned') {
             currentPrinter = entry.printer_name;
-            segmentStart = i;
         } else if (entry.status.startsWith('Error') || entry.status.startsWith('Timeout') || entry.status.startsWith('Failed')) {
-            // This printer had an error - create a completed segment for pages printed there
             if (currentPrinter) {
                 segments.push({
                     printer_name: currentPrinter,
@@ -1661,12 +1682,39 @@ function renderCompletedSegments(segments) {
     let html = '';
     segments.forEach(segment => {
         const printerText = segment.printer_name ? ` (${escapeHtml(segment.printer_name)})` : '';
-        if (segment.status === 'error' || segment.status === 'rerouted') {
-            // Pages that were printed on a rerouted printer (shown as primary/blue badge)
-            html += `<div class="badge status-primary">Printed on${printerText}</div>`;
+        if (Array.isArray(segment.pages) && segment.pages.length > 0) {
+            html += `<div class="badge status-primary">${formatPrintedPageRanges(segment.pages)}${printerText}</div>`;
+        } else if (segment.status === 'error' || segment.status === 'rerouted') {
+            html += `<div class="badge status-primary">Rerouted from${printerText}</div>`;
         }
     });
     return html;
+}
+
+function formatPrintedPageRanges(pages) {
+    const sortedPages = Array.from(new Set((pages || []).map((page) => Number(page)).filter((page) => !Number.isNaN(page)))).sort((a, b) => a - b);
+    if (sortedPages.length === 0) {
+        return 'Page';
+    }
+
+    const ranges = [];
+    let start = sortedPages[0];
+    let end = sortedPages[0];
+
+    for (let i = 1; i < sortedPages.length; i++) {
+        const page = sortedPages[i];
+        if (page === end + 1) {
+            end = page;
+            continue;
+        }
+        ranges.push(start === end ? `${start}` : `${start}-${end}`);
+        start = page;
+        end = page;
+    }
+
+    ranges.push(start === end ? `${start}` : `${start}-${end}`);
+    const label = ranges.length > 1 ? 'Pages' : 'Page';
+    return `${label} ${ranges.join(', ')}`;
 }
 
 function updateConfirmationUI(data) {

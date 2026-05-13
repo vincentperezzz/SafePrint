@@ -2739,7 +2739,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             <div class="queue-col doc-id">${docIdText}</div>
                             <div class="queue-col doc-customer">${customerId}</div>
                             <div class="queue-col doc-actions">
-                                <button class="queue-cancel-btn">Cancel</button>
+                                <button class="queue-cancel-btn">Cancel Queued</button>
                             </div>
                         `;
                             onQueueList.appendChild(newRow);
@@ -2786,6 +2786,45 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    window.cancelQueueDocument = function (docId, buttonEl) {
+        if (!docId) return;
+
+        const row = buttonEl && typeof buttonEl.closest === 'function'
+            ? buttonEl.closest('.on-queue-row')
+            : document.getElementById('onqueue-doc-' + docId);
+
+        fetch('/api/deny-document/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ doc_id: docId })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    alert('Cancel failed: ' + (data.error || 'Unknown error.'));
+                    return;
+                }
+
+                if (row) {
+                    row.remove();
+                }
+
+                if (typeof createAlert === 'function') {
+                    createAlert('Success', 'Cancelled', 'Document cancelled.', 'success', true, true, 'pageMessages');
+                }
+
+                updateOnQueueEmptyState();
+
+                if (document.getElementById('queue-rows-container')) {
+                    setTimeout(() => window.location.reload(), 300);
+                }
+            })
+            .catch(() => alert('An error occurred while cancelling the document.'));
+    };
+
     // Cancel button for on-queue documents
     document.querySelectorAll('.queue-cancel-btn').forEach(btn => {
         btn.addEventListener('click', function () {
@@ -2795,27 +2834,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 docId = row.id.replace('onqueue-doc-', '');
             }
             if (!docId) return;
-            fetch('/api/deny-document/', {
-                method: "POST",
-                headers: {
-                    "X-CSRFToken": csrfToken,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ doc_id: docId })
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        row.remove();
-                        if (typeof createAlert === "function") {
-                            createAlert('Success', 'Cancelled', 'Document cancelled.', 'success', true, true, 'pageMessages');
-                        }
-                        updateOnQueueEmptyState();
-                    } else {
-                        alert('Cancel failed: ' + (data.error || 'Unknown error.'));
-                    }
-                })
-                .catch(() => alert('An error occurred while cancelling the document.'));
+            window.cancelQueueDocument(docId, btn);
         });
     });
 
