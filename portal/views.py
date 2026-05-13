@@ -3021,6 +3021,28 @@ def _cancel_jobs_for_printer(printer):
     return cancelled
 
 
+def _finish_document_if_complete(document, *, printer=None):
+    document.refresh_from_db()
+    if document.doc_status in ['Finished', 'Picked Up', 'Cancelled']:
+        return False
+
+    if document.get_remaining_pages():
+        return False
+
+    completion_printer = printer or document.printed_at or document.printer_assigned
+    update_fields = ['doc_status', 'status_updated_at']
+
+    document.doc_status = 'Finished'
+    document.status_updated_at = timezone.now()
+    if completion_printer and document.printed_at_id != completion_printer.id:
+        document.printed_at = completion_printer
+        update_fields.append('printed_at')
+
+    document.save(update_fields=update_fields)
+    print(f"[COMPLETE] Document {document.doc_id} printing complete. Printed at: {document.printed_at}")
+    return True
+
+
 def print_page(document, page_num):
     # Extract print preferences from document
     copies = max(1, int(getattr(document, 'num_copies', 1) or 1))
@@ -3143,6 +3165,8 @@ def print_page(document, page_num):
         # Also check if the document still exists and hasn't been canceled
         try:
             doc_check = Document.objects.get(doc_id=document.doc_id)
+            if _finish_document_if_complete(doc_check, printer=printer):
+                return
             # Check if document has been rerouted to a different printer
             if doc_check.printer_assigned and doc_check.printer_assigned.id != printer.id:
                 print(f"[REROUTED] Document {document.doc_id} was rerouted from {printer.printer_name} to {doc_check.printer_assigned.printer_name} during printing. Stopping monitoring of original printer.")
@@ -3182,12 +3206,12 @@ def print_page(document, page_num):
             pending_stall_cycles = 0
             
         # Only fall back to Ready/Sleep-based completion when CUPS no longer reports the job.
-        if job_started and cups_job_state == 'unknown' and printer.printer_status in ['Ready', 'Sleep']:
+        if job_id and cups_job_state == 'unknown' and printer.printer_status in ['Ready', 'Sleep']:
             ready_fallback_cycles += 1
             if ready_fallback_cycles >= 3:
                 print(
                     f"[FALLBACK] Printer {printer.printer_name} returned to {printer.printer_status} "
-                    f"and CUPS no longer reports job {job_id or 'unknown'} for document {document.doc_id} page {page_num}."
+                    f"and CUPS no longer reports job {job_id} for document {document.doc_id} page {page_num}."
                 )
                 break
         elif not job_id and job_started and printer.printer_status in ['Ready', 'Sleep']:
@@ -3273,14 +3297,7 @@ def print_page(document, page_num):
         printer.save(update_fields=['tray_current_count', 'tray_level'])
         print(f"[PAPER] Printer {printer.printer_name}: {printer.tray_current_count} sheets remaining ({printer.tray_level})")
 
-    # If all pages printed, set status to Finished and update printed_at to last printer
-    if len(document.get_remaining_pages()) == 0:
-        document.doc_status = 'Finished'
-        document.status_updated_at = timezone.now()
-        # Set printed_at to the last printer used
-        document.printed_at = printer
-        document.save()
-        print(f"[COMPLETE] Document {document.doc_id} printing complete. Printed at: {document.printed_at}")
+    _finish_document_if_complete(document, printer=printer)
 
 
 def reroute_document_on_error(document, failed_printer=None, failed_job_id=None):

@@ -1577,6 +1577,7 @@ function buildDocumentBadges(doc) {
 
     const segments = buildPrintSegments(doc, history);
     const hasPageSegments = segments.some(segment => Array.isArray(segment.pages) && segment.pages.length > 0);
+    const rerouteDestination = getLatestRerouteDestination(history);
 
     if (doc.doc_status === 'Pending') {
         // Waiting for admin approval
@@ -1585,13 +1586,17 @@ function buildDocumentBadges(doc) {
         // In queue, no printer assigned yet
         if (segments.length > 0) {
             badgesHtml = renderCompletedSegments(segments);
-            badgesHtml += `<div class="badge status-info">Waiting...</div>`;
-        } else {
-            badgesHtml = `<div class="badge status-info">Waiting...</div>`;
         }
+        if (rerouteDestination) {
+            badgesHtml += `<div class="badge status-primary">Rerouted to (${escapeHtml(rerouteDestination)})</div>`;
+        }
+        badgesHtml += `<div class="badge status-info">Waiting...</div>`;
     } else if (doc.doc_status === 'Printing') {
         if (segments.length > 0) {
             badgesHtml = renderCompletedSegments(hasPageSegments ? segments : segments.slice(0, -1));
+        }
+        if (rerouteDestination) {
+            badgesHtml += `<div class="badge status-primary">Rerouted to (${escapeHtml(rerouteDestination)})</div>`;
         }
         badgesHtml += `<div class="badge status-info">${formatCurrentPrintingBadge(doc)}</div>`;
     } else if (doc.doc_status === 'Finished') {
@@ -1702,20 +1707,24 @@ function buildPrintSegments(doc, history) {
     return segments;
 }
 
+function getLatestRerouteDestination(history) {
+    let latestDestination = '';
+
+    (history || []).forEach((entry) => {
+        if (entry.status === 'Rerouted' && entry.printer_name) {
+            latestDestination = entry.printer_name;
+        }
+    });
+
+    return latestDestination;
+}
+
 function renderCompletedSegments(segments) {
     let html = '';
-    const seenLegacySegments = new Set();
     segments.forEach(segment => {
         const printerText = segment.printer_name ? ` (${escapeHtml(segment.printer_name)})` : '';
         if (Array.isArray(segment.pages) && segment.pages.length > 0) {
             html += `<div class="badge status-primary">${formatPrintedPageRanges(segment.pages)}${printerText}</div>`;
-        } else if (segment.status === 'error' || segment.status === 'rerouted') {
-            const key = `${segment.status}:${segment.printer_name || ''}`;
-            if (seenLegacySegments.has(key)) {
-                return;
-            }
-            seenLegacySegments.add(key);
-            html += `<div class="badge status-primary">Rerouted from${printerText}</div>`;
         }
     });
     return html;
@@ -1783,11 +1792,11 @@ function formatCurrentPrintingBadge(doc) {
     const pageList = getDocumentPageList(doc.pages_num);
     const printedPages = new Set((doc.pages_printed || []).map((page) => Number(page)));
     const nextPage = pageList.find((page) => !printedPages.has(page));
-    const printerText = doc.printer_name ? ` (${escapeHtml(doc.printer_name)})` : '';
+    const printerLabel = doc.printer_name ? `${escapeHtml(doc.printer_name)} - ` : '';
     if (typeof nextPage === 'number') {
-        return `Printing Page ${escapeHtml(String(nextPage))}...${printerText}`;
+        return `${printerLabel}Printing Page ${escapeHtml(String(nextPage))}`;
     }
-    return `Printing...${printerText}`;
+    return `${printerLabel}Printing...`;
 }
 
 function updateConfirmationUI(data) {
@@ -1800,6 +1809,7 @@ function updateConfirmationUI(data) {
 
     const allPickedUp = data.documents.every(d => d.doc_status === 'Picked Up');
     const allFinished = data.documents.every(d => d.doc_status === 'Finished' || d.doc_status === 'Picked Up');
+    const allTerminal = data.documents.every(d => ['Finished', 'Picked Up', 'Cancelled'].includes(d.doc_status));
     const anyPrinting = data.documents.some(d => d.doc_status === 'Printing');
     const anyPending = data.documents.some(d => d.doc_status === 'Pending');
     const hasFinished = data.documents.some(d => d.doc_status === 'Finished');
@@ -1820,6 +1830,10 @@ function updateConfirmationUI(data) {
     } else if (allFinished) {
         if (titleEl) titleEl.textContent = 'Printing Complete!';
         if (subtitleEl) subtitleEl.textContent = 'Your documents are ready for pickup. Pick them up from the printer trays below.';
+        if (finishBtn) finishBtn.style.display = 'block';
+    } else if (allTerminal && hasFinished) {
+        if (titleEl) titleEl.textContent = 'Printing Complete!';
+        if (subtitleEl) titleEl.textContent = 'Finished documents are ready for pickup. Any other documents have already reached their final status.';
         if (finishBtn) finishBtn.style.display = 'block';
     } else if (anyPrinting) {
         if (titleEl) titleEl.textContent = 'Payment Confirmed! Printing in progress...';
