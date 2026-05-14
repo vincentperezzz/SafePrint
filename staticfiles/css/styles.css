@@ -924,6 +924,17 @@ html {
     }
 }
 
+@media (max-width: 768px) {
+    .feedback-illustration {
+        display: none;
+    }
+
+    .form-container {
+        padding: 28px 20px;
+        border-radius: 28px;
+    }
+}
+
 /* Feedback Thank You Page */
 .thank-container {
     max-width: 600px;
@@ -1316,10 +1327,18 @@ html {
 }
 
 @media (max-width: 768px) {
+    .footer-section {
+        padding: 0;
+        box-sizing: border-box;
+    }
+
     .footer-container {
-        padding: 5%;
+        width: 100%;
+        padding: 10% 10% 0 10%;
         align-items: center;
         justify-content: center;
+        box-sizing: border-box;
+        border-radius: 32px 32px 0 0;
     }
 
     .footer-logo{
@@ -1327,33 +1346,41 @@ html {
         flex-direction: column;
         width: 100%;
         align-items: left;
-        margin-bottom: 20px;
+        margin-bottom: 12px;
     }
 
     .footer-content {
         flex-direction: column;
         align-items: left;
-        gap: 20px;
+        gap: 8px;
     }
 
     .footer-content{
-        width: 60%;
+        width: 100%;
     }
 
     .contact-info, .quick-links {
         width: 100%;
         text-align: left;
-        margin-bottom: 20px;
+        margin-bottom: 0;
     }
 
     .contact-info h3 {
         font-size: 1.8rem;
-        margin-bottom: 15px; 
+        margin-bottom: 10px; 
     }
 
     .contact-info p {
         font-size: 1.2rem;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
+    }
+
+    .quick-links ul {
+        margin: 0;
+    }
+
+    .quick-links ul li {
+        margin-bottom: 8px;
     }
 
     .quick-links ul li a {
@@ -1367,7 +1394,7 @@ html {
 
     .footer-bottom {
         font-size: 1.1rem;
-        margin-top: 20px; 
+        margin-top: 12px; 
     }
 
     .footer-line {
