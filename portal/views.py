@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import sys
 import time
 import logging
 import threading
@@ -29,31 +30,19 @@ logger = logging.getLogger(__name__)
 
 now = timezone.now()
 QUEUE_MONITOR_INTERVAL_SECONDS = 60.0
+QUEUE_MONITOR_RETRY_SECONDS = 5.0
+
+
+def _trigger_upload_folder_cleanup():
+    if getattr(settings, 'TESTING', False):
+        return
+    subprocess.Popen([sys.executable, '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
 
 
 def _schedule_queue_check(delay_seconds=1.0):
     timer = threading.Timer(delay_seconds, check_queued_documents)
     timer.daemon = True
     timer.start()
-
-
-# #region agent log
-def _dbg(location, message, data=None, hypothesisId='X', runId='initial'):
-    """Debug-mode instrumentation. Writes a single NDJSON line to the session log."""
-    try:
-        with open('/home/safeprint/dev/SafePrint/.cursor/debug-4a5353.log', 'a') as _f:
-            _f.write(json.dumps({
-                'sessionId': '4a5353',
-                'runId': runId,
-                'hypothesisId': hypothesisId,
-                'location': location,
-                'message': message,
-                'data': data or {},
-                'timestamp': int(time.time() * 1000),
-            }) + '\n')
-    except Exception:
-        pass
-# #endregion
 
 
 def _format_dashboard_customer_id(customer_id):
@@ -132,6 +121,136 @@ def _log_voucher_audit(voucher, *, action, amount, customer_id='', performed_by=
         reference=reference,
         details=details,
     )
+
+
+def _extract_voucher_code_from_reason(reason):
+    match = re.search(r'Auto voucher\s+(\S+)', str(reason or ''), re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1).rstrip('.,;:')
+
+
+def _create_or_get_cancelled_voucher_ticket(customer_id, documents):
+    normalized_customer_id = str(customer_id or '').strip()
+    ordered_documents = sorted(
+        list(documents),
+        key=lambda doc: (
+            doc.time_submitted or timezone.now(),
+            doc.doc_id,
+        ),
+    )
+
+    if not normalized_customer_id or not ordered_documents:
+        raise ValueError('customer_id and documents are required')
+
+    related_doc_ids = [doc.doc_id for doc in ordered_documents]
+    related_doc_ids_json = json.dumps(related_doc_ids) if len(related_doc_ids) > 1 else ''
+    primary_document = ordered_documents[0]
+
+    existing_ticket_qs = SupportTicket.objects.filter(
+        customer_id=normalized_customer_id,
+        status__in=['open', 'in-progress'],
+    )
+    if related_doc_ids_json:
+        existing_ticket = existing_ticket_qs.filter(related_doc_ids=related_doc_ids_json).order_by('-created_at').first()
+    else:
+        existing_ticket = existing_ticket_qs.filter(
+            Q(document=primary_document) |
+            Q(document_id_snapshot=primary_document.doc_id)
+        ).order_by('-created_at').first()
+
+    if existing_ticket:
+        return existing_ticket, False
+
+    voucher_codes = []
+    document_lines = []
+    for document in ordered_documents:
+        last_error = RerouteHistory.objects.filter(
+            document=document,
+            status__startswith='Error'
+        ).order_by('timestamp').last()
+        cancel_reason = last_error.status if last_error else 'No available Printer'
+        voucher_code = _extract_voucher_code_from_reason(cancel_reason)
+        if voucher_code and voucher_code not in voucher_codes:
+            voucher_codes.append(voucher_code)
+        document_lines.append(f'- {document.doc_id} ({document.filename}): {cancel_reason}')
+
+    phone_number = ''
+    payment = Payment.objects.filter(
+        Q(doc__customer_id=normalized_customer_id) |
+        Q(customer_id_snapshot=normalized_customer_id)
+    ).exclude(
+        phone_number__isnull=True
+    ).exclude(
+        phone_number=''
+    ).order_by('-approved_at', '-id').first()
+    if payment:
+        phone_number = str(payment.phone_number or '').strip()
+
+    ticket_description_parts = [
+        'Auto-generated after customer confirmed they captured the voucher for reprint once the printer issue is fixed.',
+    ]
+    if voucher_codes:
+        ticket_description_parts.append(f"Voucher codes: {', '.join(voucher_codes)}")
+    ticket_description_parts.append('Affected cancelled documents:')
+    ticket_description_parts.extend(document_lines)
+    ticket_description = '\n'.join(ticket_description_parts)
+
+    document_name = primary_document.original_name or primary_document.filename
+    if len(ordered_documents) > 1:
+        document_name = f'{len(ordered_documents)} auto-cancelled documents'
+
+    ticket = SupportTicket.objects.create(
+        customer_id=normalized_customer_id,
+        document=primary_document,
+        document_id_snapshot=primary_document.doc_id,
+        document_name=document_name,
+        customer_name=f'Customer {normalized_customer_id}',
+        email='auto-ticket@safeprint.local',
+        phone_number=phone_number,
+        problem_type='no-print',
+        description=ticket_description,
+        related_doc_ids=related_doc_ids_json,
+        admin_notes='Auto-generated after customer acknowledged voucher capture from the all-cancelled confirmation page.',
+    )
+
+    TicketAuditLog.objects.create(
+        ticket=ticket,
+        action='created',
+        new_status='open',
+        performed_by='SYSTEM',
+        details='Auto-ticket created after voucher acknowledgement from the confirmation page.'
+    )
+
+    try:
+        from portal.services.email_notify import alert_new_ticket
+        alert_new_ticket(ticket.ticket_number, ticket.customer_name, ticket.problem_type, ticket.description)
+    except Exception:
+        pass
+
+    return ticket, True
+
+
+def _delete_customer_documents(customer_id, documents, *, log_prefix):
+    uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
+    deleted_count = 0
+
+    for document in documents:
+        if document.stored_name:
+            customer_dir = os.path.join(uploads_dir, customer_id)
+            file_path = os.path.join(customer_dir, document.stored_name)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+                print(f"[{log_prefix}] Deleted file {file_path} for document {document.doc_id}")
+
+        _preserve_or_delete_document_payment(document)
+        document.delete()
+        deleted_count += 1
+
+    VoucherCredit.objects.filter(last_customer_id=customer_id).update(last_customer_id=None)
+    _trigger_upload_folder_cleanup()
+
+    return deleted_count
 
 
 def _get_dashboard_document_display(ticket):
@@ -562,6 +681,13 @@ def _cancel_document_with_auto_voucher(document, *, reason):
     if voucher:
         message = f'{reason} Auto voucher {voucher.code} generated for ₱{refund_amount:.2f}.'
 
+    paper_size = str(getattr(document, 'paper_size', '') or '').strip()
+    if voucher:
+        compact_history_status = f"Error: {paper_size or 'Print'} no printer. Auto voucher {voucher.code}"
+    else:
+        compact_history_status = f"Error: {paper_size or 'Print'} no printer"
+    compact_history_status = compact_history_status[:50]
+
     # Create the auto-voucher RerouteHistory entry BEFORE flipping the doc to
     # Cancelled. The customer SSE stream picks the latest 'Error: ...' entry as
     # `cancel_reason` the moment it sees doc_status='Cancelled' — if we save the
@@ -571,7 +697,7 @@ def _cancel_document_with_auto_voucher(document, *, reason):
     _voucher_history = RerouteHistory.objects.create(
         document=document,
         printer=None,
-        status=f'Error: {message}',
+        status=compact_history_status,
         timestamp=timezone.now(),
     )
 
@@ -580,22 +706,6 @@ def _cancel_document_with_auto_voucher(document, *, reason):
     document.status_updated_at = timezone.now()
     document.save(update_fields=['doc_status', 'printer_assigned', 'status_updated_at'])
     _sync_printer_scheduler_state(assigned_printer)
-    # #region agent log
-    _dbg('views.py:_cancel_document_with_auto_voucher:fired', 'doc cancelled with auto voucher (ping-pong loop terminated)', {
-        'doc_id': document.doc_id,
-        'reason': reason,
-        'refund_amount': str(refund_amount) if refund_amount is not None else None,
-        'voucher_code': voucher.code if voucher else None,
-    }, hypothesisId='H9')
-    # #endregion
-    # #region agent log
-    _dbg('views.py:_cancel_document_with_auto_voucher:history_created', 'auto-voucher RerouteHistory persisted', {
-        'doc_id': document.doc_id,
-        'history_id': _voucher_history.id,
-        'status': _voucher_history.status,
-        'timestamp': _voucher_history.timestamp.isoformat() if _voucher_history.timestamp else None,
-    }, hypothesisId='H1')
-    # #endregion
     Feedback.objects.create(
         category='Report a Problem',
         name='[SYSTEM GENERATED]',
@@ -2360,7 +2470,7 @@ def deny_all_documents(request):
                             break
         deleted, _ = qs.delete()
         # Trigger folder cleanup after deleting all documents
-        subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+        _trigger_upload_folder_cleanup()
         return JsonResponse({'success': True, 'deleted_count': deleted})
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
@@ -2468,7 +2578,7 @@ def deny_document(request):
             _preserve_or_delete_document_payment(doc)
             doc.delete()
             # Trigger folder cleanup after deleting a document
-            subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+            _trigger_upload_folder_cleanup()
             return JsonResponse({'success': True, 'deleted_count': 1, 'cancelled_jobs': cancelled_jobs})
         except Document.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Document not found'})
@@ -3199,22 +3309,6 @@ def _get_cups_job_state(job_id):
     )
     pending_has = _cups_job_list_contains(pending.stdout, job_id)
     completed_has = _cups_job_list_contains(completed.stdout, job_id)
-    # #region agent log
-    # Capture only the lines that mention our specific job_id to keep logs small but useful.
-    _pending_match = [ln for ln in (pending.stdout or '').splitlines() if job_id in ln]
-    _completed_match = [ln for ln in (completed.stdout or '').splitlines() if job_id in ln]
-    _dbg('views.py:_get_cups_job_state:raw', 'raw lpstat output for job', {
-        'job_id': job_id,
-        'pending_has': pending_has,
-        'completed_has': completed_has,
-        'pending_match_lines': _pending_match[:3],
-        'completed_match_lines': _completed_match[:3],
-        'pending_stdout_first_5_lines': (pending.stdout or '').splitlines()[:5],
-        'completed_stdout_first_5_lines': (completed.stdout or '').splitlines()[:5],
-        'pending_returncode': pending.returncode,
-        'completed_returncode': completed.returncode,
-    }, hypothesisId='H8')
-    # #endregion
     if pending_has:
         return 'pending'
     if completed_has:
@@ -3262,19 +3356,34 @@ def _cancel_cups_job(job_id):
     if not job_id:
         return False
 
-    result = subprocess.run(
-        ['cancel', job_id],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode == 0:
-        print(f"[CUPS] Cancelled job {job_id} before reroute.")
-        return True
+    attempts = [
+        ('cancel', ['cancel', job_id]),
+        ('cancel -x', ['cancel', '-x', job_id]),
+    ]
 
-    stderr = (result.stderr or '').strip()
-    stdout = (result.stdout or '').strip()
-    print(f"[CUPS] Failed to cancel job {job_id} before reroute. stdout={stdout!r} stderr={stderr!r}")
+    for label, command in attempts:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        state_after_attempt = _get_cups_job_state(job_id)
+        if result.returncode == 0 and state_after_attempt in (None, 'unknown', 'completed'):
+            print(f"[CUPS] Cancelled job {job_id} with {label} before reroute.")
+            return True
+        if state_after_attempt in (None, 'unknown', 'completed'):
+            print(f"[CUPS] Job {job_id} no longer appears in CUPS after {label}; treating as cancelled.")
+            return True
+
+        stderr = (result.stderr or '').strip()
+        stdout = (result.stdout or '').strip()
+        print(
+            f"[CUPS] {label} did not clear job {job_id}. "
+            f"state={state_after_attempt!r} stdout={stdout!r} stderr={stderr!r}"
+        )
+
+    print(f"[CUPS] Failed to fully cancel job {job_id} before reroute.")
     return False
 
 
@@ -3335,11 +3444,6 @@ def _recent_matching_reroute_history(document, printer, status, *, within_second
 def _finish_document_if_complete(document, *, printer=None):
     document.refresh_from_db()
     if document.doc_status in ['Finished', 'Picked Up', 'Cancelled']:
-        # #region agent log
-        _dbg('views.py:_finish_document_if_complete:terminal_short_circuit', 'doc already terminal, return False', {
-            'doc_id': document.doc_id, 'doc_status': document.doc_status,
-        }, hypothesisId='H5')
-        # #endregion
         return False
 
     if document.get_remaining_pages():
@@ -3363,25 +3467,10 @@ def _finish_document_if_complete(document, *, printer=None):
     for printer_obj in printers_to_sync:
         _sync_printer_scheduler_state(printer_obj)
     print(f"[COMPLETE] Document {document.doc_id} printing complete. Printed at: {document.printed_at}")
-    # #region agent log
-    _dbg('views.py:_finish_document_if_complete:finished', 'doc marked Finished', {
-        'doc_id': document.doc_id,
-        'printed_at': document.printed_at.printer_name if document.printed_at else None,
-    }, hypothesisId='H5')
-    # #endregion
     return True
 
 
 def print_page(document, page_num):
-    # #region agent log
-    _dbg('views.py:print_page:entry', 'print_page entry', {
-        'doc_id': document.doc_id,
-        'page_num': page_num,
-        'doc_status': document.doc_status,
-        'pages_printed': list(document.pages_printed or []),
-        'printer_assigned': document.printer_assigned.printer_name if document.printer_assigned else None,
-    }, hypothesisId='H2')
-    # #endregion
     # Extract print preferences from document
     copies = max(1, int(getattr(document, 'num_copies', 1) or 1))
     orientation = getattr(document, 'orientation', 'portrait')
@@ -3529,12 +3618,6 @@ def print_page(document, page_num):
             print(f"[PRINT] Submitted CUPS job {job_id} for document {document.doc_id} page {page_num}")
     except Exception as e:
         print(f"[ERROR] Failed to print page {page_num} of document {document.doc_id} on printer {printer.printer_name}: {e}")
-        # #region agent log
-        _dbg('views.py:print_page:reroute_trigger_lp_exception', 'lp subprocess raised exception -> reroute', {
-            'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-            'exception': str(e),
-        }, hypothesisId='H7')
-        # #endregion
         printer.printer_status = 'Error'
         printer.save()
         print(f"[REROUTE] Rerouting remaining pages of document {document.doc_id}")
@@ -3556,22 +3639,6 @@ def print_page(document, page_num):
     while True:
         printer.refresh_from_db()
         cups_job_state = _get_cups_job_state(job_id)
-        # #region agent log
-        _dbg('views.py:print_page:cycle', 'monitor loop cycle state', {
-            'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-            'printer_status': printer.printer_status,
-            'tray_current_count': printer.tray_current_count,
-            'tray_level': printer.tray_level,
-            'cups_job_state': cups_job_state,
-            'job_id': job_id,
-            'job_started': job_started,
-            'wait_cycles': wait_cycles,
-            'error_cycles': error_cycles,
-            'missing_job_cycles': missing_job_cycles,
-            'ready_fallback_cycles': ready_fallback_cycles,
-            'pending_stall_cycles': pending_stall_cycles,
-        }, hypothesisId='H8')
-        # #endregion
 
         # Also check if the document still exists and hasn't been canceled
         try:
@@ -3581,25 +3648,10 @@ def print_page(document, page_num):
             # Check if document has been rerouted to a different printer
             if doc_check.printer_assigned and doc_check.printer_assigned.id != printer.id:
                 print(f"[REROUTED] Document {document.doc_id} was rerouted from {printer.printer_name} to {doc_check.printer_assigned.printer_name} during printing. Stopping monitoring of original printer.")
-                # #region agent log
-                _dbg('views.py:print_page:early_return_rerouted_mid_print', 'returning early due to mid-print reroute (no mark_page/finish call)', {
-                    'doc_id': document.doc_id, 'page_num': page_num,
-                    'monitored_printer': printer.printer_name,
-                    'new_printer': doc_check.printer_assigned.printer_name,
-                    'pages_printed': list(doc_check.pages_printed or []),
-                }, hypothesisId='H2')
-                # #endregion
                 return
                 
             if doc_check.doc_status not in ['Queued', 'Printing']:
                 print(f"[CANCELLED] Document {document.doc_id} status changed to {doc_check.doc_status} while waiting. Aborting.")
-                # #region agent log
-                _dbg('views.py:print_page:early_return_status_changed', 'returning early because doc_status not Queued/Printing', {
-                    'doc_id': document.doc_id, 'page_num': page_num,
-                    'doc_status': doc_check.doc_status,
-                    'pages_printed': list(doc_check.pages_printed or []),
-                }, hypothesisId='H2')
-                # #endregion
                 return
         except Document.DoesNotExist:
             print(f"[CANCELLED] Document {document.doc_id} was deleted while waiting for printer to finish. Aborting.")
@@ -3607,11 +3659,6 @@ def print_page(document, page_num):
 
         if cups_job_state == 'completed':
             print(f"[CUPS] Job {job_id} completed for document {document.doc_id} page {page_num}.")
-            # #region agent log
-            _dbg('views.py:print_page:break_cups_completed', 'cups_completed break -> will mark page printed', {
-                'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-            }, hypothesisId='H2')
-            # #endregion
             break
 
         if printer.printer_status == 'Printing' or cups_job_state == 'pending':
@@ -3629,12 +3676,6 @@ def print_page(document, page_num):
                     f"page {page_num} while printer {printer.printer_name} remains {printer.printer_status}. "
                     "Assuming page completed."
                 )
-                # #region agent log
-                _dbg('views.py:print_page:break_missing_job_fallback', 'missing-job fallback break -> will mark page', {
-                    'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-                    'printer_status': printer.printer_status,
-                }, hypothesisId='H2')
-                # #endregion
                 break
         else:
             missing_job_cycles = 0
@@ -3645,14 +3686,6 @@ def print_page(document, page_num):
         # quickly. A busy "now printing" queue resets this counter immediately.
         if job_started and cups_job_state == 'pending':
             cups_printer_activity = _get_cups_printer_state(queue_name)
-            # #region agent log
-            _dbg('views.py:print_page:fast_stall_probe', 'cups printer activity probe', {
-                'doc_id': document.doc_id, 'page_num': page_num, 'queue_name': queue_name,
-                'cups_printer_activity': cups_printer_activity,
-                'idle_pending_cycles': idle_pending_cycles,
-                'cups_job_state': cups_job_state,
-            }, hypothesisId='H10', runId='post-fix')
-            # #endregion
             if cups_printer_activity == 'idle':
                 idle_pending_cycles += 1
             elif cups_printer_activity == 'printing':
@@ -3666,15 +3699,6 @@ def print_page(document, page_num):
                 # to the long-stall safety net.
                 pass
             if idle_pending_cycles >= 8:
-                # #region agent log
-                _dbg('views.py:print_page:fast_stall_idle', 'fast-stall: queue idle while job pending -> reroute', {
-                    'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-                    'queue_name': queue_name,
-                    'cups_printer_activity': cups_printer_activity,
-                    'idle_pending_cycles': idle_pending_cycles,
-                    'pending_stall_cycles': pending_stall_cycles,
-                }, hypothesisId='H10', runId='post-fix')
-                # #endregion
                 print(
                     f"[FAST-STALL] CUPS queue {queue_name} is idle while job {job_id} is pending "
                     f"for document {document.doc_id} page {page_num}. Initiating reroute."
@@ -3703,12 +3727,6 @@ def print_page(document, page_num):
                 # don't kill an already-finished print and trigger a duplicate.
                 final_state = _get_cups_job_state(job_id)
                 if final_state == 'completed':
-                    # #region agent log
-                    _dbg('views.py:print_page:break_stall_late_complete', 'stall poll caught late-completion; treating as success', {
-                        'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-                        'pending_stall_cycles': pending_stall_cycles,
-                    }, hypothesisId='H2', runId='post-fix')
-                    # #endregion
                     break
                 print(
                     f"[STALL] Job {job_id or 'unknown'} for document {document.doc_id} stayed pending "
@@ -3720,15 +3738,6 @@ def print_page(document, page_num):
                     status=f"Stalled: printer={printer.printer_status}, cups={cups_job_state}",
                     timestamp=timezone.now()
                 )
-                # #region agent log
-                _dbg('views.py:print_page:reroute_trigger_stall', 'pending_stall_cycles>=60 -> reroute', {
-                    'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-                    'printer_status': printer.printer_status,
-                    'cups_job_state': cups_job_state,
-                    'pending_stall_cycles': pending_stall_cycles,
-                    'final_state_at_stall': final_state,
-                }, hypothesisId='H7', runId='post-fix')
-                # #endregion
                 reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
                 return
         else:
@@ -3742,21 +3751,9 @@ def print_page(document, page_num):
                     f"[FALLBACK] Printer {printer.printer_name} returned to {printer.printer_status} "
                     f"and CUPS no longer reports job {job_id} for document {document.doc_id} page {page_num}."
                 )
-                # #region agent log
-                _dbg('views.py:print_page:break_ready_fallback', 'ready-fallback break -> will mark page', {
-                    'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-                    'printer_status': printer.printer_status,
-                }, hypothesisId='H2')
-                # #endregion
                 break
         elif not job_id and job_started and printer.printer_status in ['Ready', 'Sleep']:
             print(f"[FALLBACK] Printer {printer.printer_name} returned to {printer.printer_status} after printing page {page_num}.")
-            # #region agent log
-            _dbg('views.py:print_page:break_no_jobid_fallback', 'no-jobid fallback break -> will mark page', {
-                'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-                'printer_status': printer.printer_status,
-            }, hypothesisId='H2')
-            # #endregion
             break
         else:
             ready_fallback_cycles = 0
@@ -3778,17 +3775,6 @@ def print_page(document, page_num):
                     status=f"Error: {printer.printer_status}",
                     timestamp=timezone.now()
                 )
-                # #region agent log
-                _dbg('views.py:print_page:reroute_trigger_error_cycles', 'error_cycles>=max -> reroute (page may have already printed!)', {
-                    'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-                    'printer_status': printer.printer_status,
-                    'cups_job_state': cups_job_state,
-                    'job_id': job_id,
-                    'job_started': job_started,
-                    'error_cycles': error_cycles,
-                    'wait_cycles': wait_cycles,
-                }, hypothesisId='H7')
-                # #endregion
                 # Reroute remaining pages (preemptive approach)
                 reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
                 return
@@ -3805,14 +3791,6 @@ def print_page(document, page_num):
         
         # If we've waited too long regardless of status, consider rerouting
         if wait_cycles >= max_wait_cycles:
-            # #region agent log
-            _dbg('views.py:print_page:reroute_trigger_timeout', 'wait_cycles>=max -> reroute', {
-                'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-                'printer_status': printer.printer_status,
-                'cups_job_state': cups_job_state,
-                'wait_cycles': wait_cycles,
-            }, hypothesisId='H7')
-            # #endregion
             print(
                 f"[TIMEOUT] Printer {printer.printer_name} did not confirm completion for page {page_num} "
                 f"within {max_wait_cycles} seconds (status={printer.printer_status}, cups_job={cups_job_state}). Initiating reroute."
@@ -3830,14 +3808,6 @@ def print_page(document, page_num):
             
         time.sleep(1)
     # Mark page as printed in DB only after successful print and status transitions
-    # #region agent log
-    _dbg('views.py:print_page:post_break_pre_mark', 'broke out of monitor loop, about to mark_page_printed', {
-        'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-        'pages_printed_before': list(document.pages_printed or []),
-        'pages_printed_types': [type(p).__name__ for p in (document.pages_printed or [])],
-        'page_num_type': type(page_num).__name__,
-    }, hypothesisId='H2|H3')
-    # #endregion
     page_was_already_recorded = page_num in (document.pages_printed or [])
     document.mark_page_printed(page_num)
     if not page_was_already_recorded:
@@ -3847,12 +3817,6 @@ def print_page(document, page_num):
             status=f'Printed page {page_num}'
         )
     print(f"[MARKED] Page {page_num} of document {document.doc_id} marked as printed.")
-    # #region agent log
-    _dbg('views.py:print_page:post_mark', 'after mark_page_printed', {
-        'doc_id': document.doc_id, 'page_num': page_num,
-        'pages_printed_after': list(document.pages_printed or []),
-    }, hypothesisId='H3')
-    # #endregion
 
     # Subtract 1 sheet from the printer's tray and update tray level
     printer.refresh_from_db()
@@ -3871,17 +3835,7 @@ def print_page(document, page_num):
         printer.save(update_fields=['tray_current_count', 'tray_level'])
         print(f"[PAPER] Printer {printer.printer_name}: {printer.tray_current_count} sheets remaining ({printer.tray_level})")
 
-    # #region agent log
-    _dbg('views.py:print_page:before_final_finish_check', 'calling _finish_document_if_complete from print_page end', {
-        'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
-    }, hypothesisId='H5')
-    # #endregion
-    _result = _finish_document_if_complete(document, printer=printer)
-    # #region agent log
-    _dbg('views.py:print_page:after_final_finish_check', 'return value from final finish check', {
-        'doc_id': document.doc_id, 'page_num': page_num, 'finished': _result,
-    }, hypothesisId='H5')
-    # #endregion
+    _finish_document_if_complete(document, printer=printer)
 
 
 def reroute_document_on_error(document, failed_printer=None, failed_job_id=None):
@@ -3896,17 +3850,6 @@ def reroute_document_on_error(document, failed_printer=None, failed_job_id=None)
       after the new printer has actually finished the remaining pages.
     """
     document.refresh_from_db()
-    # #region agent log
-    _dbg('views.py:reroute_document_on_error:entry', 'reroute entry', {
-        'doc_id': document.doc_id,
-        'doc_status': document.doc_status,
-        'pages_printed': list(document.pages_printed or []),
-        'remaining_pages': document.get_remaining_pages(),
-        'failed_printer': getattr(failed_printer, 'printer_name', None),
-        'failed_job_id': failed_job_id,
-        'printer_assigned': document.printer_assigned.printer_name if document.printer_assigned else None,
-    }, hypothesisId='H1|H4')
-    # #endregion
 
     # Guard: do not reroute a document that is already done or terminated.
     if document.doc_status in ('Finished', 'Picked Up', 'Cancelled'):
@@ -3971,42 +3914,29 @@ def reroute_document_on_error(document, failed_printer=None, failed_job_id=None)
     if previous_failed_attr is not None:
         cumulative_failed_ids.add(previous_failed_attr)
 
-    # #region agent log
-    _dbg('views.py:reroute_document_on_error:cumulative_excludes', 'computed cumulative failed printers for this doc', {
-        'doc_id': document.doc_id,
-        'cumulative_failed_ids': sorted(cumulative_failed_ids),
-        'failed_printer_arg_id': getattr(failed_printer, 'id', None),
-    }, hypothesisId='H9')
-    # #endregion
-
     replacement_candidates = _available_printers_for_document(
         document,
-        allowed_statuses=['Ready', 'Sleep'],
+        allowed_statuses=['Ready', 'Printing', 'Sleep'],
         exclude_printer_ids=cumulative_failed_ids,
         sync_scheduler_state=True,
         require_idle=False,
     )
     if not replacement_candidates:
-        remaining_count = len(remaining_pages)
-        _cancel_document_with_auto_voucher(
-            document,
-            reason=(
-                f'No eligible printer can finish the remaining {remaining_count} '
-                f'page(s) for {document.paper_size}.'
-            ),
+        terminal_reason = _terminal_no_printer_reason(document)
+        if terminal_reason:
+            _cancel_document_with_auto_voucher(document, reason=terminal_reason)
+            return
+
+        print(
+            f"[REROUTE] No alternative printer is immediately available for {document.doc_id}; "
+            "keeping the document queued with reroute priority."
         )
+        _schedule_queue_check(1.0)
+        print(f"[QUEUE-MONITOR] Scheduled queue check in 1 seconds to find printer for document {document.doc_id}")
         return
 
     # Try an immediate reassignment once using the same candidate rules.
     next_printer = assign_document_to_printer(document, wait_for_availability=False)
-    # #region agent log
-    _dbg('views.py:reroute_document_on_error:after_assign', 'reassignment attempt result', {
-        'doc_id': document.doc_id,
-        'next_printer': getattr(next_printer, 'printer_name', None),
-        'replacement_count': len(replacement_candidates),
-        'replacement_names': [p.printer_name for p in replacement_candidates],
-    }, hypothesisId='H1')
-    # #endregion
     if next_printer:
         # Continue printing remaining pages
         print(f"[REROUTE] Successfully rerouted document {document.doc_id} from {current_printer_name} to {next_printer.printer_name}")
@@ -4038,23 +3968,7 @@ def reroute_document_on_error(document, failed_printer=None, failed_job_id=None)
         # check whether the document is actually finished and flip the status so
         # the UI does not show 'Printing' forever after reroute completes.
         document.refresh_from_db()
-        # #region agent log
-        _dbg('views.py:reroute_document_on_error:safety_net_pre', 'about to run reroute safety-net finish check', {
-            'doc_id': document.doc_id,
-            'doc_status': document.doc_status,
-            'pages_printed': list(document.pages_printed or []),
-            'remaining_pages': document.get_remaining_pages(),
-            'next_printer': next_printer.printer_name if next_printer else None,
-        }, hypothesisId='H1|H5')
-        # #endregion
         _safety_result = _finish_document_if_complete(document, printer=next_printer)
-        # #region agent log
-        _dbg('views.py:reroute_document_on_error:safety_net_post', 'reroute safety-net finish check result', {
-            'doc_id': document.doc_id,
-            'finished': _safety_result,
-            'doc_status_after': document.doc_status,
-        }, hypothesisId='H1|H5')
-        # #endregion
         if _safety_result:
             print(f"[REROUTE] Completion confirmed for {document.doc_id} on {next_printer.printer_name} after reroute.")
     else:
@@ -4218,8 +4132,8 @@ def check_queued_documents():
         print(f"[QUEUE-MONITOR] Cancelled {cancelled_count} terminal queued document(s) on this pass.")
 
     if Document.objects.filter(doc_status='Queued').exists():
-        _schedule_queue_check(QUEUE_MONITOR_INTERVAL_SECONDS)
-        print(f"[QUEUE-MONITOR] Scheduled next queue check in {int(QUEUE_MONITOR_INTERVAL_SECONDS)} seconds")
+        _schedule_queue_check(QUEUE_MONITOR_RETRY_SECONDS)
+        print(f"[QUEUE-MONITOR] Scheduled next queue check in {int(QUEUE_MONITOR_RETRY_SECONDS)} seconds")
 
 
 # Start the queue monitor when the module is loaded
@@ -4516,7 +4430,7 @@ def picked_up_document(request):
             VoucherCredit.objects.filter(last_customer_id=cid).update(last_customer_id=None)
 
         # Trigger folder cleanup
-        subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+        _trigger_upload_folder_cleanup()
 
         return JsonResponse({'success': True, 'doc_id': doc_id})
 
@@ -4562,9 +4476,6 @@ def finish_transaction(request):
         if not docs_to_process.exists():
             return JsonResponse({'success': False, 'error': 'No documents found to process'})
 
-        picked_up_count = 0
-        uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
-
         for doc in docs_to_process:
             reroute_override = (
                 force and
@@ -4586,34 +4497,70 @@ def finish_transaction(request):
                     update_fields.extend(['pages_printed', 'printed_at'])
                 doc.save(update_fields=update_fields)
 
-            # Delete the file from storage — direct path lookup (fast)
-            if doc.stored_name:
-                customer_dir = os.path.join(uploads_dir, customer_id)
-                file_path = os.path.join(customer_dir, doc.stored_name)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-                    print(f"[FINISH TXN] Deleted file {file_path} for document {doc.doc_id}")
-
-            # Delete associated Payment records
-            _preserve_or_delete_document_payment(doc)
-
-            # Delete the Document record itself
-            doc.delete()
-
-            picked_up_count += 1
-
-        # Clear voucher credit association with this customer
-        from portal.models import VoucherCredit
-        VoucherCredit.objects.filter(last_customer_id=customer_id).update(last_customer_id=None)
-
-        # Trigger folder cleanup
-        subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+        picked_up_count = _delete_customer_documents(customer_id, list(docs_to_process), log_prefix='FINISH TXN')
 
         return JsonResponse({
             'success': True,
             'picked_up_count': picked_up_count
         })
 
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def acknowledge_cancelled_voucher(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        customer_id = str(data.get('customer_id') or '').strip()
+        requested_doc_ids = [
+            str(doc_id).strip()
+            for doc_id in (data.get('doc_ids') or [])
+            if str(doc_id).strip()
+        ]
+
+        if not customer_id:
+            return JsonResponse({'success': False, 'error': 'customer_id is required'})
+
+        customer_documents = list(
+            Document.objects.filter(customer_id=customer_id).order_by('time_submitted', 'doc_id')
+        )
+        if not customer_documents:
+            existing_ticket = SupportTicket.objects.filter(
+                customer_id=customer_id,
+                status__in=['open', 'in-progress']
+            ).order_by('-created_at').first()
+            if existing_ticket:
+                return JsonResponse({
+                    'success': True,
+                    'created': False,
+                    'ticket_number': existing_ticket.ticket_number,
+                    'deleted_count': 0,
+                })
+            return JsonResponse({'success': False, 'error': 'No documents found for this customer'})
+
+        customer_doc_ids = [doc.doc_id for doc in customer_documents]
+        if requested_doc_ids and set(requested_doc_ids) != set(customer_doc_ids):
+            return JsonResponse({'success': False, 'error': 'Document list no longer matches the current customer transaction'})
+
+        if any(doc.doc_status != 'Cancelled' for doc in customer_documents):
+            return JsonResponse({'success': False, 'error': 'All documents must be cancelled before acknowledging the voucher'})
+
+        with transaction.atomic():
+            ticket, created = _create_or_get_cancelled_voucher_ticket(customer_id, customer_documents)
+            deleted_count = _delete_customer_documents(customer_id, customer_documents, log_prefix='CANCELLED ACK')
+
+        return JsonResponse({
+            'success': True,
+            'created': created,
+            'ticket_number': ticket.ticket_number,
+            'deleted_count': deleted_count,
+        })
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid request data'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 

@@ -4,6 +4,36 @@ let isScanning = false; // Track if any file is being scanned for viruses
 const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
 document.addEventListener("touchstart", function () { }, true);
 
+function clearActiveCustomerSession() {
+    try {
+        sessionStorage.removeItem('documents');
+        sessionStorage.removeItem('customer_id');
+    } catch (error) {
+        console.warn('Unable to clear customer session storage:', error);
+    }
+
+    document.cookie = 'customer_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+
+    if (customerSSE) {
+        customerSSE.close();
+        customerSSE = null;
+    }
+}
+
+function redirectHomeAfterSessionClear(delayMs = 0) {
+    const performRedirect = () => {
+        clearActiveCustomerSession();
+        window.location.href = '/';
+    };
+
+    if (delayMs > 0) {
+        setTimeout(performRedirect, delayMs);
+        return;
+    }
+
+    performRedirect();
+}
+
 function validateSpecificPageSelection(value, totalPages) {
     const rawValue = (value || '').trim();
 
@@ -846,6 +876,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const finishBtn = document.getElementById('finish-transaction-btn');
     if (finishBtn) {
         finishBtn.addEventListener('click', function () {
+            if (finishBtn.dataset.mode === 'done') {
+                confirmCancelledVoucherDone();
+                return;
+            }
             showPrintQualityOverlay();
         });
     }
@@ -1430,6 +1464,80 @@ function checkForAutoVoucherCancellations(documents) {
 // Track whether auto-ticket popup has already been triggered this page load
 var _autoTicketTriggered = false;
 
+function getCancelledVoucherCodes(documents) {
+    const voucherCodes = [];
+    (documents || []).forEach((doc) => {
+        const reason = String(doc && doc.cancel_reason ? doc.cancel_reason : '');
+        const match = reason.match(/Auto voucher\s+(\S+)/i);
+        if (!match) {
+            return;
+        }
+        const voucherCode = match[1].replace(/[.,;:]+$/, '');
+        if (voucherCode && !voucherCodes.includes(voucherCode)) {
+            voucherCodes.push(voucherCode);
+        }
+    });
+    return voucherCodes;
+}
+
+function confirmCancelledVoucherDone() {
+    const docs = Array.isArray(window.customerDocuments) ? window.customerDocuments : [];
+    const cancelledDocs = docs.filter((doc) => doc.doc_status === 'Cancelled');
+    const customerIdEl = document.getElementById('customer-id-data');
+    const customerId = customerIdEl ? customerIdEl.value : '';
+    const voucherCodes = getCancelledVoucherCodes(cancelledDocs);
+    const voucherLine = voucherCodes.length > 0
+        ? `\n\nVoucher${voucherCodes.length > 1 ? 's' : ''}: ${voucherCodes.join(', ')}`
+        : '';
+
+    const confirmed = confirm(
+        'Have you captured the voucher to reprint later once the printer issue is fixed?' +
+        voucherLine +
+        '\n\nPress OK to continue. A ticket will be automatically created so the admin knows this happened.'
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    if (!customerId || cancelledDocs.length === 0) {
+        hasProceeded = true;
+        redirectHomeAfterSessionClear();
+        return;
+    }
+
+    hasProceeded = true;
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.style.display = 'flex';
+
+    fetch('/api/acknowledge-cancelled-voucher/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({
+            customer_id: customerId,
+            doc_ids: cancelledDocs.map((doc) => doc.doc_id),
+        })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                redirectHomeAfterSessionClear();
+                return;
+            }
+
+            throw new Error(data.error || 'Unable to notify admin about the cancelled voucher.');
+        })
+        .catch(error => {
+            console.error('Error acknowledging cancelled voucher:', error);
+            hasProceeded = false;
+            if (overlay) overlay.style.display = 'none';
+            alert('Could not create the admin ticket automatically. Please try Done again so the voucher capture is recorded.');
+        });
+}
+
 function checkForAutoTicketTrigger(data) {
     if (_autoTicketTriggered) return;
     var documents = data.documents || [];
@@ -1819,9 +1927,16 @@ function updateConfirmationUI(data) {
     const allPickedUp = data.documents.every(d => d.doc_status === 'Picked Up');
     const allFinished = data.documents.every(d => d.doc_status === 'Finished' || d.doc_status === 'Picked Up');
     const allTerminal = data.documents.every(d => ['Finished', 'Picked Up', 'Cancelled'].includes(d.doc_status));
+    const allCancelled = data.documents.every(d => d.doc_status === 'Cancelled');
     const anyPrinting = data.documents.some(d => d.doc_status === 'Printing');
     const anyPending = data.documents.some(d => d.doc_status === 'Pending');
     const hasFinished = data.documents.some(d => d.doc_status === 'Finished');
+
+    if (finishBtn) {
+        finishBtn.dataset.mode = 'pickup';
+        finishBtn.textContent = 'Picked Up All Printed Documents';
+        finishBtn.style.display = 'none';
+    }
 
     if (allPickedUp) {
         if (titleEl) titleEl.textContent = 'All done! Thank you!';
@@ -1840,6 +1955,14 @@ function updateConfirmationUI(data) {
         if (titleEl) titleEl.textContent = 'Printing Complete!';
         if (subtitleEl) subtitleEl.textContent = 'Your documents are ready for pickup. Pick them up from the printer trays below.';
         if (finishBtn) finishBtn.style.display = 'block';
+    } else if (allCancelled) {
+        if (titleEl) titleEl.textContent = 'Printing Cancelled';
+        if (subtitleEl) subtitleEl.textContent = 'Your documents have reached their final cancelled state. Tap Done to close this page.';
+        if (finishBtn) {
+            finishBtn.dataset.mode = 'done';
+            finishBtn.textContent = 'Done';
+            finishBtn.style.display = 'block';
+        }
     } else if (allTerminal && hasFinished) {
         if (titleEl) titleEl.textContent = 'Printing Complete!';
         if (subtitleEl) subtitleEl.textContent = 'Finished documents are ready for pickup. Any other documents have already reached their final status.';
@@ -2787,7 +2910,7 @@ function confirmAllGood() {
         // Fallback: just redirect
         var overlay = document.getElementById('loading-overlay');
         if (overlay) overlay.style.display = 'flex';
-        window.location.href = '/';
+        redirectHomeAfterSessionClear();
         return;
     }
 
@@ -2808,15 +2931,15 @@ function confirmAllGood() {
             if (data.success) {
                 console.log(`Finished transaction: ${data.picked_up_count} docs picked up`);
                 // Redirect immediately — documents are deleted so SSE can't detect the change
-                setTimeout(() => { window.location.href = '/'; }, 1500);
+                redirectHomeAfterSessionClear(1500);
             } else {
                 console.warn('Finish transaction warning:', data.error);
-                window.location.href = '/';
+                redirectHomeAfterSessionClear();
             }
         })
         .catch(error => {
             console.error('Error finishing transaction:', error);
-            window.location.href = '/';
+            redirectHomeAfterSessionClear();
         });
 }
 
