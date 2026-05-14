@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SafePrint - Welcome</title>
+    <title>SafePrint - Login Required</title>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body {
@@ -13,8 +13,10 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 100vh;
+            min-height: 100vh;
             color: #333;
+            padding: 16px;
+            box-sizing: border-box;
         }
         .card {
             background: white;
@@ -23,14 +25,13 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.05);
             text-align: center;
             max-width: 400px;
-            width: 90%;
+            width: 100%;
             border: 1px solid #eee;
         }
         .logo {
             width: 180px;
             max-width: 100%;
             height: auto;
-            border-radius: 0;
             margin-bottom: 20px;
         }
         h1 {
@@ -54,19 +55,10 @@
             border-radius: 16px;
             cursor: pointer;
             width: 100%;
-            transition: transform 0.2s, background-color 0.2s;
+            box-sizing: border-box;
             box-shadow: 0 4px 0 #d9a404;
             text-decoration: none;
             display: inline-block;
-        }
-        .btn:active {
-            transform: translateY(2px);
-            box-shadow: 0 2px 0 #d9a404;
-        }
-        .footer {
-            margin-top: 20px;
-            font-size: 12px;
-            color: #999;
         }
         .manual-link {
             margin-top: 16px;
@@ -85,23 +77,10 @@
     <div class="card">
         <img src="logo.png" alt="SafePrint Logo" class="logo">
         <h1>Welcome to SafePrint</h1>
-        <p>Your one-stop solution for secure and efficient printing.</p>
-        
-        <form name="login" action="$(link-login-only)" method="post">
-            <input type="hidden" name="username" value="guest">
-            <input type="hidden" name="password" value="none">
-            <input type="hidden" name="dst" value="https://safeprint.duckdns.org/">
-            <button type="submit" class="btn">Print using SAFEPRINT Printing Vendo</button>
-        </form>
-
+        <p>Login is required before opening SafePrint.</p>
+        <a class="btn" href="$(link-login)">Print using SAFEPRINT Printing Vendo</a>
         <div class="manual-link">
-            If the captive popup closes on iPhone or Android, open
-            <a href="https://safeprint.duckdns.org/">safeprint.duckdns.org</a>
-            after login.
-        </div>
-
-        <div class="footer">
-            Powered by SafePrint © 2026
+            If needed, open <a href="http://172.16.0.1/login">http://172.16.0.1/login</a>
         </div>
     </div>
 </body>
