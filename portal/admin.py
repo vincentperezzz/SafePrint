@@ -85,7 +85,7 @@ class DocumentReprintLogAdmin(admin.ModelAdmin):
 class PrinterStatusLogAdmin(admin.ModelAdmin):
     list_display = ('printer', 'status', 'ink_status', 'paper_level', 'timestamp')
     list_filter = ('status', 'printer')
-    search_fields = ('printer__name', 'status')
+    search_fields = ('printer__printer_name', 'status')
     readonly_fields = ('printer', 'status', 'ink_status', 'paper_level', 'timestamp')
 
 

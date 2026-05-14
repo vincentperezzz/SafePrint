@@ -1403,16 +1403,21 @@ function checkForAutoVoucherCancellations(documents) {
     documents.forEach(function(doc) {
         var reason = doc.cancel_reason || '';
         var normalizedReason = reason.toLowerCase();
+        var hasVoucherCode = !!(doc.auto_voucher_code && String(doc.auto_voucher_code).trim());
         if (
             doc.doc_status === 'Cancelled' &&
-            normalizedReason.indexOf('auto voucher') !== -1 &&
+            (normalizedReason.indexOf('auto voucher') !== -1 || hasVoucherCode) &&
             !_voucherCancellationShown[doc.doc_id]
         ) {
             _voucherCancellationShown[doc.doc_id] = true;
+            var alertBody = reason;
+            if (hasVoucherCode && normalizedReason.indexOf('auto voucher') === -1) {
+                alertBody = reason + (reason ? ' ' : '') + 'Auto voucher ' + doc.auto_voucher_code + ' was issued for the unprinted portion.';
+            }
             createAlert(
                 'Print Cancelled',
                 'Voucher generated for the affected document.',
-                reason,
+                alertBody,
                 'warning',
                 true,
                 false,
@@ -1724,7 +1729,7 @@ function renderCompletedSegments(segments) {
     segments.forEach(segment => {
         const printerText = segment.printer_name ? ` (${escapeHtml(segment.printer_name)})` : '';
         if (Array.isArray(segment.pages) && segment.pages.length > 0) {
-            html += `<div class="badge status-primary">${formatPrintedPageRanges(segment.pages)}${printerText}</div>`;
+            html += `<div class="badge status-primary">Printed: ${formatPrintedPageRanges(segment.pages)}${printerText}</div>`;
         }
     });
     return html;
@@ -1791,10 +1796,14 @@ function getDocumentPageList(pagesNum) {
 function formatCurrentPrintingBadge(doc) {
     const pageList = getDocumentPageList(doc.pages_num);
     const printedPages = new Set((doc.pages_printed || []).map((page) => Number(page)));
-    const nextPage = pageList.find((page) => !printedPages.has(page));
+    // Backend prints pages in reverse order (last page first) so the output
+    // stack ends up in natural reading order. The "currently printing" page is
+    // therefore the HIGHEST page number that has not yet been printed.
+    const remaining = pageList.filter((page) => !printedPages.has(page));
+    const nextPage = remaining.length ? remaining[remaining.length - 1] : undefined;
     const printerLabel = doc.printer_name ? `${escapeHtml(doc.printer_name)} - ` : '';
     if (typeof nextPage === 'number') {
-        return `${printerLabel}Printing Page ${escapeHtml(String(nextPage))}`;
+        return `${printerLabel}Now printing page ${escapeHtml(String(nextPage))}`;
     }
     return `${printerLabel}Printing...`;
 }
@@ -1833,7 +1842,7 @@ function updateConfirmationUI(data) {
         if (finishBtn) finishBtn.style.display = 'block';
     } else if (allTerminal && hasFinished) {
         if (titleEl) titleEl.textContent = 'Printing Complete!';
-        if (subtitleEl) titleEl.textContent = 'Finished documents are ready for pickup. Any other documents have already reached their final status.';
+        if (subtitleEl) subtitleEl.textContent = 'Finished documents are ready for pickup. Any other documents have already reached their final status.';
         if (finishBtn) finishBtn.style.display = 'block';
     } else if (anyPrinting) {
         if (titleEl) titleEl.textContent = 'Payment Confirmed! Printing in progress...';
@@ -3301,6 +3310,14 @@ document.addEventListener('input', function(e) {
         const btn = document.getElementById('pay-now-btn');
         const balanceDue = PAYMENT.totalPrice - appliedCreditAmount;
 
+        if (!printersAvailable) {
+            if (btn) {
+                btn.disabled = true;
+            }
+            alert('Payment is temporarily unavailable because no printers can accept this job right now.');
+            return;
+        }
+
         // If NOT fully covered by credit, validate phone number
         if (balanceDue > 0) {
             const phone = phoneInput.value.replace(/\s/g, '').trim();
@@ -3402,7 +3419,8 @@ document.addEventListener('input', function(e) {
                 window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
             } else {
                 if (data.status === 'pending' || data.status === 'expired') {
-                    alert('Payment not yet detected. If you already paid, please wait a moment and try again.');
+                    setPaymentHelpOpen(true);
+                    alert('Payment not yet detected. If you sent a different amount, tap Payment Help below and keep your receipt for manual review.');
                 } else {
                     alert(data.error || 'Verification failed.');
                 }
@@ -3460,6 +3478,50 @@ document.addEventListener('input', function(e) {
             pollInterval = null;
         }
     }
+
+    function setPaymentHelpOpen(isOpen) {
+        const panel = document.getElementById('payment-help-panel');
+        const btn = document.getElementById('payment-help-btn');
+        if (!panel || !btn) {
+            return;
+        }
+
+        panel.style.display = isOpen ? 'block' : 'none';
+        btn.textContent = isOpen
+            ? 'Hide Payment Help'
+            : 'Need Help? Sent the wrong amount?';
+    }
+
+    window.togglePaymentHelp = function () {
+        const panel = document.getElementById('payment-help-panel');
+        if (!panel) {
+            return;
+        }
+        setPaymentHelpOpen(panel.style.display === 'none' || !panel.style.display);
+    };
+
+    window.copyPaymentHelpDetails = async function () {
+        const payerNumber = document.getElementById('phone-number')?.value?.trim() || 'Not provided';
+        const recipientNumber = document.getElementById('payment-recipient-number')?.textContent?.trim() || 'Not available';
+        const expectedAmount = document.getElementById('payment-send-amount')?.textContent?.trim() || 'Not available';
+        const helpText = [
+            'SafePrint Payment Help',
+            'Customer ID: #' + PAYMENT.customerId,
+            'Document IDs: ' + (PAYMENT.docIds || []).join(', '),
+            'Expected Amount: ' + expectedAmount,
+            'My GCash Number: ' + payerNumber,
+            'Recipient Number: ' + recipientNumber,
+            'Issue: Wrong amount sent / payment not auto-detected',
+            'Receipt needed: Please attach the GCash receipt screenshot and reference number for manual review.',
+        ].join('\n');
+
+        try {
+            await navigator.clipboard.writeText(helpText);
+            alert('Payment help details copied. Send them together with your receipt screenshot and GCash reference number for manual review.');
+        } catch (err) {
+            window.prompt('Copy these payment help details for manual review:', helpText);
+        }
+    };
 
     /**
      * Cancel payment - confirms with user, deletes print job, redirects home
@@ -3543,10 +3605,12 @@ document.addEventListener('input', function(e) {
             const data = await response.json();
             const banner = document.getElementById('printer-unavailable-banner');
             const payBtn = document.getElementById('pay-now-btn');
+            const phoneInput = document.getElementById('phone-number');
 
             if (!data.available) {
                 printersAvailable = false;
                 if (payBtn) payBtn.disabled = true;
+                if (phoneInput) phoneInput.disabled = true;
                 if (banner) {
                     let msg = '';
                     if (data.all_offline) {
@@ -3565,6 +3629,7 @@ document.addEventListener('input', function(e) {
             } else {
                 printersAvailable = true;
                 if (payBtn && !payBtn.classList.contains('processing')) payBtn.disabled = false;
+                if (phoneInput) phoneInput.disabled = false;
                 if (banner) banner.style.display = 'none';
             }
         } catch (e) {

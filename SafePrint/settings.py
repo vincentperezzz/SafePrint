@@ -107,6 +107,7 @@ USE_I18N = True
 USE_L10N = True
 
 USE_TZ = True
+ENABLE_QUEUE_MONITOR = config('ENABLE_QUEUE_MONITOR', default=True, cast=bool)
 
 # Static files configuration
 STATIC_URL = '/static/'

@@ -27,8 +27,10 @@
             border: 1px solid #eee;
         }
         .logo {
-            width: 100px;
-            border-radius: 18px;
+            width: 180px;
+            max-width: 100%;
+            height: auto;
+            border-radius: 0;
             margin-bottom: 20px;
         }
         h1 {
@@ -81,7 +83,7 @@
 </head>
 <body>
     <div class="card">
-        <img src="assets/MainPic.PNG" alt="SafePrint Logo" class="logo">
+        <img src="logo.png" alt="SafePrint Logo" class="logo">
         <h1>Welcome to SafePrint</h1>
         <p>Your one-stop solution for secure and efficient printing.</p>
         
@@ -91,6 +93,12 @@
             <input type="hidden" name="dst" value="https://safeprint.duckdns.org/">
             <button type="submit" class="btn">Print using SAFEPRINT Printing Vendo</button>
         </form>
+
+        <div class="manual-link">
+            Or open
+            <a href="https://safeprint.duckdns.org/">safeprint.duckdns.org</a>
+            directly after login.
+        </div>
 
         <div class="manual-link">
             If the portal does not open automatically, visit

@@ -84,7 +84,7 @@ def backfill_audit_snapshots(apps, schema_editor):
             history.customer_id_snapshot = history.customer_id_snapshot or document.customer_id
             history.doc_name_snapshot = history.doc_name_snapshot or document.original_name or document.filename or ''
         if printer:
-            history.printer_name_snapshot = history.printer_name_snapshot or printer.name
+            history.printer_name_snapshot = history.printer_name_snapshot or printer.printer_name
         history.save()
 
     for reprint in DocumentReprintLog.objects.select_related('document').all().iterator():

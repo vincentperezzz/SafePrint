@@ -217,7 +217,7 @@ Account Settings
             </span>
         </div>
 
-        <div class="user-accounts-table">
+        <div id="user-accounts-table" class="user-accounts-table">
             <div class="user-accounts-header">
                 <span>User Accounts</span>
             </div>
@@ -242,19 +242,20 @@ Account Settings
                 </div>
             {% endif %}
             {% empty %}
-            <div class="user-account-row">
+            <div class="user-account-row empty-row">
                 <div class="user-info">
                     <div class="user-name">No users found.</div>
                 </div>
             </div>
             {% endfor %}
 
-           <div class="user-account-row" id="no-match-row" style="display:none;">
+             <div class="user-account-row empty-row" id="no-match-row" style="display:none;">
               <div class="user-info">
                   <div class="user-name">No match found.</div>
               </div>
           </div> 
         </div>
+          <div id="user-accounts-pagination" class="pagination-controls"></div>
 
         <button class="create-account-btn" id="createAccountBtn" onclick="showPopupOverlay('createAccountOverlay')">
             Create new account
@@ -280,7 +281,7 @@ Account Settings
         <button class="modal-header-btn" id="closeFeedbackModal">Done</button>
     </div>
     <hr class="modal-divider">
-    <div class="feedback-list">
+    <div id="feedback-list-container" class="feedback-list">
       {% for feedback in feedback_comments %}
         <div class="feedback-card">
           <b>Name</b><br>
@@ -293,11 +294,12 @@ Account Settings
           {{ feedback.submitted_at|date:"Y-m-d h:i A" }}
         </div>
       {% empty %}
-        <div class="feedback-card">
+        <div class="feedback-card empty-row">
           <b>No feedback comments found.</b>
         </div>
       {% endfor %}
     </div>
+    <div id="feedback-pagination" class="pagination-controls"></div>
   </div>
 </div>
 
@@ -309,7 +311,7 @@ Account Settings
         <button class="problem-header-btn" id="closeProblemModal">Done</button>
     </div>
     <hr class="modal-divider">
-    <div class="feedback-list">
+    <div id="problem-list-container" class="feedback-list">
       {% for feedback in problem_reports %}
         <div class="feedback-card">
           <b>Name</b><br>
@@ -322,11 +324,12 @@ Account Settings
           {{ feedback.submitted_at|date:"Y-m-d h:i A" }}
         </div>
       {% empty %}
-        <div class="feedback-card">
+        <div class="feedback-card empty-row">
           <b>No problem reports found.</b>
         </div>
       {% endfor %}
     </div>
+    <div id="problem-pagination" class="pagination-controls"></div>
   </div>
 </div>
 <!-- Overlay background -->

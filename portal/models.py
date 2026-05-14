@@ -219,6 +219,17 @@ class Printer(models.Model):
     tray_current_count = models.IntegerField(null=True, blank=True)
     tray_level = models.CharField(max_length=20, default='Needs Refill')  # Full, Low, Needs Refill
     last_refill_time = models.DateTimeField(null=True, blank=True)
+    scheduling_weight = models.PositiveIntegerField(default=1)
+    last_assigned_at = models.DateTimeField(null=True, blank=True)
+    active_job_count = models.PositiveIntegerField(default=0)
+
+    @property
+    def name(self):
+        return self.printer_name
+
+    @name.setter
+    def name(self, value):
+        self.printer_name = value
 
     def __str__(self):
         return self.printer_name
@@ -232,6 +243,10 @@ class Document(models.Model):
     GSM_CHOICES = Printer.GSM_CHOICES
     ORIENTATION_CHOICES = Printer.ORIENTATION_CHOICES
     COLOR_MODE_CHOICES = Printer.COLOR_MODE_CHOICES
+
+    class QueuePriority(models.IntegerChoices):
+        REROUTE = 0, 'Reroute'
+        NORMAL = 1, 'Normal'
 
     # Document status choices
     DOC_STATUS_CHOICES = [
@@ -258,6 +273,8 @@ class Document(models.Model):
     file_type = models.CharField(max_length=50)
     file_size = models.IntegerField()
     doc_status = models.CharField(max_length=50, choices=DOC_STATUS_CHOICES, default='Pending')
+    queue_priority = models.PositiveSmallIntegerField(default=QueuePriority.NORMAL, db_index=True)
+    queued_at = models.DateTimeField(null=True, blank=True, db_index=True)
     status_updated_at = models.DateTimeField(auto_now=True)  # Track last status change
     time_submitted = models.DateTimeField()
     printer_assigned = models.ForeignKey(

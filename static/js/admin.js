@@ -132,7 +132,7 @@ function setupPagination(containerId, rowSelector, controlsId, perPage) {
 
     function getRows() {
         return Array.from(container.querySelectorAll(rowSelector)).filter(function(r) {
-            return !r.classList.contains('empty-row') && r.style.display !== 'none-by-search';
+            return !r.classList.contains('empty-row') && r.dataset.paginationHidden !== 'true';
         });
     }
 
@@ -1335,12 +1335,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     const username = usernameDiv.textContent.toLowerCase();
                     const name = nameDiv.textContent.toLowerCase();
                     const match = username.includes(filter) || name.includes(filter);
+                    row.dataset.paginationHidden = match ? 'false' : 'true';
                     row.style.display = match ? '' : 'none';
                     if (match) visibleCount++;
                 }
             });
             // Show "No match found" only if there are no visible user rows
             document.getElementById('no-match-row').style.display = visibleCount === 0 ? 'flex' : 'none';
+            if (userAccountsPg) userAccountsPg.render();
         });
     }
 
@@ -2358,6 +2360,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Queue page pagination ---
     if (document.getElementById('queue-rows-container')) {
         setupPagination('queue-rows-container', '.on-queue-row:not(.on-queue-empty)', 'queue-pagination', 5);
+    }
+
+    // --- Sales page pagination ---
+    if (document.getElementById('sales-transactions-table')) {
+        setupPagination('sales-transactions-table', '.printer-table-row', 'sales-transactions-pagination', 10);
+    }
+
+    // --- Settings page pagination ---
+    var userAccountsPg = null;
+    if (document.getElementById('user-accounts-table')) {
+        userAccountsPg = setupPagination('user-accounts-table', '.user-account-row', 'user-accounts-pagination', 8);
+    }
+
+    if (document.getElementById('feedback-list-container')) {
+        setupPagination('feedback-list-container', '.feedback-card', 'feedback-pagination', 5);
+    }
+
+    if (document.getElementById('problem-list-container')) {
+        setupPagination('problem-list-container', '.feedback-card', 'problem-pagination', 5);
     }
 
     // --- Completed page pagination (per printer card) ---
