@@ -14,6 +14,7 @@ from portal.views import (
 	_claim_next_queued_document_for_printer,
 	_cancel_document_with_auto_voucher,
 	_cancel_cups_job,
+	_iter_document_print_jobs,
 	assign_document_to_printer,
 	check_queued_documents,
 	print_page,
@@ -23,6 +24,35 @@ from portal.views import (
 
 
 class PrintCompletionFallbackTests(TestCase):
+	def test_multiple_copies_are_scheduled_copy_by_copy(self):
+		document = Document.objects.create(
+			doc_id='DOC-COPY-ORDER-1',
+			customer_id='CID-COPY-ORDER',
+			filename='copy-order.pdf',
+			num_copies=2,
+			pages_num='1-2',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='A4',
+			paper_quality='70',
+			original_name='copy-order.pdf',
+			stored_name='copy-order.pdf',
+			file_name='copy-order.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Printing',
+			time_submitted=timezone.now(),
+		)
+
+		jobs = list(_iter_document_print_jobs(document))
+
+		self.assertEqual(jobs, [
+			(2, 1, 2),
+			(1, 1, 2),
+			(2, 2, 2),
+			(1, 2, 2),
+		])
+
 	@override_settings(MEDIA_ROOT='/tmp/safeprint-test-media')
 	def test_marks_rerouted_page_complete_when_cups_job_disappears_but_printer_stays_printing(self):
 		with tempfile.TemporaryDirectory(prefix='safeprint-media-') as media_root:
@@ -70,6 +100,7 @@ class PrintCompletionFallbackTests(TestCase):
 						pass
 
 				with patch('portal.views._resolve_cups_queue_name', return_value='printer_queue'), \
+					 patch('portal.views._get_cups_printer_state', return_value='idle'), \
 					 patch('portal.views.subprocess.run', return_value=SimpleNamespace(stdout='request id is printer_queue-42 (1 file(s))\n', stderr='')), \
 					 patch('portal.views._get_cups_job_state', side_effect=['pending', 'unknown', 'unknown', 'unknown']), \
 					 patch('portal.views.time.sleep', return_value=None), \

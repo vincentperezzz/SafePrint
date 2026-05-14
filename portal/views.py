@@ -3500,9 +3500,17 @@ def _finish_document_if_complete(document, *, printer=None):
     return True
 
 
-def print_page(document, page_num):
-    # Extract print preferences from document
+def _iter_document_print_jobs(document):
     copies = max(1, int(getattr(document, 'num_copies', 1) or 1))
+    remaining_pages = sorted(list(document.get_remaining_pages()), reverse=True)
+
+    for copy_index in range(1, copies + 1):
+        for page_num in remaining_pages:
+            yield page_num, copy_index, copies
+
+
+def print_page(document, page_num, *, copy_index=1, total_copies=1):
+    # Extract print preferences from document
     orientation = getattr(document, 'orientation', 'portrait')
     color_mode = getattr(document, 'color_mode', 'color')
     paper_size = getattr(document, 'paper_size', 'A4')
@@ -3622,7 +3630,10 @@ def print_page(document, page_num):
                 reroute_document_on_error(document, failed_printer=printer)
                 return
     # Send print job
-    print(f"[PRINT] Sending page {page_num} of document {document.doc_id} to printer {printer.printer_name} ({printer.printer_status})")
+    print(
+        f"[PRINT] Sending page {page_num} copy {copy_index}/{total_copies} of document "
+        f"{document.doc_id} to printer {printer.printer_name} ({printer.printer_status})"
+    )
 
     print(f"[PRINT] Using CUPS queue name: {queue_name}")
     # Map paper_size to printer-compatible media
@@ -3633,7 +3644,7 @@ def print_page(document, page_num):
     lp_cmd = [
         'lp',
         '-d', queue_name,
-        '-n', str(copies),
+        '-n', '1',
         '-o', f'page-ranges={page_num}',
         '-o', f'orientation-requested={"4" if orientation=="Landscape" else "3"}',
         '-o', f'{"print-color-mode=monochrome" if color_mode=="Black and White" else "print-color-mode=color"}',
@@ -3838,15 +3849,21 @@ def print_page(document, page_num):
             
         time.sleep(1)
     # Mark page as printed in DB only after successful print and status transitions
-    page_was_already_recorded = page_num in (document.pages_printed or [])
-    document.mark_page_printed(page_num)
-    if not page_was_already_recorded:
-        RerouteHistory.objects.create(
-            document=document,
-            printer=printer,
-            status=f'Printed page {page_num}'
+    if copy_index >= total_copies:
+        page_was_already_recorded = page_num in (document.pages_printed or [])
+        document.mark_page_printed(page_num)
+        if not page_was_already_recorded:
+            RerouteHistory.objects.create(
+                document=document,
+                printer=printer,
+                status=f'Printed page {page_num}'
+            )
+        print(f"[MARKED] Page {page_num} of document {document.doc_id} marked as printed.")
+    else:
+        print(
+            f"[PRINT] Page {page_num} copy {copy_index}/{total_copies} of document {document.doc_id} completed; "
+            "waiting for final copy before marking the page as printed."
         )
-    print(f"[MARKED] Page {page_num} of document {document.doc_id} marked as printed.")
 
     # Subtract 1 sheet from the printer's tray and update tray level
     printer.refresh_from_db()
@@ -3983,7 +4000,7 @@ def reroute_document_on_error(document, failed_printer=None, failed_job_id=None)
         # send a page that a nested reroute (triggered inside print_page) has
         # already printed. Iterate in reverse so the last page goes first and
         # the output stack ends up in natural page order.
-        for page_num in sorted(list(remaining_pages), reverse=True):
+        for page_num, copy_index, total_copies in _iter_document_print_jobs(document):
             document.refresh_from_db()
             if document.doc_status in ('Finished', 'Picked Up', 'Cancelled'):
                 print(f"[REROUTE] {document.doc_id} reached terminal state '{document.doc_status}' mid-reroute; stopping further prints.")
@@ -3991,7 +4008,12 @@ def reroute_document_on_error(document, failed_printer=None, failed_job_id=None)
             if page_num in (document.pages_printed or []):
                 print(f"[REROUTE] Page {page_num} of {document.doc_id} already marked printed; skipping duplicate submission.")
                 continue
-            print_page(document, page_num)
+            print_page(
+                document,
+                page_num,
+                copy_index=copy_index,
+                total_copies=total_copies,
+            )
 
         # Final safety net: even if print_page returned through an early-exit path
         # (e.g. detected another reroute, or doc state change) we still need to
@@ -4078,8 +4100,7 @@ def _start_document_print_thread(document, printer, *, source):
             print(f"[{source}] Document {doc_id} was deleted before printing started.")
             return
 
-        remaining_pages = current_doc.get_remaining_pages()
-        for page_num in sorted(list(remaining_pages), reverse=True):
+        for page_num, copy_index, total_copies in _iter_document_print_jobs(current_doc):
             try:
                 fresh_doc = Document.objects.get(doc_id=doc_id)
             except Document.DoesNotExist:
@@ -4093,7 +4114,12 @@ def _start_document_print_thread(document, printer, *, source):
                 print(f"[{source}] Page {page_num} of {fresh_doc.doc_id} already printed; skipping duplicate submission.")
                 continue
 
-            print_page(fresh_doc, page_num)
+            print_page(
+                fresh_doc,
+                page_num,
+                copy_index=copy_index,
+                total_copies=total_copies,
+            )
 
         try:
             final_doc = Document.objects.get(doc_id=doc_id)
