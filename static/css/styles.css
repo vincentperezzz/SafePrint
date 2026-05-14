@@ -1235,6 +1235,21 @@ html {
     display:inline-block; 
 }
 
+@media (max-width: 768px) {
+    .doc-right {
+        align-items: stretch;
+        width: 100%;
+    }
+
+    .badge {
+        max-width: 100%;
+        white-space: normal;
+        word-break: break-word;
+        line-height: 1.35;
+        text-align: left;
+    }
+}
+
 .status-primary { 
     background:#f0f7ff; 
     color:#0b66d0; 
