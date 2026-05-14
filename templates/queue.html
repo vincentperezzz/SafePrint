@@ -80,8 +80,17 @@ Printing Queue
                             {% endif %}
                         </div>
                         <div class="queue-col doc-status">
-                            <span class="status-circle status-{{ doc.doc_status|lower }}"></span>
-                            {{ doc.doc_status }}
+                            <div class="queue-status-main">
+                                <span class="status-circle status-{{ doc.doc_status|lower }}"></span>
+                                <span>{{ doc.doc_status }}</span>
+                            </div>
+                            {% if doc.queue_status_meta %}
+                            <div class="queue-status-meta">
+                                {% for item in doc.queue_status_meta %}
+                                <div class="queue-status-meta-item">{{ item }}</div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </div>
                         <div class="queue-col doc-customer">#{{ doc.customer_id }}</div>
                         <div class="queue-col doc-id">#{{ doc.doc_id }}</div>

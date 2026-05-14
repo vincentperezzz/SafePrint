@@ -2276,6 +2276,19 @@ input:focus::placeholder {
     box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.3) inset;
 }
 
+.card-pay-btn:disabled,
+.card-cancel-btn:disabled,
+.card-redirect-btn:disabled {
+    background: #b7bcc6;
+    border-color: #9aa1ad;
+    color: #eef1f5;
+    cursor: not-allowed;
+    pointer-events: none;
+    transform: none;
+    box-shadow: none;
+    opacity: 1;
+}
+
 .card-cancel-btn {
     margin-top: 8px;
     height: 44px;
@@ -2346,6 +2359,13 @@ input:focus::placeholder {
 .payment-success-btn:hover {
     background: #1f7f3b;
     border-color: #1f7f3b;
+}
+
+.phone-input:disabled {
+    background: #eef1f5;
+    color: #7b8491;
+    cursor: not-allowed;
+    opacity: 1;
 }
 
 .payment-spinner {

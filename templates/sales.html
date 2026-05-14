@@ -61,7 +61,7 @@ Sales
             <a href="{% url 'sales_dashboard' %}?voucher_filter=exclude" class="sales-filter-clear">Clear</a>
         </form>
         <p class="sales-meta">{{ paid_transactions_count }} paid transaction records shown.</p>
-        <div class="printer-table sales-table">
+        <div id="sales-transactions-table" class="printer-table sales-table">
             <div class="printer-table-header">
                 <div>Date Paid</div>
                 <div>Customer ID</div>
@@ -85,11 +85,12 @@ Sales
                 <div data-label="Verified By">{{ sale.approved_by|default:"—" }}</div>
             </div>
             {% empty %}
-            <div class="printer-table-row">
+            <div class="printer-table-row empty-row">
                 <div style="grid-column: 1 / -1; text-align: center; padding: 24px;">No paid transactions matched the current filters.</div>
             </div>
             {% endfor %}
         </div>
+        <div id="sales-transactions-pagination" class="pagination-controls"></div>
     </div>
 </section>
 

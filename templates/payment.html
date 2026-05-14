@@ -149,6 +149,24 @@ SafePrint - Payment
                     Copy Number &amp; Open GCash
                 </button>
             </div>
+            <button type="button" id="payment-help-btn" class="card-cancel-btn" onclick="togglePaymentHelp()">
+                Need Help? Sent the wrong amount?
+            </button>
+            <div id="payment-help-panel" class="card-payment-details" style="display: none; margin-top: 12px; border-style: dashed;">
+                <h3 style="margin-bottom: 10px;">Payment Help</h3>
+                <p class="payment-fineprint" style="margin-bottom: 10px;">
+                    Auto-check only matches the exact amount shown above. If you sent more or less than the expected amount,
+                    keep your GCash receipt and reference number for manual review.
+                </p>
+                <p class="payment-fineprint" style="margin-bottom: 14px;">
+                    Use Customer ID <strong>#{{ customer_id }}</strong> when asking for help. Do not cancel this page unless staff tells you to start over.
+                </p>
+                <div class="payment-step-actions">
+                    <button type="button" class="card-redirect-btn payment-copy-btn payment-gcash-btn" onclick="copyPaymentHelpDetails()">
+                        Copy Help Details
+                    </button>
+                </div>
+            </div>
             <button type="button" id="verify-btn" class="card-pay-btn payment-success-btn" onclick="verifyPayment()">
                 I Have Paid ✓
             </button>

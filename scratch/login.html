@@ -28,6 +28,7 @@
         }
         .logo {
             width: 100px;
+            border-radius: 18px;
             margin-bottom: 20px;
         }
         h1 {
@@ -65,20 +66,36 @@
             font-size: 12px;
             color: #999;
         }
+        .manual-link {
+            margin-top: 16px;
+            font-size: 13px;
+            color: #777;
+            line-height: 1.5;
+        }
+        .manual-link a {
+            color: #444;
+            font-weight: 700;
+            text-decoration: none;
+        }
     </style>
 </head>
 <body>
     <div class="card">
-        <img src="https://safeprint.duckdns.org/static/assets/safeprint-logo.png" alt="SafePrint Logo" class="logo">
+        <img src="assets/MainPic.PNG" alt="SafePrint Logo" class="logo">
         <h1>Welcome to SafePrint</h1>
         <p>Your one-stop solution for secure and efficient printing.</p>
         
         <form name="login" action="$(link-login-only)" method="post">
             <input type="hidden" name="username" value="guest">
-            <input type="hidden" name="password" value="">
+            <input type="hidden" name="password" value="none">
             <input type="hidden" name="dst" value="https://safeprint.duckdns.org/">
             <button type="submit" class="btn">Print using SAFEPRINT Printing Vendo</button>
         </form>
+
+        <div class="manual-link">
+            If the portal does not open automatically, visit
+            <a href="http://172.16.0.1/login">http://172.16.0.1/login</a>
+        </div>
 
         <div class="footer">
             Powered by SafePrint © 2026

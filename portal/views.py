@@ -28,6 +28,32 @@ from portal.services.firebase_payment import FirebasePaymentError, claim_notific
 logger = logging.getLogger(__name__)
 
 now = timezone.now()
+QUEUE_MONITOR_INTERVAL_SECONDS = 60.0
+
+
+def _schedule_queue_check(delay_seconds=1.0):
+    timer = threading.Timer(delay_seconds, check_queued_documents)
+    timer.daemon = True
+    timer.start()
+
+
+# #region agent log
+def _dbg(location, message, data=None, hypothesisId='X', runId='initial'):
+    """Debug-mode instrumentation. Writes a single NDJSON line to the session log."""
+    try:
+        with open('/home/safeprint/dev/SafePrint/.cursor/debug-4a5353.log', 'a') as _f:
+            _f.write(json.dumps({
+                'sessionId': '4a5353',
+                'runId': runId,
+                'hypothesisId': hypothesisId,
+                'location': location,
+                'message': message,
+                'data': data or {},
+                'timestamp': int(time.time() * 1000),
+            }) + '\n')
+    except Exception:
+        pass
+# #endregion
 
 
 def _format_dashboard_customer_id(customer_id):
@@ -524,6 +550,7 @@ def _issue_auto_refund_voucher(document, amount, *, details):
 
 def _cancel_document_with_auto_voucher(document, *, reason):
     document.refresh_from_db()
+    assigned_printer = document.printer_assigned
     refund_amount = _calculate_unprinted_refund_amount(document)
     voucher = _issue_auto_refund_voucher(
         document,
@@ -535,17 +562,40 @@ def _cancel_document_with_auto_voucher(document, *, reason):
     if voucher:
         message = f'{reason} Auto voucher {voucher.code} generated for ₱{refund_amount:.2f}.'
 
-    document.doc_status = 'Cancelled'
-    document.printer_assigned = None
-    document.status_updated_at = timezone.now()
-    document.save(update_fields=['doc_status', 'printer_assigned', 'status_updated_at'])
-
-    RerouteHistory.objects.create(
+    # Create the auto-voucher RerouteHistory entry BEFORE flipping the doc to
+    # Cancelled. The customer SSE stream picks the latest 'Error: ...' entry as
+    # `cancel_reason` the moment it sees doc_status='Cancelled' — if we save the
+    # doc first, there's a race window where SSE emits a stale prior cancel
+    # reason (e.g. "Error: Sleep") and the frontend voucher alert never matches
+    # because it looks for the substring "auto voucher".
+    _voucher_history = RerouteHistory.objects.create(
         document=document,
         printer=None,
         status=f'Error: {message}',
         timestamp=timezone.now(),
     )
+
+    document.doc_status = 'Cancelled'
+    document.printer_assigned = None
+    document.status_updated_at = timezone.now()
+    document.save(update_fields=['doc_status', 'printer_assigned', 'status_updated_at'])
+    _sync_printer_scheduler_state(assigned_printer)
+    # #region agent log
+    _dbg('views.py:_cancel_document_with_auto_voucher:fired', 'doc cancelled with auto voucher (ping-pong loop terminated)', {
+        'doc_id': document.doc_id,
+        'reason': reason,
+        'refund_amount': str(refund_amount) if refund_amount is not None else None,
+        'voucher_code': voucher.code if voucher else None,
+    }, hypothesisId='H9')
+    # #endregion
+    # #region agent log
+    _dbg('views.py:_cancel_document_with_auto_voucher:history_created', 'auto-voucher RerouteHistory persisted', {
+        'doc_id': document.doc_id,
+        'history_id': _voucher_history.id,
+        'status': _voucher_history.status,
+        'timestamp': _voucher_history.timestamp.isoformat() if _voucher_history.timestamp else None,
+    }, hypothesisId='H1')
+    # #endregion
     Feedback.objects.create(
         category='Report a Problem',
         name='[SYSTEM GENERATED]',
@@ -574,8 +624,25 @@ def _expire_stale_payment_intents(customer_id=None):
             locked_intent.save(update_fields=['status', 'updated_at'])
 
 
+def _queue_document_for_dispatch(document, *, priority, queued_at=None, clear_printer=True):
+    queued_at = queued_at or timezone.now()
+    document.doc_status = 'Queued'
+    document.queue_priority = priority
+    document.queued_at = queued_at
+    document.status_updated_at = queued_at
+
+    update_fields = ['doc_status', 'queue_priority', 'queued_at', 'status_updated_at']
+    if clear_printer and document.printer_assigned_id is not None:
+        document.printer_assigned = None
+        update_fields.append('printer_assigned')
+
+    document.save(update_fields=update_fields)
+    return document
+
+
 def _mark_customer_documents_paid(payments, *, approved_by, payment_method):
     approved_at = timezone.now()
+    queued_any = False
     for payment_obj in payments:
         payment_obj.payment_status = 'Paid'
         payment_obj.payment_method = payment_method
@@ -584,8 +651,15 @@ def _mark_customer_documents_paid(payments, *, approved_by, payment_method):
         payment_obj.save(update_fields=['payment_status', 'payment_method', 'approved_at', 'approved_by'])
 
         document = payment_obj.doc
-        document.doc_status = 'Queued'
-        document.save(update_fields=['doc_status', 'status_updated_at'])
+        _queue_document_for_dispatch(
+            document,
+            priority=Document.QueuePriority.NORMAL,
+            queued_at=approved_at,
+        )
+        queued_any = True
+
+    if queued_any:
+        _schedule_queue_check(1.0)
 
 
 def _payment_gateway_context(site):
@@ -646,31 +720,186 @@ def _get_matching_printers(document, *, allowed_statuses):
     return [printer for printer in candidate_printers if _printer_has_required_stock(printer, document)]
 
 
-def _available_printers_for_document(document, *, allowed_statuses, exclude_printer_id=None):
-    busy_printer_ids = set(
-        Document.objects.filter(
-            doc_status='Printing',
-            printer_assigned__isnull=False,
-        ).exclude(doc_id=document.doc_id).values_list('printer_assigned_id', flat=True)
-    )
+def _available_printers_for_document(
+    document,
+    *,
+    allowed_statuses,
+    exclude_printer_id=None,
+    exclude_printer_ids=None,
+    lock_rows=False,
+    sync_scheduler_state=False,
+    require_idle=True,
+):
+    excluded_ids = set()
+    if exclude_printer_id is not None:
+        excluded_ids.add(exclude_printer_id)
+    if exclude_printer_ids:
+        excluded_ids.update(pid for pid in exclude_printer_ids if pid is not None)
 
     candidate_printers = Printer.objects.filter(
         paper_assigned=document.paper_size,
         is_temporarily_disabled=False,
         printer_status__in=allowed_statuses,
+    ).exclude(id__in=excluded_ids).order_by('id')
+
+    if lock_rows:
+        candidate_printers = candidate_printers.select_for_update()
+
+    available_printers = []
+    for printer in candidate_printers:
+        if sync_scheduler_state:
+            _sync_printer_scheduler_state(printer)
+        if require_idle and (getattr(printer, 'active_job_count', 0) or 0) > 0:
+            continue
+        if not _printer_has_required_stock(printer, document):
+            continue
+        available_printers.append(printer)
+
+    available_printers.sort(key=_printer_scheduler_sort_key)
+    return available_printers
+
+
+def _printer_scheduler_sort_key(printer):
+    last_assigned_at = getattr(printer, 'last_assigned_at', None)
+    scheduling_weight = max(1, int(getattr(printer, 'scheduling_weight', 1) or 1))
+    return (
+        getattr(printer, 'active_job_count', 0) or 0,
+        0 if last_assigned_at is None else 1,
+        0 if last_assigned_at is None else int(last_assigned_at.timestamp() * 1000000),
+        -scheduling_weight,
+        printer.id,
     )
-    return [
-        printer for printer in candidate_printers
-        if printer.id not in busy_printer_ids
-        and (exclude_printer_id is None or printer.id != exclude_printer_id)
-        and _printer_has_required_stock(printer, document)
-    ]
+
+
+def _sync_printer_scheduler_state(printer, *, assigned_at=None):
+    if not printer or not getattr(printer, 'id', None):
+        return printer
+
+    active_job_count = Document.objects.filter(
+        doc_status='Printing',
+        printer_assigned_id=printer.id,
+    ).count()
+
+    update_fields = []
+    if (getattr(printer, 'active_job_count', 0) or 0) != active_job_count:
+        printer.active_job_count = active_job_count
+        update_fields.append('active_job_count')
+
+    if assigned_at is not None:
+        printer.last_assigned_at = assigned_at
+        update_fields.append('last_assigned_at')
+
+    if update_fields:
+        printer.save(update_fields=update_fields)
+
+    return printer
+
+
+def select_printer_for_document(
+    document,
+    *,
+    allowed_statuses,
+    exclude_printer_id=None,
+    exclude_printer_ids=None,
+    lock_rows=False,
+):
+    available_printers = _available_printers_for_document(
+        document,
+        allowed_statuses=allowed_statuses,
+        exclude_printer_id=exclude_printer_id,
+        exclude_printer_ids=exclude_printer_ids,
+        lock_rows=lock_rows,
+        sync_scheduler_state=True,
+    )
+    return available_printers[0] if available_printers else None
+
+
+def _failed_printer_ids_for_document(document):
+    """Return the set of printer IDs that have already failed for this document.
+
+    A printer is considered failed if there is at least one RerouteHistory entry
+    for this document whose status starts with 'Error', 'Stalled', 'Failed', or
+    'Timeout'. This is used to prevent the rerouter from ping-ponging between
+    the same handful of unhealthy printers forever.
+    """
+    failure_prefixes = ('Error', 'Stalled', 'Failed', 'Timeout')
+    failure_filter = Q()
+    for prefix in failure_prefixes:
+        failure_filter |= Q(status__istartswith=prefix)
+
+    failed_ids = set(
+        RerouteHistory.objects
+        .filter(document=document)
+        .filter(failure_filter)
+        .exclude(printer__isnull=True)
+        .values_list('printer_id', flat=True)
+    )
+    return failed_ids
 
 
 def _active_printer_error_count():
     return Printer.objects.filter(is_temporarily_disabled=False).exclude(
         printer_status__in=['Sleep', 'Ready', 'Printing']
     ).count()
+
+
+def _printer_has_hard_fault(printer):
+    status_value = (getattr(printer, 'printer_status', '') or '').strip().lower()
+    if not status_value or status_value in {'ready', 'sleep', 'printing', 'please wait.'}:
+        return False
+
+    hard_fault_keywords = (
+        'offline',
+        'error',
+        'jam',
+        'out of paper',
+        'no paper',
+        'cover open',
+        'door open',
+        'tray empty',
+        'needs refill',
+    )
+    return any(keyword in status_value for keyword in hard_fault_keywords)
+
+
+def _terminal_no_printer_reason(document):
+    candidate_printers = list(
+        Printer.objects.filter(
+            paper_assigned=document.paper_size,
+            is_temporarily_disabled=False,
+        )
+    )
+
+    if not candidate_printers:
+        return f'No active printer supports {document.paper_size} paper.'
+
+    healthy_and_stocked = [
+        printer for printer in candidate_printers
+        if not _printer_has_hard_fault(printer) and _printer_has_required_stock(printer, document)
+    ]
+    if healthy_and_stocked:
+        return None
+
+    faulted_printers = [printer.printer_name for printer in candidate_printers if _printer_has_hard_fault(printer)]
+    stock_blocked_printers = [
+        printer.printer_name for printer in candidate_printers
+        if not _printer_has_required_stock(printer, document)
+    ]
+
+    reason_parts = []
+    if faulted_printers:
+        reason_parts.append(f'hard faults on {", ".join(faulted_printers)}')
+    if stock_blocked_printers:
+        reason_parts.append(f'insufficient paper stock on {", ".join(stock_blocked_printers)}')
+
+    if reason_parts:
+        return (
+            f'No eligible printer can currently print {document.paper_size} because '
+            + '; '.join(reason_parts)
+            + '.'
+        )
+
+    return None
 
 
 def voucher_management(request):
@@ -1655,7 +1884,45 @@ def printing_queue(request):
     # Reroute histories for on-queue documents
     reroute_histories = {}
     for doc in on_queue_documents:
-        reroute_histories[doc.doc_id] = list(doc.reroute_history.select_related('printer').all())
+        history_entries = list(doc.reroute_history.select_related('printer').all())
+        reroute_histories[doc.doc_id] = history_entries
+
+        printed_pages = sorted({int(page) for page in (doc.pages_printed or [])})
+        total_pages = doc.get_total_pages()
+        remaining_pages = doc.get_remaining_pages()
+        # Match print_document_async: pages are sent highest-first (reverse order).
+        # The next page to print is the largest remaining page number, not the smallest.
+        next_page = remaining_pages[-1] if remaining_pages else None
+
+        latest_reroute = ''
+        for entry in history_entries:
+            if entry.status == 'Rerouted' and entry.printer:
+                latest_reroute = entry.printer.printer_name
+
+        doc.queue_status_meta = []
+        if latest_reroute:
+            doc.queue_status_meta.append(f'Rerouted to {latest_reroute}')
+
+        if printed_pages:
+            ranges = []
+            range_start = printed_pages[0]
+            range_end = printed_pages[0]
+            for page in printed_pages[1:]:
+                if page == range_end + 1:
+                    range_end = page
+                    continue
+                ranges.append(str(range_start) if range_start == range_end else f'{range_start}-{range_end}')
+                range_start = page
+                range_end = page
+            ranges.append(str(range_start) if range_start == range_end else f'{range_start}-{range_end}')
+            page_label = 'Pages' if len(printed_pages) > 1 else 'Page'
+            doc.queue_status_meta.append(f'{page_label} printed: {", ".join(ranges)}')
+
+        if doc.doc_status == 'Printing' and next_page is not None:
+            if total_pages > 0:
+                doc.queue_status_meta.append(f'Printing page {next_page} of {total_pages}')
+            else:
+                doc.queue_status_meta.append(f'Printing page {next_page}')
 
     return render(request, 'queue.html', {
         'on_queue_documents': on_queue_documents,
@@ -2113,13 +2380,16 @@ def approve_all_documents(request):
         docs = list(qs)  # <-- EVALUATE the queryset BEFORE update!
         if not docs:
             return JsonResponse({'success': False, 'error': 'No pending documents found for this customer'})
+
+        now = timezone.now()
         
         # Update doc_status and status_updated_at for all docs
         for doc in docs:
-            doc.doc_status = 'Queued'
-            doc.printer_assigned = None
-            doc.status_updated_at = now
-            doc.save()
+            _queue_document_for_dispatch(
+                doc,
+                priority=Document.QueuePriority.NORMAL,
+                queued_at=now,
+            )
         updated = len(docs)
 
         # Get admin name from session
@@ -2145,35 +2415,7 @@ def approve_all_documents(request):
                 except Payment.DoesNotExist:
                     pass
         
-        # Start printer assignment for all docs in background
         doc_printer_info = []
-        def assign_printer_async(doc_id):
-            try:
-                doc = Document.objects.get(doc_id=doc_id)
-                if doc.doc_status == 'Queued':
-                    printer = assign_document_to_printer(doc)
-                    if printer:
-                        def print_document_async(doc_id):
-                            # Always reload doc from DB before selecting pages so the assigned printer is current.
-                            try:
-                                current_doc = Document.objects.get(doc_id=doc_id)
-                            except Document.DoesNotExist:
-                                print(f"[CANCELLED] Document {doc_id} was deleted before printing started.")
-                                return
-
-                            page_list = current_doc.get_page_list()
-                            page_list.reverse()
-                            for page_num in page_list:
-                                try:
-                                    fresh_doc = Document.objects.get(doc_id=doc_id)
-                                except Document.DoesNotExist:
-                                    print(f"[CANCELLED] Document {doc_id} was deleted before printing page {page_num}.")
-                                    break
-                                print_page(fresh_doc, page_num)
-                        threading.Thread(target=print_document_async, args=(doc.doc_id,)).start()
-            except Document.DoesNotExist:
-                print(f"[CANCELLED] Document {doc_id} was deleted or cancelled before printer assignment.")
-
         for doc in docs:
             # Get reroute history for the document
             history_entries = RerouteHistory.objects.filter(document_id=doc.doc_id).select_related('printer').order_by('timestamp')
@@ -2182,8 +2424,9 @@ def approve_all_documents(request):
                 'doc_id': doc.doc_id,
                 'reroute_history': reroute_history
             }
-            threading.Thread(target=assign_printer_async, args=(doc.doc_id,)).start()
             doc_printer_info.append(doc_info)
+
+        _schedule_queue_check(1.0)
 
         return JsonResponse({
             'success': True, 
@@ -2242,10 +2485,11 @@ def approve_document(request):
         now = timezone.now()
         try:
             doc = Document.objects.get(doc_id=doc_id, doc_status='Pending')
-            doc.doc_status = 'Queued'
-            doc.printer_assigned = None
-            doc.status_updated_at = now
-            doc.save()
+            _queue_document_for_dispatch(
+                doc,
+                priority=Document.QueuePriority.NORMAL,
+                queued_at=now,
+            )
             updated = 1
         except Document.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Document not found'})
@@ -2274,33 +2518,7 @@ def approve_document(request):
         if history_entries.exists():
             reroute_history = [entry.printer.printer_name for entry in history_entries if entry.printer]
 
-        # Start printer assignment in background (don't block UI)
-        def assign_printer_async(doc_id):
-            try:
-                doc = Document.objects.get(doc_id=doc_id)
-                if doc.doc_status == 'Queued':
-                    printer = assign_document_to_printer(doc)
-                    if printer:
-                        def print_document_async(doc_id):
-                            try:
-                                current_doc = Document.objects.get(doc_id=doc_id)
-                            except Document.DoesNotExist:
-                                print(f"[CANCELLED] Document {doc_id} was deleted before printing started.")
-                                return
-
-                            page_list = current_doc.get_page_list()
-                            for page_num in page_list:
-                                try:
-                                    fresh_doc = Document.objects.get(doc_id=doc_id)
-                                except Document.DoesNotExist:
-                                    print(f"[CANCELLED] Document {doc_id} was deleted before printing page {page_num}.")
-                                    break
-                                print_page(fresh_doc, page_num)
-                        threading.Thread(target=print_document_async, args=(doc.doc_id,)).start()
-            except Document.DoesNotExist:
-                print(f"[CANCELLED] Document {doc_id} was deleted or cancelled before printer assignment.")
-
-        threading.Thread(target=assign_printer_async, args=(doc_id,)).start()
+        _schedule_queue_check(1.0)
 
         response_data = {
             'success': True, 
@@ -2663,13 +2881,25 @@ def printer_status_event_stream():
                         pass
                 last_printer_states[printer.id] = current_state
 
+                # SNMP often lags behind physical activity; CUPS sees the queue
+                # as "now printing" while the DB still says Sleep/Ready. Overlay
+                # CUPS so the status page matches what users hear/see on the device.
+                display_status = printer.printer_status
+                try:
+                    qname = _resolve_cups_queue_name(printer)
+                    if qname and display_status in ('Sleep', 'Ready'):
+                        if _get_cups_printer_state(qname) == 'printing':
+                            display_status = 'Printing'
+                except Exception:
+                    pass
+
                 data.append({
                     'id': printer.id,
                     'printer_name': printer.printer_name,
                     'model_name': getattr(printer, 'model_name', ''),
                     'ip_address': printer.ip_address,
                     'node_name': getattr(printer, 'node_name', ''),
-                    'printer_status': printer.printer_status,
+                    'printer_status': display_status,
                     'ink_status': ink_status,
                     'paper_assigned': getattr(printer, 'paper_assigned', ''),
                     'is_temporarily_disabled': bool(getattr(printer, 'is_temporarily_disabled', False)),
@@ -2810,87 +3040,94 @@ def delete_printer(request):
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 
-@transaction.atomic
 def assign_document_to_printer(document, *, wait_for_availability=True):
     import time as _time
     TIMEOUT_SECONDS = 1800  # 30 minutes
     start_time = _time.monotonic()
     while True:
-        # Check if document still exists and is queued
-        try:
-            doc = Document.objects.get(doc_id=document.doc_id)
-        except Document.DoesNotExist:
-            print(f"[CANCELLED] Document {document.doc_id} was deleted or cancelled before printer assignment.")
-            return None
-        if doc.doc_status != 'Queued':
-            print(f"[CANCELLED] Document {document.doc_id} is no longer queued (status: {doc.doc_status}). Aborting printer assignment.")
-            return None
+        cancel_reason = None
+        wait_message = None
 
-        # Check for 30-minute timeout
-        elapsed = _time.monotonic() - start_time
-        if elapsed >= TIMEOUT_SECONDS:
-            print(f"[TIMEOUT] Document {doc.doc_id} waited {elapsed:.0f}s with no printer available. Auto-cancelling.")
-            doc.doc_status = 'Cancelled'
-            doc.save()
-            # Log timeout in reroute history so cancel_reason propagates via SSE
-            RerouteHistory.objects.create(
-                document=doc,
-                printer=None,
-                status='Error: No printer available for 30 minutes'
-            )
-            print(f"[TIMEOUT] Document {doc.doc_id} cancelled. Customer will be prompted to file a ticket.")
-            return None
-
-        # Check if this is a rerouted document (has reroute history)
-        is_rerouted = RerouteHistory.objects.filter(document=doc).exists()
-        
-        available = _available_printers_for_document(
-            doc,
-            allowed_statuses=['Ready', 'Sleep'],
-            exclude_printer_id=getattr(document, 'previous_failed_printer', None),
-        )
-        if available:
-            # Sort by idle time (longer idle time first)
-            # For rerouted documents, prioritize by idle time (WRR nonpreemptive approach)
-            # The printer with the longest idle time gets selected
-            available.sort(key=lambda p: p.last_checked or timezone.now())
-            
-            # For debugging
-            if len(available) > 1:
-                print(f"[WRR] Available printers for document {doc.doc_id}:")
-                for p in available:
-                    last_check = p.last_checked or timezone.now()
-                    idle_time = (timezone.now() - last_check).total_seconds()
-                    print(f"  - {p.printer_name}: Status={p.printer_status}, Idle time={idle_time:.1f}s")
-            
-            # Select the printer with longest idle time
-            printer = available[0]
-            
-            # Log WRR selection
-            if is_rerouted:
-                print(f"[WRR] Selected printer {printer.printer_name} for rerouted document {doc.doc_id} based on longest idle time")
-            else:
-                print(f"[WRR] Selected printer {printer.printer_name} for document {doc.doc_id} based on longest idle time")
-                
-            doc.printer_assigned = printer
-            doc.doc_status = 'Printing'
-            doc.save()
-            # Log assignment in reroute history
-            RerouteHistory.objects.create(document=doc, printer=printer, status='Assigned')
-            print(f"[ASSIGNED] Document {doc.doc_id} assigned to {printer.printer_name}.")
-            return printer
-        else:
-            if not wait_for_availability:
-                print(
-                    f"[ASSIGN] No printer currently available for {doc.doc_id} ({doc.paper_size}). "
-                    "Leaving document queued for a later retry."
-                )
+        with transaction.atomic():
+            try:
+                doc = Document.objects.select_for_update().get(doc_id=document.doc_id)
+            except Document.DoesNotExist:
+                print(f"[CANCELLED] Document {document.doc_id} was deleted or cancelled before printer assignment.")
                 return None
-            print(
-                f"No available printer for {doc.paper_size}. "
-                f"Document {doc.doc_id} paused and will retry in 5 seconds."
-            )
-            _time.sleep(5)
+            if doc.doc_status != 'Queued':
+                print(f"[CANCELLED] Document {document.doc_id} is no longer queued (status: {doc.doc_status}). Aborting printer assignment.")
+                return None
+
+            elapsed = _time.monotonic() - start_time
+            if elapsed >= TIMEOUT_SECONDS:
+                cancel_reason = (
+                    f'No eligible printer became available within {elapsed:.0f} seconds '
+                    f'for {doc.paper_size} paper.'
+                )
+            else:
+                is_rerouted = RerouteHistory.objects.filter(document=doc).exists()
+                cumulative_excludes = _failed_printer_ids_for_document(doc)
+                previous_failed_printer = getattr(document, 'previous_failed_printer', None)
+                if previous_failed_printer is not None:
+                    cumulative_excludes.add(previous_failed_printer)
+
+                available = _available_printers_for_document(
+                    doc,
+                    allowed_statuses=['Ready', 'Sleep'],
+                    exclude_printer_ids=cumulative_excludes,
+                    lock_rows=True,
+                    sync_scheduler_state=True,
+                )
+                if available:
+                    if len(available) > 1:
+                        print(f"[SCHED] Available printers for document {doc.doc_id}:")
+                        for printer_option in available:
+                            print(
+                                f"  - {printer_option.printer_name}: status={printer_option.printer_status}, "
+                                f"active_jobs={printer_option.active_job_count}, "
+                                f"last_assigned_at={printer_option.last_assigned_at}, "
+                                f"weight={printer_option.scheduling_weight}"
+                            )
+
+                    printer = available[0]
+                    assigned_at = timezone.now()
+                    print(
+                        f"[SCHED] Selected printer {printer.printer_name} for {doc.doc_id} "
+                        f"(rerouted={is_rerouted}, active_jobs={printer.active_job_count}, "
+                        f"last_assigned_at={printer.last_assigned_at}, weight={printer.scheduling_weight})"
+                    )
+
+                    doc.printer_assigned = printer
+                    doc.doc_status = 'Printing'
+                    doc.save(update_fields=['printer_assigned', 'doc_status', 'status_updated_at'])
+                    _sync_printer_scheduler_state(printer, assigned_at=assigned_at)
+                    RerouteHistory.objects.create(document=doc, printer=printer, status='Assigned')
+                    print(f"[ASSIGNED] Document {doc.doc_id} assigned to {printer.printer_name}.")
+                    return printer
+
+                terminal_reason = _terminal_no_printer_reason(doc)
+                if terminal_reason:
+                    cancel_reason = terminal_reason
+                elif not wait_for_availability:
+                    print(
+                        f"[ASSIGN] No printer currently available for {doc.doc_id} ({doc.paper_size}). "
+                        "Leaving document queued for a later retry."
+                    )
+                    return None
+                else:
+                    wait_message = (
+                        f"No available printer for {doc.paper_size}. "
+                        f"Document {doc.doc_id} paused and will retry in 5 seconds."
+                    )
+
+        if cancel_reason:
+            print(f"[ASSIGN] {cancel_reason} Cancelling {document.doc_id} with auto voucher.")
+            _cancel_document_with_auto_voucher(document, reason=cancel_reason)
+            return None
+
+        if wait_message:
+            print(wait_message)
+        _time.sleep(5)
 
 
 def _sanitize_cups_queue_name(value):
@@ -2954,18 +3191,70 @@ def _get_cups_job_state(job_id):
         text=True,
         check=False,
     )
-    if _cups_job_list_contains(pending.stdout, job_id):
-        return 'pending'
-
     completed = subprocess.run(
         ['lpstat', '-W', 'completed', '-o'],
         capture_output=True,
         text=True,
         check=False,
     )
-    if _cups_job_list_contains(completed.stdout, job_id):
+    pending_has = _cups_job_list_contains(pending.stdout, job_id)
+    completed_has = _cups_job_list_contains(completed.stdout, job_id)
+    # #region agent log
+    # Capture only the lines that mention our specific job_id to keep logs small but useful.
+    _pending_match = [ln for ln in (pending.stdout or '').splitlines() if job_id in ln]
+    _completed_match = [ln for ln in (completed.stdout or '').splitlines() if job_id in ln]
+    _dbg('views.py:_get_cups_job_state:raw', 'raw lpstat output for job', {
+        'job_id': job_id,
+        'pending_has': pending_has,
+        'completed_has': completed_has,
+        'pending_match_lines': _pending_match[:3],
+        'completed_match_lines': _completed_match[:3],
+        'pending_stdout_first_5_lines': (pending.stdout or '').splitlines()[:5],
+        'completed_stdout_first_5_lines': (completed.stdout or '').splitlines()[:5],
+        'pending_returncode': pending.returncode,
+        'completed_returncode': completed.returncode,
+    }, hypothesisId='H8')
+    # #endregion
+    if pending_has:
+        return 'pending'
+    if completed_has:
         return 'completed'
 
+    return 'unknown'
+
+
+def _get_cups_printer_state(queue_name):
+    """Return the queue's current activity from CUPS.
+
+    Possible return values:
+      - 'printing': CUPS reports the printer is actively working a job right now.
+      - 'idle':     CUPS reports the printer is free / not working on anything.
+      - 'stopped':  CUPS reports the queue is disabled or stopped.
+      - 'unknown':  Could not determine state.
+
+    This lets us distinguish a slow-but-busy printer from one that is sitting
+    idle while our job stays 'pending' (a real, fast-recoverable stall).
+    """
+    if not queue_name:
+        return 'unknown'
+    try:
+        result = subprocess.run(
+            ['lpstat', '-p', queue_name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        return 'unknown'
+    if result.returncode != 0:
+        return 'unknown'
+    output = (result.stdout or '').lower()
+    if 'now printing' in output:
+        return 'printing'
+    if 'is idle' in output:
+        return 'idle'
+    if 'disabled' in output or 'stopped' in output:
+        return 'stopped'
     return 'unknown'
 
 
@@ -3021,9 +3310,36 @@ def _cancel_jobs_for_printer(printer):
     return cancelled
 
 
+def _recent_matching_reroute_history(document, printer, status, *, within_seconds=5):
+    if not document or not status:
+        return False
+
+    last_entry = RerouteHistory.objects.filter(document=document).order_by('-timestamp').first()
+    if not last_entry:
+        return False
+
+    if last_entry.status != status:
+        return False
+
+    last_printer_id = last_entry.printer_id
+    printer_id = getattr(printer, 'id', None)
+    if last_printer_id != printer_id:
+        return False
+
+    if not last_entry.timestamp:
+        return False
+
+    return (timezone.now() - last_entry.timestamp).total_seconds() <= within_seconds
+
+
 def _finish_document_if_complete(document, *, printer=None):
     document.refresh_from_db()
     if document.doc_status in ['Finished', 'Picked Up', 'Cancelled']:
+        # #region agent log
+        _dbg('views.py:_finish_document_if_complete:terminal_short_circuit', 'doc already terminal, return False', {
+            'doc_id': document.doc_id, 'doc_status': document.doc_status,
+        }, hypothesisId='H5')
+        # #endregion
         return False
 
     if document.get_remaining_pages():
@@ -3039,11 +3355,33 @@ def _finish_document_if_complete(document, *, printer=None):
         update_fields.append('printed_at')
 
     document.save(update_fields=update_fields)
+    printers_to_sync = []
+    if document.printer_assigned_id:
+        printers_to_sync.append(document.printer_assigned)
+    if completion_printer and completion_printer.id not in {printer_obj.id for printer_obj in printers_to_sync if printer_obj}:
+        printers_to_sync.append(completion_printer)
+    for printer_obj in printers_to_sync:
+        _sync_printer_scheduler_state(printer_obj)
     print(f"[COMPLETE] Document {document.doc_id} printing complete. Printed at: {document.printed_at}")
+    # #region agent log
+    _dbg('views.py:_finish_document_if_complete:finished', 'doc marked Finished', {
+        'doc_id': document.doc_id,
+        'printed_at': document.printed_at.printer_name if document.printed_at else None,
+    }, hypothesisId='H5')
+    # #endregion
     return True
 
 
 def print_page(document, page_num):
+    # #region agent log
+    _dbg('views.py:print_page:entry', 'print_page entry', {
+        'doc_id': document.doc_id,
+        'page_num': page_num,
+        'doc_status': document.doc_status,
+        'pages_printed': list(document.pages_printed or []),
+        'printer_assigned': document.printer_assigned.printer_name if document.printer_assigned else None,
+    }, hypothesisId='H2')
+    # #endregion
     # Extract print preferences from document
     copies = max(1, int(getattr(document, 'num_copies', 1) or 1))
     orientation = getattr(document, 'orientation', 'portrait')
@@ -3086,11 +3424,54 @@ def print_page(document, page_num):
         # Use the new printer for printing
         printer = document.printer_assigned
     
-    # Only wait for Ready/Sleep if this is the current assigned printer
+    queue_name = _resolve_cups_queue_name(printer)
+
+    # Use live CUPS queue state as the primary readiness signal before submit.
+    # DB/SNMP status remains only as a hardware-fault fallback for cases like
+    # paper jams, empty trays, or offline devices that CUPS does not describe well.
     if document.printer_assigned and document.printer_assigned.id == printer.id:
-        while printer.printer_status not in ['Ready', 'Sleep']:
-            print(f"[WAIT] Printer {printer.printer_name} is {printer.printer_status}. Waiting for Ready/Sleep...")
-            time.sleep(2)
+        while True:
+            printer.refresh_from_db()
+            cups_printer_state = _get_cups_printer_state(queue_name)
+
+            if cups_printer_state == 'idle':
+                break
+
+            if _printer_has_hard_fault(printer) or not _printer_has_required_stock(printer, document):
+                print(
+                    f"[ERROR] Printer {printer.printer_name} reports a hardware fault "
+                    f"before submit (status={printer.printer_status}, tray={printer.tray_level}). Rerouting document."
+                )
+                RerouteHistory.objects.create(
+                    document=document,
+                    printer=printer,
+                    status=f"Error: {printer.printer_status or printer.tray_level or 'Unavailable'}"
+                )
+                reroute_document_on_error(document, failed_printer=printer)
+                return
+
+            if cups_printer_state == 'stopped':
+                print(f"[ERROR] CUPS queue {queue_name} is stopped for printer {printer.printer_name}. Rerouting document.")
+                RerouteHistory.objects.create(
+                    document=document,
+                    printer=printer,
+                    status=f"Error: CUPS queue stopped ({queue_name})"
+                )
+                reroute_document_on_error(document, failed_printer=printer)
+                return
+
+            if cups_printer_state == 'unknown' and printer.printer_status in ['Ready', 'Sleep']:
+                print(
+                    f"[WAIT] CUPS state is unknown for {printer.printer_name}, but DB status is "
+                    f"{printer.printer_status}. Proceeding with submit."
+                )
+                break
+
+            print(
+                f"[WAIT] Printer {printer.printer_name} not ready for submit yet "
+                f"(cups={cups_printer_state}, db={printer.printer_status}). Waiting..."
+            )
+            time.sleep(1)
             printer.refresh_from_db()
             
             # Check again if document has been rerouted to a different printer
@@ -3102,15 +3483,19 @@ def print_page(document, page_num):
             # Increment retry counter
             retries += 1
             
-            # If printer is stuck in error state or other non-operational state for too long
+            # If the queue stays busy/unknown for too long, stop waiting on this printer
+            # and let the rerouter try another candidate.
             if retries >= max_retries:
-                print(f"[ERROR] Printer {printer.printer_name} is not becoming Ready or Sleep (status: {printer.printer_status}). Rerouting document.")
+                print(
+                    f"[ERROR] Printer {printer.printer_name} is not becoming available for submit "
+                    f"(cups={cups_printer_state}, db={printer.printer_status}). Rerouting document."
+                )
                 
                 # Log the failed printer in reroute history
                 RerouteHistory.objects.create(
                     document=document, 
                     printer=printer,
-                    status=f"Error: {printer.printer_status}"
+                    status=f"Error: submit wait cups={cups_printer_state}, printer={printer.printer_status}"
                 )
 
                 # Implement preemptive approach only after repeated non-operational checks.
@@ -3119,8 +3504,7 @@ def print_page(document, page_num):
                 return
     # Send print job
     print(f"[PRINT] Sending page {page_num} of document {document.doc_id} to printer {printer.printer_name} ({printer.printer_status})")
-    
-    queue_name = _resolve_cups_queue_name(printer)
+
     print(f"[PRINT] Using CUPS queue name: {queue_name}")
     # Map paper_size to printer-compatible media
     if paper_size == 'Long':
@@ -3145,6 +3529,12 @@ def print_page(document, page_num):
             print(f"[PRINT] Submitted CUPS job {job_id} for document {document.doc_id} page {page_num}")
     except Exception as e:
         print(f"[ERROR] Failed to print page {page_num} of document {document.doc_id} on printer {printer.printer_name}: {e}")
+        # #region agent log
+        _dbg('views.py:print_page:reroute_trigger_lp_exception', 'lp subprocess raised exception -> reroute', {
+            'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+            'exception': str(e),
+        }, hypothesisId='H7')
+        # #endregion
         printer.printer_status = 'Error'
         printer.save()
         print(f"[REROUTE] Rerouting remaining pages of document {document.doc_id}")
@@ -3157,11 +3547,32 @@ def print_page(document, page_num):
     job_started = False
     ready_fallback_cycles = 0
     pending_stall_cycles = 0
-    
+    missing_job_cycles = 0
+    # Fast-stall counter: CUPS reports the queue idle (not working on anything)
+    # while our job is still pending. That means the printer never picked up
+    # our job, so there is no point waiting the full ~60s long-stall threshold.
+    idle_pending_cycles = 0
+
     while True:
         printer.refresh_from_db()
         cups_job_state = _get_cups_job_state(job_id)
-        
+        # #region agent log
+        _dbg('views.py:print_page:cycle', 'monitor loop cycle state', {
+            'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+            'printer_status': printer.printer_status,
+            'tray_current_count': printer.tray_current_count,
+            'tray_level': printer.tray_level,
+            'cups_job_state': cups_job_state,
+            'job_id': job_id,
+            'job_started': job_started,
+            'wait_cycles': wait_cycles,
+            'error_cycles': error_cycles,
+            'missing_job_cycles': missing_job_cycles,
+            'ready_fallback_cycles': ready_fallback_cycles,
+            'pending_stall_cycles': pending_stall_cycles,
+        }, hypothesisId='H8')
+        # #endregion
+
         # Also check if the document still exists and hasn't been canceled
         try:
             doc_check = Document.objects.get(doc_id=document.doc_id)
@@ -3170,10 +3581,25 @@ def print_page(document, page_num):
             # Check if document has been rerouted to a different printer
             if doc_check.printer_assigned and doc_check.printer_assigned.id != printer.id:
                 print(f"[REROUTED] Document {document.doc_id} was rerouted from {printer.printer_name} to {doc_check.printer_assigned.printer_name} during printing. Stopping monitoring of original printer.")
+                # #region agent log
+                _dbg('views.py:print_page:early_return_rerouted_mid_print', 'returning early due to mid-print reroute (no mark_page/finish call)', {
+                    'doc_id': document.doc_id, 'page_num': page_num,
+                    'monitored_printer': printer.printer_name,
+                    'new_printer': doc_check.printer_assigned.printer_name,
+                    'pages_printed': list(doc_check.pages_printed or []),
+                }, hypothesisId='H2')
+                # #endregion
                 return
                 
             if doc_check.doc_status not in ['Queued', 'Printing']:
                 print(f"[CANCELLED] Document {document.doc_id} status changed to {doc_check.doc_status} while waiting. Aborting.")
+                # #region agent log
+                _dbg('views.py:print_page:early_return_status_changed', 'returning early because doc_status not Queued/Printing', {
+                    'doc_id': document.doc_id, 'page_num': page_num,
+                    'doc_status': doc_check.doc_status,
+                    'pages_printed': list(doc_check.pages_printed or []),
+                }, hypothesisId='H2')
+                # #endregion
                 return
         except Document.DoesNotExist:
             print(f"[CANCELLED] Document {document.doc_id} was deleted while waiting for printer to finish. Aborting.")
@@ -3181,15 +3607,109 @@ def print_page(document, page_num):
 
         if cups_job_state == 'completed':
             print(f"[CUPS] Job {job_id} completed for document {document.doc_id} page {page_num}.")
+            # #region agent log
+            _dbg('views.py:print_page:break_cups_completed', 'cups_completed break -> will mark page printed', {
+                'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+            }, hypothesisId='H2')
+            # #endregion
             break
 
         if printer.printer_status == 'Printing' or cups_job_state == 'pending':
             job_started = True
             ready_fallback_cycles = 0
 
+        # Some printers keep reporting "Printing" briefly after CUPS has already dropped the job.
+        # Once the job was observed as started, treat a sustained missing CUPS job as completion
+        # instead of waiting forever for SNMP to flip back to Ready/Sleep.
+        if job_id and cups_job_state == 'unknown' and job_started and printer.printer_status in ['Printing', 'Ready', 'Sleep']:
+            missing_job_cycles += 1
+            if missing_job_cycles >= 3:
+                print(
+                    f"[FALLBACK] CUPS no longer reports job {job_id} for document {document.doc_id} "
+                    f"page {page_num} while printer {printer.printer_name} remains {printer.printer_status}. "
+                    "Assuming page completed."
+                )
+                # #region agent log
+                _dbg('views.py:print_page:break_missing_job_fallback', 'missing-job fallback break -> will mark page', {
+                    'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+                    'printer_status': printer.printer_status,
+                }, hypothesisId='H2')
+                # #endregion
+                break
+        else:
+            missing_job_cycles = 0
+
+        # Fast-stall path: if CUPS reports the queue is idle but our job is
+        # still 'pending', the printer never picked the job up. Don't make the
+        # customer wait the full 60s long-stall threshold for those — reroute
+        # quickly. A busy "now printing" queue resets this counter immediately.
+        if job_started and cups_job_state == 'pending':
+            cups_printer_activity = _get_cups_printer_state(queue_name)
+            # #region agent log
+            _dbg('views.py:print_page:fast_stall_probe', 'cups printer activity probe', {
+                'doc_id': document.doc_id, 'page_num': page_num, 'queue_name': queue_name,
+                'cups_printer_activity': cups_printer_activity,
+                'idle_pending_cycles': idle_pending_cycles,
+                'cups_job_state': cups_job_state,
+            }, hypothesisId='H10', runId='post-fix')
+            # #endregion
+            if cups_printer_activity == 'idle':
+                idle_pending_cycles += 1
+            elif cups_printer_activity == 'printing':
+                # Printer is actively working our job — clear both stall counters
+                # and let the normal completion path handle it.
+                idle_pending_cycles = 0
+                pending_stall_cycles = 0
+            else:
+                # Unknown / stopped: don't fast-stall on this cycle but don't
+                # reset either, so a sustained 'unknown' eventually falls through
+                # to the long-stall safety net.
+                pass
+            if idle_pending_cycles >= 8:
+                # #region agent log
+                _dbg('views.py:print_page:fast_stall_idle', 'fast-stall: queue idle while job pending -> reroute', {
+                    'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+                    'queue_name': queue_name,
+                    'cups_printer_activity': cups_printer_activity,
+                    'idle_pending_cycles': idle_pending_cycles,
+                    'pending_stall_cycles': pending_stall_cycles,
+                }, hypothesisId='H10', runId='post-fix')
+                # #endregion
+                print(
+                    f"[FAST-STALL] CUPS queue {queue_name} is idle while job {job_id} is pending "
+                    f"for document {document.doc_id} page {page_num}. Initiating reroute."
+                )
+                RerouteHistory.objects.create(
+                    document=document,
+                    printer=printer,
+                    status=f"Stalled: queue idle, cups={cups_job_state}",
+                    timestamp=timezone.now(),
+                )
+                reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
+                return
+        else:
+            idle_pending_cycles = 0
+
         if job_started and cups_job_state == 'pending' and printer.printer_status in ['Ready', 'Sleep']:
             pending_stall_cycles += 1
-            if pending_stall_cycles >= 15:
+            # Real printers (e.g. Brother DCP-T430W) can take 30-50s to physically
+            # print a single page; CUPS keeps the job in 'pending' the entire time.
+            # Use a generous 60-cycle (~60s) threshold so we don't reroute a job
+            # that is actually being printed right now.
+            if pending_stall_cycles >= 60:
+                # Final completion check: a previous reproduction proved that the
+                # job often moves to 'completed' within ~0.5s of when the stall
+                # would have fired. Poll once more before declaring a stall so we
+                # don't kill an already-finished print and trigger a duplicate.
+                final_state = _get_cups_job_state(job_id)
+                if final_state == 'completed':
+                    # #region agent log
+                    _dbg('views.py:print_page:break_stall_late_complete', 'stall poll caught late-completion; treating as success', {
+                        'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+                        'pending_stall_cycles': pending_stall_cycles,
+                    }, hypothesisId='H2', runId='post-fix')
+                    # #endregion
+                    break
                 print(
                     f"[STALL] Job {job_id or 'unknown'} for document {document.doc_id} stayed pending "
                     f"while printer {printer.printer_name} remained {printer.printer_status}. Initiating reroute."
@@ -3200,6 +3720,15 @@ def print_page(document, page_num):
                     status=f"Stalled: printer={printer.printer_status}, cups={cups_job_state}",
                     timestamp=timezone.now()
                 )
+                # #region agent log
+                _dbg('views.py:print_page:reroute_trigger_stall', 'pending_stall_cycles>=60 -> reroute', {
+                    'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+                    'printer_status': printer.printer_status,
+                    'cups_job_state': cups_job_state,
+                    'pending_stall_cycles': pending_stall_cycles,
+                    'final_state_at_stall': final_state,
+                }, hypothesisId='H7', runId='post-fix')
+                # #endregion
                 reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
                 return
         else:
@@ -3213,9 +3742,21 @@ def print_page(document, page_num):
                     f"[FALLBACK] Printer {printer.printer_name} returned to {printer.printer_status} "
                     f"and CUPS no longer reports job {job_id} for document {document.doc_id} page {page_num}."
                 )
+                # #region agent log
+                _dbg('views.py:print_page:break_ready_fallback', 'ready-fallback break -> will mark page', {
+                    'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+                    'printer_status': printer.printer_status,
+                }, hypothesisId='H2')
+                # #endregion
                 break
         elif not job_id and job_started and printer.printer_status in ['Ready', 'Sleep']:
             print(f"[FALLBACK] Printer {printer.printer_name} returned to {printer.printer_status} after printing page {page_num}.")
+            # #region agent log
+            _dbg('views.py:print_page:break_no_jobid_fallback', 'no-jobid fallback break -> will mark page', {
+                'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+                'printer_status': printer.printer_status,
+            }, hypothesisId='H2')
+            # #endregion
             break
         else:
             ready_fallback_cycles = 0
@@ -3237,6 +3778,17 @@ def print_page(document, page_num):
                     status=f"Error: {printer.printer_status}",
                     timestamp=timezone.now()
                 )
+                # #region agent log
+                _dbg('views.py:print_page:reroute_trigger_error_cycles', 'error_cycles>=max -> reroute (page may have already printed!)', {
+                    'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+                    'printer_status': printer.printer_status,
+                    'cups_job_state': cups_job_state,
+                    'job_id': job_id,
+                    'job_started': job_started,
+                    'error_cycles': error_cycles,
+                    'wait_cycles': wait_cycles,
+                }, hypothesisId='H7')
+                # #endregion
                 # Reroute remaining pages (preemptive approach)
                 reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
                 return
@@ -3253,6 +3805,14 @@ def print_page(document, page_num):
         
         # If we've waited too long regardless of status, consider rerouting
         if wait_cycles >= max_wait_cycles:
+            # #region agent log
+            _dbg('views.py:print_page:reroute_trigger_timeout', 'wait_cycles>=max -> reroute', {
+                'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+                'printer_status': printer.printer_status,
+                'cups_job_state': cups_job_state,
+                'wait_cycles': wait_cycles,
+            }, hypothesisId='H7')
+            # #endregion
             print(
                 f"[TIMEOUT] Printer {printer.printer_name} did not confirm completion for page {page_num} "
                 f"within {max_wait_cycles} seconds (status={printer.printer_status}, cups_job={cups_job_state}). Initiating reroute."
@@ -3270,6 +3830,14 @@ def print_page(document, page_num):
             
         time.sleep(1)
     # Mark page as printed in DB only after successful print and status transitions
+    # #region agent log
+    _dbg('views.py:print_page:post_break_pre_mark', 'broke out of monitor loop, about to mark_page_printed', {
+        'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+        'pages_printed_before': list(document.pages_printed or []),
+        'pages_printed_types': [type(p).__name__ for p in (document.pages_printed or [])],
+        'page_num_type': type(page_num).__name__,
+    }, hypothesisId='H2|H3')
+    # #endregion
     page_was_already_recorded = page_num in (document.pages_printed or [])
     document.mark_page_printed(page_num)
     if not page_was_already_recorded:
@@ -3279,6 +3847,12 @@ def print_page(document, page_num):
             status=f'Printed page {page_num}'
         )
     print(f"[MARKED] Page {page_num} of document {document.doc_id} marked as printed.")
+    # #region agent log
+    _dbg('views.py:print_page:post_mark', 'after mark_page_printed', {
+        'doc_id': document.doc_id, 'page_num': page_num,
+        'pages_printed_after': list(document.pages_printed or []),
+    }, hypothesisId='H3')
+    # #endregion
 
     # Subtract 1 sheet from the printer's tray and update tray level
     printer.refresh_from_db()
@@ -3297,18 +3871,61 @@ def print_page(document, page_num):
         printer.save(update_fields=['tray_current_count', 'tray_level'])
         print(f"[PAPER] Printer {printer.printer_name}: {printer.tray_current_count} sheets remaining ({printer.tray_level})")
 
-    _finish_document_if_complete(document, printer=printer)
+    # #region agent log
+    _dbg('views.py:print_page:before_final_finish_check', 'calling _finish_document_if_complete from print_page end', {
+        'doc_id': document.doc_id, 'page_num': page_num, 'printer': printer.printer_name,
+    }, hypothesisId='H5')
+    # #endregion
+    _result = _finish_document_if_complete(document, printer=printer)
+    # #region agent log
+    _dbg('views.py:print_page:after_final_finish_check', 'return value from final finish check', {
+        'doc_id': document.doc_id, 'page_num': page_num, 'finished': _result,
+    }, hypothesisId='H5')
+    # #endregion
 
 
 def reroute_document_on_error(document, failed_printer=None, failed_job_id=None):
     """
-    Implements the Weighted Round Robin (WRR) approach for rerouting:
+    Reroute a document using the shared printer scheduler:
     - Preemptive: Document with error is immediately stopped and rerouted (already handled by caller)
     - Nonpreemptive: Rerouted document gets priority in the queue but doesn't interrupt current printing
+
+    Safety guarantees:
+    - Never reroutes a document that is already in a terminal state (Finished/Picked Up/Cancelled).
+    - Always re-evaluates completion at the end so the document does not get stuck in 'Printing'
+      after the new printer has actually finished the remaining pages.
     """
     document.refresh_from_db()
+    # #region agent log
+    _dbg('views.py:reroute_document_on_error:entry', 'reroute entry', {
+        'doc_id': document.doc_id,
+        'doc_status': document.doc_status,
+        'pages_printed': list(document.pages_printed or []),
+        'remaining_pages': document.get_remaining_pages(),
+        'failed_printer': getattr(failed_printer, 'printer_name', None),
+        'failed_job_id': failed_job_id,
+        'printer_assigned': document.printer_assigned.printer_name if document.printer_assigned else None,
+    }, hypothesisId='H1|H4')
+    # #endregion
+
+    # Guard: do not reroute a document that is already done or terminated.
+    if document.doc_status in ('Finished', 'Picked Up', 'Cancelled'):
+        print(f"[REROUTE] Skipping reroute for {document.doc_id}; already in terminal state '{document.doc_status}'.")
+        # Cancel any leftover CUPS job from the caller so the queue is clean.
+        if failed_job_id:
+            _cancel_cups_job(failed_job_id)
+        return
+
     remaining_pages = document.get_remaining_pages()
-    
+
+    # Guard: if there is nothing left to print, the document is effectively complete.
+    if not remaining_pages:
+        print(f"[REROUTE] No remaining pages for {document.doc_id}; marking complete instead of rerouting.")
+        if failed_job_id:
+            _cancel_cups_job(failed_job_id)
+        _finish_document_if_complete(document, printer=failed_printer or document.printer_assigned)
+        return
+
     # Store current printer ID as previous failed printer to avoid choosing it again
     current_printer_name = "Unknown"
     if failed_printer is None:
@@ -3322,29 +3939,52 @@ def reroute_document_on_error(document, failed_printer=None, failed_job_id=None)
         print(f"[REROUTE] Marked printer {current_printer_name} as failed for document {document.doc_id}")
 
         _cancel_cups_job(failed_job_id)
-        
+
         # Record the error printer in reroute history (if not already done by caller)
         # We can't use get_or_create here because timestamp makes entries unique
         # and we might have multiple error entries for the same printer/document
         error_status = f"Error: {failed_printer.printer_status}"
-        
-        # Create a new reroute history entry with current timestamp
-        RerouteHistory.objects.create(
-            document=document,
-            printer=failed_printer,
-            status=error_status,
-            timestamp=timezone.now()
-        )
-    
+
+        if not _recent_matching_reroute_history(document, failed_printer, error_status):
+            RerouteHistory.objects.create(
+                document=document,
+                printer=failed_printer,
+                status=error_status,
+                timestamp=timezone.now()
+            )
+
     # Move the document back to the queue before attempting reassignment.
-    document.doc_status = 'Queued'
-    document.printer_assigned = None
-    document.save(update_fields=['doc_status', 'printer_assigned', 'status_updated_at'])
+    _queue_document_for_dispatch(
+        document,
+        priority=Document.QueuePriority.REROUTE,
+        queued_at=timezone.now(),
+    )
+    _sync_printer_scheduler_state(failed_printer)
+
+    # Build a CUMULATIVE set of printers that have failed for THIS document so
+    # far. Without this, reroute only excludes the most recent failed printer
+    # and we ping-pong between the same handful of unhealthy printers forever.
+    cumulative_failed_ids = _failed_printer_ids_for_document(document)
+    if failed_printer is not None and failed_printer.id is not None:
+        cumulative_failed_ids.add(failed_printer.id)
+    previous_failed_attr = getattr(document, 'previous_failed_printer', None)
+    if previous_failed_attr is not None:
+        cumulative_failed_ids.add(previous_failed_attr)
+
+    # #region agent log
+    _dbg('views.py:reroute_document_on_error:cumulative_excludes', 'computed cumulative failed printers for this doc', {
+        'doc_id': document.doc_id,
+        'cumulative_failed_ids': sorted(cumulative_failed_ids),
+        'failed_printer_arg_id': getattr(failed_printer, 'id', None),
+    }, hypothesisId='H9')
+    # #endregion
 
     replacement_candidates = _available_printers_for_document(
         document,
         allowed_statuses=['Ready', 'Sleep'],
-        exclude_printer_id=getattr(document, 'previous_failed_printer', None),
+        exclude_printer_ids=cumulative_failed_ids,
+        sync_scheduler_state=True,
+        require_idle=False,
     )
     if not replacement_candidates:
         remaining_count = len(remaining_pages)
@@ -3359,42 +3999,167 @@ def reroute_document_on_error(document, failed_printer=None, failed_job_id=None)
 
     # Try an immediate reassignment once using the same candidate rules.
     next_printer = assign_document_to_printer(document, wait_for_availability=False)
+    # #region agent log
+    _dbg('views.py:reroute_document_on_error:after_assign', 'reassignment attempt result', {
+        'doc_id': document.doc_id,
+        'next_printer': getattr(next_printer, 'printer_name', None),
+        'replacement_count': len(replacement_candidates),
+        'replacement_names': [p.printer_name for p in replacement_candidates],
+    }, hypothesisId='H1')
+    # #endregion
     if next_printer:
         # Continue printing remaining pages
         print(f"[REROUTE] Successfully rerouted document {document.doc_id} from {current_printer_name} to {next_printer.printer_name}")
-        
+
         # Log successful reroute
         RerouteHistory.objects.create(
-            document=document, 
+            document=document,
             printer=next_printer,
             status='Rerouted'
         )
-        
-        # Continue printing remaining pages on new printer
-        for page_num in remaining_pages:
+
+        # Continue printing remaining pages on new printer.
+        # We re-fetch the remaining pages on each iteration so we don't redundantly
+        # send a page that a nested reroute (triggered inside print_page) has
+        # already printed. Iterate in reverse so the last page goes first and
+        # the output stack ends up in natural page order.
+        for page_num in sorted(list(remaining_pages), reverse=True):
+            document.refresh_from_db()
+            if document.doc_status in ('Finished', 'Picked Up', 'Cancelled'):
+                print(f"[REROUTE] {document.doc_id} reached terminal state '{document.doc_status}' mid-reroute; stopping further prints.")
+                break
+            if page_num in (document.pages_printed or []):
+                print(f"[REROUTE] Page {page_num} of {document.doc_id} already marked printed; skipping duplicate submission.")
+                continue
             print_page(document, page_num)
-    else:
-        # No available printer, notify admin
-        print(f"[REROUTE] Failed to find alternative printer for document {document.doc_id}")
-        Feedback.objects.create(
-            category='Report a Problem',
-            name='[SYSTEM GENERATED]',
-            message=f"Reroute failed: No available printer for {document.paper_size}. Document {document.doc_id} paused."
-        )
-        # If we can't find a suitable printer, reset the document status to Queued
-        # so it can be retried later when a printer becomes available
+
+        # Final safety net: even if print_page returned through an early-exit path
+        # (e.g. detected another reroute, or doc state change) we still need to
+        # check whether the document is actually finished and flip the status so
+        # the UI does not show 'Printing' forever after reroute completes.
         document.refresh_from_db()
-        if document.doc_status != 'Queued':
-            document.doc_status = 'Queued'
-            document.save(update_fields=['doc_status', 'status_updated_at'])
-        
-        # Notify about reroute failure
-        print(f"[QUEUED] Document {document.doc_id} placed back in queue for later processing when printers become available.")
-        
-        # Start a background check for available printers in a few seconds
-        # This gives printers time to recover or become available
-        threading.Timer(1.0, check_queued_documents).start()
+        # #region agent log
+        _dbg('views.py:reroute_document_on_error:safety_net_pre', 'about to run reroute safety-net finish check', {
+            'doc_id': document.doc_id,
+            'doc_status': document.doc_status,
+            'pages_printed': list(document.pages_printed or []),
+            'remaining_pages': document.get_remaining_pages(),
+            'next_printer': next_printer.printer_name if next_printer else None,
+        }, hypothesisId='H1|H5')
+        # #endregion
+        _safety_result = _finish_document_if_complete(document, printer=next_printer)
+        # #region agent log
+        _dbg('views.py:reroute_document_on_error:safety_net_post', 'reroute safety-net finish check result', {
+            'doc_id': document.doc_id,
+            'finished': _safety_result,
+            'doc_status_after': document.doc_status,
+        }, hypothesisId='H1|H5')
+        # #endregion
+        if _safety_result:
+            print(f"[REROUTE] Completion confirmed for {document.doc_id} on {next_printer.printer_name} after reroute.")
+    else:
+        print(
+            f"[REROUTE] No free alternative printer is available yet for {document.doc_id}; "
+            "keeping the document queued with reroute priority."
+        )
+        _schedule_queue_check(1.0)
         print(f"[QUEUE-MONITOR] Scheduled queue check in 1 seconds to find printer for document {document.doc_id}")
+
+
+def _claim_next_queued_document_for_printer(printer):
+    try:
+        with transaction.atomic():
+            locked_printer = Printer.objects.select_for_update().get(pk=printer.pk)
+            _sync_printer_scheduler_state(locked_printer)
+
+            if locked_printer.is_temporarily_disabled:
+                return None
+            if locked_printer.printer_status not in ['Ready', 'Sleep']:
+                return None
+            if (getattr(locked_printer, 'active_job_count', 0) or 0) > 0:
+                return None
+
+            queued_docs = Document.objects.select_for_update().filter(
+                doc_status='Queued',
+                printer_assigned__isnull=True,
+                paper_size=locked_printer.paper_assigned,
+            ).order_by('queue_priority', 'queued_at', 'time_submitted', 'doc_id')
+
+            for queued_doc in queued_docs:
+                failed_printer_ids = _failed_printer_ids_for_document(queued_doc)
+                if locked_printer.id in failed_printer_ids:
+                    continue
+                if not _printer_has_required_stock(locked_printer, queued_doc):
+                    continue
+
+                assigned_at = timezone.now()
+                queued_doc.printer_assigned = locked_printer
+                queued_doc.doc_status = 'Printing'
+                queued_doc.status_updated_at = assigned_at
+                queued_doc.save(update_fields=['printer_assigned', 'doc_status', 'status_updated_at'])
+                _sync_printer_scheduler_state(locked_printer, assigned_at=assigned_at)
+                RerouteHistory.objects.create(document=queued_doc, printer=locked_printer, status='Assigned')
+                print(f"[QUEUE-MONITOR] Assigned queued document {queued_doc.doc_id} to printer {locked_printer.printer_name}")
+                return queued_doc
+    except Printer.DoesNotExist:
+        return None
+
+    return None
+
+
+def _cancel_terminal_queued_documents():
+    cancelled_count = 0
+
+    queued_documents = Document.objects.filter(doc_status='Queued').order_by('queue_priority', 'queued_at', 'time_submitted', 'doc_id')
+    for queued_document in queued_documents:
+        terminal_reason = _terminal_no_printer_reason(queued_document)
+        if not terminal_reason:
+            continue
+
+        print(f"[QUEUE-MONITOR] {terminal_reason} Cancelling queued document {queued_document.doc_id} with auto voucher.")
+        _cancel_document_with_auto_voucher(queued_document, reason=terminal_reason)
+        cancelled_count += 1
+
+    return cancelled_count
+
+
+def _start_document_print_thread(document, printer, *, source):
+    def _print_document_async(doc_id, printer_id):
+        try:
+            current_doc = Document.objects.get(doc_id=doc_id)
+        except Document.DoesNotExist:
+            print(f"[{source}] Document {doc_id} was deleted before printing started.")
+            return
+
+        remaining_pages = current_doc.get_remaining_pages()
+        for page_num in sorted(list(remaining_pages), reverse=True):
+            try:
+                fresh_doc = Document.objects.get(doc_id=doc_id)
+            except Document.DoesNotExist:
+                print(f"[{source}] Document {doc_id} was deleted before printing page {page_num}.")
+                break
+
+            if fresh_doc.doc_status in ('Finished', 'Picked Up', 'Cancelled'):
+                print(f"[{source}] {fresh_doc.doc_id} reached terminal state '{fresh_doc.doc_status}'; stopping further prints.")
+                break
+            if page_num in (fresh_doc.pages_printed or []):
+                print(f"[{source}] Page {page_num} of {fresh_doc.doc_id} already printed; skipping duplicate submission.")
+                continue
+
+            print_page(fresh_doc, page_num)
+
+        try:
+            final_doc = Document.objects.get(doc_id=doc_id)
+        except Document.DoesNotExist:
+            return
+
+        final_printer = final_doc.printer_assigned if final_doc.printer_assigned_id else printer
+        if final_printer and _finish_document_if_complete(final_doc, printer=final_printer):
+            print(f"[{source}] Completion confirmed for {final_doc.doc_id} on {final_printer.printer_name}.")
+
+    worker = threading.Thread(target=_print_document_async, args=(document.doc_id, printer.id))
+    worker.daemon = True
+    worker.start()
 
 
 # Queue monitoring system for checking queued documents
@@ -3424,52 +4189,49 @@ def check_queued_documents():
     
     if available_count == 0:
         print("[QUEUE-MONITOR] No available printers found. Will retry later.")
+        cancelled_count = _cancel_terminal_queued_documents()
+        if cancelled_count:
+            print(f"[QUEUE-MONITOR] Cancelled {cancelled_count} terminal queued document(s) on this pass.")
         # Schedule another check in 1 seconds
-        threading.Timer(1.0, check_queued_documents).start()
+        if Document.objects.filter(doc_status='Queued').exists():
+            _schedule_queue_check(1.0)
         return
         
     print(f"[QUEUE-MONITOR] Found {available_count} available printers.")
-    
-    # Process each queued document
-    for doc in queued_docs:
-        print(f"[QUEUE-MONITOR] Processing queued document {doc.doc_id}")
-        
-        # Create a function to handle this document in a thread
-        def process_document(document):
-            try:
-                # Assign printer and start printing
-                printer = assign_document_to_printer(document, wait_for_availability=False)
-                if printer:
-                    print(f"[QUEUE-MONITOR] Successfully assigned document {document.doc_id} to printer {printer.printer_name}")
-                    # Reload the document after assignment so print_page sees the assigned printer.
-                    current_doc = Document.objects.get(doc_id=document.doc_id)
-                    remaining_pages = current_doc.get_remaining_pages()
-                    for page_num in remaining_pages:
-                        fresh_doc = Document.objects.get(doc_id=document.doc_id)
-                        print_page(fresh_doc, page_num)
-                else:
-                    print(f"[QUEUE-MONITOR] Failed to assign document {document.doc_id} to a printer")
-            except Exception as e:
-                print(f"[QUEUE-MONITOR] Error processing document {document.doc_id}: {e}")
-                
-        # Start processing this document in a background thread
-        threading.Thread(target=process_document, args=(doc,)).start()
-    
-    # Schedule another check in 60 seconds to catch any new queued documents
-    # or documents that failed to get a printer this time
-    threading.Timer(60.0, check_queued_documents).start()
-    print("[QUEUE-MONITOR] Scheduled next queue check in 60 seconds")
+
+    dispatched_count = 0
+    for printer in available_printers.order_by('id'):
+        next_document = _claim_next_queued_document_for_printer(printer)
+        if not next_document or not next_document.printer_assigned:
+            continue
+
+        dispatched_count += 1
+        _start_document_print_thread(next_document, next_document.printer_assigned, source='QUEUE-MONITOR')
+
+    if dispatched_count == 0:
+        print("[QUEUE-MONITOR] No eligible queued documents could be dispatched on this pass.")
+    else:
+        print(f"[QUEUE-MONITOR] Dispatched {dispatched_count} queued document(s) on this pass.")
+
+    cancelled_count = _cancel_terminal_queued_documents()
+    if cancelled_count:
+        print(f"[QUEUE-MONITOR] Cancelled {cancelled_count} terminal queued document(s) on this pass.")
+
+    if Document.objects.filter(doc_status='Queued').exists():
+        _schedule_queue_check(QUEUE_MONITOR_INTERVAL_SECONDS)
+        print(f"[QUEUE-MONITOR] Scheduled next queue check in {int(QUEUE_MONITOR_INTERVAL_SECONDS)} seconds")
 
 
 # Start the queue monitor when the module is loaded
 def start_queue_monitor():
     """Initialize the queue monitoring system with a delay to let the system start up."""
     print("[QUEUE-MONITOR] Initializing queue monitoring system...")
-    threading.Timer(1.0, check_queued_documents).start()
+    _schedule_queue_check(1.0)
     print("[QUEUE-MONITOR] Queue monitor scheduled to start in 1 seconds")
 
 # Start the queue monitor
-threading.Timer(1.0, start_queue_monitor).start()
+if getattr(settings, 'ENABLE_QUEUE_MONITOR', True):
+    threading.Timer(1.0, start_queue_monitor).start()
 
 
 # ============================================================
@@ -3513,6 +4275,33 @@ def customer_documents_event_stream(customer_id):
                     'status': entry.status,
                     'timestamp': entry.timestamp.isoformat() if entry.timestamp else None,
                 })
+
+            # Self-healing safety net: if every page is actually printed but the
+            # document is still marked as Printing/Queued (e.g. a reroute path
+            # bypassed the completion check), flip it to Finished here so the
+            # UI never shows a stale "Printing..." badge after the physical
+            # print job is done.
+            if doc.doc_status in ('Printing', 'Queued'):
+                try:
+                    total_required = doc.get_total_pages()
+                    printed_set = set(doc.pages_printed or [])
+                    required_set = set(doc.get_page_list())
+                    if total_required > 0 and required_set and required_set.issubset(printed_set):
+                        previous_status = doc.doc_status
+                        completion_printer = doc.printed_at or doc.printer_assigned
+                        doc.doc_status = 'Finished'
+                        doc.status_updated_at = timezone.now()
+                        update_fields = ['doc_status', 'status_updated_at']
+                        if completion_printer and doc.printed_at_id != completion_printer.id:
+                            doc.printed_at = completion_printer
+                            update_fields.append('printed_at')
+                        doc.save(update_fields=update_fields)
+                        print(
+                            f"[SSE-HEAL] Document {doc.doc_id} had all {total_required} page(s) printed "
+                            f"but was still '{previous_status}'. Auto-marked Finished."
+                        )
+                except Exception as heal_exc:
+                    print(f"[SSE-HEAL] Failed to auto-finish {doc.doc_id}: {heal_exc}")
 
             # Determine badge info
             printer_name = None
@@ -3563,12 +4352,40 @@ def customer_documents_event_stream(customer_id):
 
             # Get cancel reason from reroute history if cancelled
             cancel_reason = ''
+            auto_voucher_code = None
             if doc.doc_status == 'Cancelled':
                 last_error = history_entries.filter(status__startswith='Error').last()
                 if last_error:
                     cancel_reason = last_error.status
                 else:
                     cancel_reason = 'No available Printer'
+                # #region agent log
+                try:
+                    _all_history = list(history_entries.values('status', 'timestamp', 'printer_id'))
+                    _all_error_history = [h for h in _all_history if (h.get('status') or '').startswith('Error')]
+                    _dbg('views.py:sse:cancel_reason_picked', 'cancel_reason chosen for SSE payload', {
+                        'doc_id': doc.doc_id,
+                        'doc_status': doc.doc_status,
+                        'cancel_reason': cancel_reason,
+                        'last_error_status': last_error.status if last_error else None,
+                        'last_error_ts': last_error.timestamp.isoformat() if last_error and last_error.timestamp else None,
+                        'all_error_entries': [
+                            {
+                                'status': h.get('status'),
+                                'ts': h.get('timestamp').isoformat() if h.get('timestamp') else None,
+                                'printer_id': h.get('printer_id'),
+                            }
+                            for h in _all_error_history
+                        ],
+                    }, hypothesisId='H1')
+                except Exception:
+                    pass
+                # #endregion
+
+                if cancel_reason:
+                    _vm = re.search(r'Auto voucher\s+(\S+)\s+generated', cancel_reason, re.IGNORECASE)
+                    if _vm:
+                        auto_voucher_code = _vm.group(1)
 
             # Check for support tickets on this document
             ticket = SupportTicket.objects.filter(document=doc).order_by('-created_at').first()
@@ -3582,6 +4399,7 @@ def customer_documents_event_stream(customer_id):
                 'status_type': status_type,
                 'status_badge': status_badge,
                 'cancel_reason': cancel_reason,
+                'auto_voucher_code': auto_voucher_code,
                 'printer_name': printer_name,
                 'printed_at': printed_at_name,
                 'pages_printed': pages_printed,
@@ -3623,7 +4441,7 @@ def customer_documents_event_stream(customer_id):
             yield f"data: {json_data}\n\n"
             last_data = json_data
 
-        time.sleep(1)
+        time.sleep(0.5)
 
 
 # ============================================================
@@ -4170,7 +4988,7 @@ def get_printer_status_history(request):
         for log in logs:
             logs_data.append({
                 'id': log.id,
-                'printer_name': log.printer.name if log.printer else 'Unknown',
+                'printer_name': log.printer.printer_name if log.printer else 'Unknown',
                 'printer_id': log.printer_id,
                 'status': log.status,
                 'ink_status': log.ink_status,
@@ -4179,7 +4997,7 @@ def get_printer_status_history(request):
             })
 
         # Get all printers for dropdown
-        printers_list = [{'id': p.id, 'name': p.name} for p in Printer.objects.all().order_by('name')]
+        printers_list = [{'id': p.id, 'name': p.printer_name} for p in Printer.objects.all().order_by('printer_name')]
 
         return JsonResponse({
             'success': True,
@@ -4235,7 +5053,7 @@ def get_ticket_verification_data(request):
         printer_data = []
         for log in printer_logs:
             printer_data.append({
-                'printer_name': log.printer.name if log.printer else 'Unknown',
+                'printer_name': log.printer.printer_name if log.printer else 'Unknown',
                 'status': log.status,
                 'ink_status': log.ink_status,
                 'paper_level': log.paper_level,
@@ -4272,7 +5090,7 @@ def get_ticket_verification_data(request):
                     'customer_id': ticket.customer_id,
                     'doc_name': ticket.document_name or '',
                     'event': 'Rerouted',
-                    'printer_name': rr.printer.name if rr.printer else rr.printer_name_snapshot or '—',
+                    'printer_name': rr.printer.printer_name if rr.printer else rr.printer_name_snapshot or '—',
                     'details': f'Rerouted ({rr.status})',
                     'timestamp': rr.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
                 })
