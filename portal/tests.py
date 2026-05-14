@@ -12,6 +12,7 @@ from django.utils import timezone
 from portal.models import Document, Payment, Printer, RerouteHistory, SupportTicket, TicketAuditLog, VoucherCredit
 from portal.views import (
 	_claim_next_queued_document_for_printer,
+	_cancel_document_with_auto_voucher,
 	_cancel_cups_job,
 	assign_document_to_printer,
 	check_queued_documents,
@@ -181,6 +182,42 @@ class NoPrinterAutoVoucherTests(TestCase):
 		self.assertEqual(voucher.remaining_balance, Decimal('15.00'))
 		self.assertIn('Auto voucher', latest_history.status)
 		self.assertLessEqual(len(latest_history.status), 50)
+
+	def test_auto_voucher_creation_is_idempotent_for_same_document(self):
+		document = Document.objects.create(
+			doc_id='DOC-AUTO-VOUCHER-IDEMPOTENT',
+			customer_id='CID-AUTO-VOUCHER-IDEMPOTENT',
+			filename='idempotent.pdf',
+			num_copies=1,
+			pages_num='1',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='A4',
+			paper_quality='70',
+			original_name='idempotent.pdf',
+			stored_name='idempotent.pdf',
+			file_name='idempotent.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Queued',
+			time_submitted=timezone.now() - timedelta(seconds=5),
+		)
+
+		Payment.objects.create(
+			doc=document,
+			price=Decimal('3.00'),
+			payment_status='Paid',
+		)
+
+		_cancel_document_with_auto_voucher(document, reason='No eligible printer remains after failures.')
+		document.refresh_from_db()
+		first_voucher = VoucherCredit.objects.get(last_customer_id=document.customer_id)
+
+		_cancel_document_with_auto_voucher(document, reason='No eligible printer remains after failures.')
+
+		vouchers = list(VoucherCredit.objects.filter(last_customer_id=document.customer_id).order_by('created_at'))
+		self.assertEqual(len(vouchers), 1)
+		self.assertEqual(vouchers[0].code, first_voucher.code)
 
 	def test_acknowledge_cancelled_voucher_creates_single_auto_ticket_for_cancelled_transaction(self):
 		first_doc = Document.objects.create(

@@ -647,6 +647,25 @@ def _issue_auto_refund_voucher(document, amount, *, details):
     if normalized_amount <= Decimal('0.00'):
         return None
 
+    existing_audit = VoucherCreditAuditLog.objects.filter(
+        action='created',
+        reference=document.doc_id,
+        performed_by='SYSTEM',
+        details__icontains='Automatic voucher issued after unrecoverable print failure.',
+    ).select_related('voucher').order_by('-created_at').first()
+    if existing_audit:
+        existing_voucher = existing_audit.voucher
+        if not existing_voucher and existing_audit.voucher_code_snapshot:
+            existing_voucher = VoucherCredit.objects.filter(code=existing_audit.voucher_code_snapshot).first()
+        if existing_voucher:
+            update_fields = []
+            if not existing_voucher.last_customer_id:
+                existing_voucher.last_customer_id = document.customer_id
+                update_fields.append('last_customer_id')
+            if update_fields:
+                existing_voucher.save(update_fields=update_fields)
+            return existing_voucher
+
     voucher = VoucherCredit.objects.create(
         code=_generate_unique_voucher_code(),
         original_amount=normalized_amount,
@@ -972,7 +991,7 @@ def _printer_has_hard_fault(printer):
     return any(keyword in status_value for keyword in hard_fault_keywords)
 
 
-def _terminal_no_printer_reason(document):
+def _terminal_no_printer_reason(document, *, exclude_printer_ids=None):
     candidate_printers = list(
         Printer.objects.filter(
             paper_assigned=document.paper_size,
@@ -980,19 +999,30 @@ def _terminal_no_printer_reason(document):
         )
     )
 
+    excluded_ids = {pid for pid in (exclude_printer_ids or set()) if pid is not None}
+
     if not candidate_printers:
         return f'No active printer supports {document.paper_size} paper.'
 
+    eligible_candidates = [printer for printer in candidate_printers if printer.id not in excluded_ids]
+    if excluded_ids and not eligible_candidates:
+        exhausted_printers = [printer.printer_name for printer in candidate_printers if printer.id in excluded_ids]
+        return (
+            f'No eligible printer remains for {document.paper_size} after failures on '
+            + ', '.join(exhausted_printers)
+            + '.'
+        )
+
     healthy_and_stocked = [
-        printer for printer in candidate_printers
+        printer for printer in eligible_candidates
         if not _printer_has_hard_fault(printer) and _printer_has_required_stock(printer, document)
     ]
     if healthy_and_stocked:
         return None
 
-    faulted_printers = [printer.printer_name for printer in candidate_printers if _printer_has_hard_fault(printer)]
+    faulted_printers = [printer.printer_name for printer in eligible_candidates if _printer_has_hard_fault(printer)]
     stock_blocked_printers = [
-        printer.printer_name for printer in candidate_printers
+        printer.printer_name for printer in eligible_candidates
         if not _printer_has_required_stock(printer, document)
     ]
 
@@ -3215,7 +3245,7 @@ def assign_document_to_printer(document, *, wait_for_availability=True):
                     print(f"[ASSIGNED] Document {doc.doc_id} assigned to {printer.printer_name}.")
                     return printer
 
-                terminal_reason = _terminal_no_printer_reason(doc)
+                terminal_reason = _terminal_no_printer_reason(doc, exclude_printer_ids=cumulative_excludes)
                 if terminal_reason:
                     cancel_reason = terminal_reason
                 elif not wait_for_availability:
@@ -3922,7 +3952,7 @@ def reroute_document_on_error(document, failed_printer=None, failed_job_id=None)
         require_idle=False,
     )
     if not replacement_candidates:
-        terminal_reason = _terminal_no_printer_reason(document)
+        terminal_reason = _terminal_no_printer_reason(document, exclude_printer_ids=cumulative_failed_ids)
         if terminal_reason:
             _cancel_document_with_auto_voucher(document, reason=terminal_reason)
             return
@@ -4026,7 +4056,10 @@ def _cancel_terminal_queued_documents():
 
     queued_documents = Document.objects.filter(doc_status='Queued').order_by('queue_priority', 'queued_at', 'time_submitted', 'doc_id')
     for queued_document in queued_documents:
-        terminal_reason = _terminal_no_printer_reason(queued_document)
+        terminal_reason = _terminal_no_printer_reason(
+            queued_document,
+            exclude_printer_ids=_failed_printer_ids_for_document(queued_document),
+        )
         if not terminal_reason:
             continue
 
