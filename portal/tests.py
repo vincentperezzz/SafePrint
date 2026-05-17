@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from portal.models import Document, Payment, Printer, RerouteHistory, SupportTicket, TicketAuditLog, VoucherCredit
 from portal.views import (
+	_calculate_unprinted_refund_amount,
 	_claim_next_queued_document_for_printer,
 	_cancel_document_with_auto_voucher,
 	_cancel_cups_job,
@@ -54,6 +55,41 @@ class PrintCompletionFallbackTests(TestCase):
 			(1, 1, 2),
 			(2, 2, 2),
 			(1, 2, 2),
+		])
+
+	def test_partial_copy_progress_preserves_only_unprinted_sides(self):
+		document = Document.objects.create(
+			doc_id='DOC-COPY-PROGRESS-1',
+			customer_id='CID-COPY-PROGRESS',
+			filename='copy-progress.pdf',
+			num_copies=4,
+			pages_num='1-2',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='A4',
+			paper_quality='70',
+			original_name='copy-progress.pdf',
+			stored_name='copy-progress.pdf',
+			file_name='copy-progress.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Printing',
+			time_submitted=timezone.now(),
+		)
+
+		document.mark_print_job_completed(2, 1)
+		document.mark_print_job_completed(1, 1)
+		document.mark_print_job_completed(2, 2)
+		document.refresh_from_db()
+
+		self.assertEqual(document.get_printed_sides_count(), 3)
+		self.assertEqual(document.pages_printed, [])
+		self.assertEqual(list(_iter_document_print_jobs(document)), [
+			(1, 2, 4),
+			(2, 3, 4),
+			(1, 3, 4),
+			(2, 4, 4),
+			(1, 4, 4),
 		])
 
 	@override_settings(MEDIA_ROOT='/tmp/safeprint-test-media')
@@ -154,7 +190,8 @@ class PrintCompletionFallbackTests(TestCase):
 					printer_assigned=printer,
 				)
 
-				with patch('portal.views.reroute_document_on_error') as reroute_mock:
+				with patch('portal.views._get_cups_destinations', return_value=set()), \
+					 patch('portal.views.reroute_document_on_error') as reroute_mock:
 					print_page(document, 1)
 
 				printer.refresh_from_db()
@@ -323,6 +360,158 @@ class CustomerDocumentsStreamTests(TestCase):
 		self.assertEqual(doc_payload['printer_name'], new_printer.printer_name)
 		self.assertEqual(doc_payload['reroute_history'][-1]['printer_name'], new_printer.printer_name)
 		self.assertEqual(doc_payload['reroute_history'][-1]['status'], 'Rerouted')
+
+	def test_stream_reports_side_level_progress_for_multi_copy_jobs(self):
+		printer = Printer.objects.create(
+			printer_name='Printer Progress',
+			model_name='Brother DCP-T430W',
+			printer_status='Printing',
+			paper_assigned='A4',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.140',
+		)
+
+		document = Document.objects.create(
+			doc_id='DOC-SSE-PROGRESS-1',
+			customer_id='CID-SSE-PROGRESS',
+			filename='progress.pdf',
+			num_copies=4,
+			pages_num='1-2',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='A4',
+			paper_quality='70',
+			original_name='progress.pdf',
+			stored_name='progress.pdf',
+			file_name='progress.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Printing',
+			time_submitted=timezone.now() - timedelta(seconds=5),
+			printer_assigned=printer,
+		)
+
+		document.mark_print_job_completed(2, 1)
+		document.mark_print_job_completed(1, 1)
+		document.mark_print_job_completed(2, 2)
+
+		generator = customer_documents_event_stream(document.customer_id)
+		payload = next(generator)
+		generator.close()
+
+		data = json.loads(payload.replace('data: ', '', 1).strip())
+		doc_payload = data['documents'][0]
+
+		self.assertEqual(doc_payload['printed_sides'], 3)
+		self.assertEqual(doc_payload['total_sides'], 8)
+		self.assertEqual(doc_payload['remaining_sides'], 5)
+		self.assertEqual(doc_payload['pages_printed'], [])
+
+
+class MultiCopyRerouteAndRefundTests(TestCase):
+	def test_reroute_only_resubmits_unprinted_sides_for_multi_copy_job(self):
+		failed_printer = Printer.objects.create(
+			printer_name='Failed Printer',
+			model_name='Brother',
+			printer_status='Error',
+			paper_assigned='A4',
+			tray_level='Full',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.150',
+		)
+
+		replacement_printer = Printer.objects.create(
+			printer_name='Replacement Printer',
+			model_name='Brother',
+			printer_status='Ready',
+			paper_assigned='A4',
+			tray_level='Full',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.151',
+		)
+
+		document = Document.objects.create(
+			doc_id='DOC-REROUTE-MULTI-1',
+			customer_id='CID-REROUTE-MULTI',
+			filename='reroute-multi.pdf',
+			num_copies=4,
+			pages_num='1-2',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='A4',
+			paper_quality='70',
+			original_name='reroute-multi.pdf',
+			stored_name='reroute-multi.pdf',
+			file_name='reroute-multi.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Printing',
+			time_submitted=timezone.now() - timedelta(seconds=5),
+			printer_assigned=failed_printer,
+		)
+
+		document.mark_print_job_completed(2, 1)
+		document.mark_print_job_completed(1, 1)
+		document.mark_print_job_completed(2, 2)
+
+		recorded_jobs = []
+
+		with patch('portal.views._cancel_cups_job', return_value=True), \
+			 patch('portal.views._schedule_queue_check', return_value=None), \
+			 patch('portal.views._available_printers_for_document', return_value=[replacement_printer]), \
+			 patch('portal.views.assign_document_to_printer', return_value=replacement_printer), \
+			 patch('portal.views._finish_document_if_complete', return_value=False), \
+			 patch('portal.views.print_page', side_effect=lambda doc, page_num, *, copy_index=1, total_copies=1: recorded_jobs.append((page_num, copy_index, total_copies))):
+			reroute_document_on_error(document, failed_printer=failed_printer, failed_job_id='job-123')
+
+		self.assertEqual(recorded_jobs, [
+			(1, 2, 4),
+			(2, 3, 4),
+			(1, 3, 4),
+			(2, 4, 4),
+			(1, 4, 4),
+		])
+
+	def test_unprinted_refund_amount_uses_remaining_sides_for_multi_copy_jobs(self):
+		document = Document.objects.create(
+			doc_id='DOC-REFUND-MULTI-1',
+			customer_id='CID-REFUND-MULTI',
+			filename='refund-multi.pdf',
+			num_copies=4,
+			pages_num='1-2',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='A4',
+			paper_quality='70',
+			original_name='refund-multi.pdf',
+			stored_name='refund-multi.pdf',
+			file_name='refund-multi.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Printing',
+			time_submitted=timezone.now() - timedelta(seconds=5),
+		)
+
+		Payment.objects.create(
+			doc=document,
+			price=Decimal('8.00'),
+			payment_status='Paid',
+		)
+
+		for page_num, copy_index in [
+			(2, 1),
+			(1, 1),
+			(2, 2),
+			(1, 2),
+			(2, 3),
+			(1, 3),
+			(2, 4),
+		]:
+			document.mark_print_job_completed(page_num, copy_index)
+
+		self.assertEqual(document.get_printed_sides_count(), 7)
+		self.assertEqual(len(document.get_remaining_print_jobs()), 1)
+		self.assertEqual(_calculate_unprinted_refund_amount(document), Decimal('1.00'))
 
 
 class NoPrinterAutoVoucherTests(TestCase):

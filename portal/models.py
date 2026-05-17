@@ -295,6 +295,57 @@ class Document(models.Model):
     )
     # Track which pages have been printed (list of ints)
     pages_printed = models.JSONField(default=list, blank=True)
+    page_copy_counts = models.JSONField(default=dict, blank=True)
+
+    def _get_copy_count(self):
+        try:
+            return max(1, int(self.num_copies or 1))
+        except (TypeError, ValueError):
+            return 1
+
+    def _get_normalized_page_copy_counts(self):
+        copies = self._get_copy_count()
+        valid_pages = set(self.get_page_list())
+        normalized = {page_num: 0 for page_num in valid_pages}
+
+        raw_counts = self.page_copy_counts if isinstance(self.page_copy_counts, dict) else {}
+        for raw_page, raw_count in raw_counts.items():
+            try:
+                page_num = int(raw_page)
+                completed_copies = int(raw_count or 0)
+            except (TypeError, ValueError):
+                continue
+            if page_num not in valid_pages:
+                continue
+            normalized[page_num] = max(0, min(copies, completed_copies))
+
+        for raw_page in self.pages_printed or []:
+            try:
+                page_num = int(raw_page)
+            except (TypeError, ValueError):
+                continue
+            if page_num in valid_pages:
+                normalized[page_num] = copies
+
+        return normalized
+
+    def _sync_print_progress_fields(self, counts=None):
+        normalized = self._get_normalized_page_copy_counts() if counts is None else {
+            int(page_num): int(completed_copies)
+            for page_num, completed_copies in counts.items()
+        }
+        copies = self._get_copy_count()
+        page_list = self.get_page_list()
+        self.page_copy_counts = {
+            str(page_num): max(0, min(copies, normalized.get(page_num, 0)))
+            for page_num in page_list
+            if max(0, min(copies, normalized.get(page_num, 0))) > 0
+        }
+        self.pages_printed = [
+            page_num for page_num in page_list
+            if normalized.get(page_num, 0) >= copies
+        ]
+        return normalized
 
     def get_total_pages(self):
         """
@@ -319,20 +370,82 @@ class Document(models.Model):
         
         return total_pages
 
+    def get_total_sides(self):
+        return self.get_total_pages() * self._get_copy_count()
+
+    def get_printed_sides_count(self):
+        counts = self._get_normalized_page_copy_counts()
+        return sum(counts.get(page_num, 0) for page_num in self.get_page_list())
+
+    def is_print_job_completed(self, page_num, copy_index):
+        try:
+            page_num = int(page_num)
+            copy_index = int(copy_index)
+        except (TypeError, ValueError):
+            return False
+
+        if copy_index < 1:
+            return False
+
+        counts = self._get_normalized_page_copy_counts()
+        return counts.get(page_num, 0) >= copy_index
+
+    def get_remaining_print_jobs(self):
+        copies = self._get_copy_count()
+        counts = self._get_normalized_page_copy_counts()
+        remaining_jobs = []
+
+        for copy_index in range(1, copies + 1):
+            for page_num in sorted(self.get_page_list(), reverse=True):
+                if counts.get(page_num, 0) >= copy_index:
+                    continue
+                remaining_jobs.append((page_num, copy_index, copies))
+
+        return remaining_jobs
+
     def mark_page_printed(self, page_num):
         """
         Mark a page as printed (add to pages_printed if not already present)
         """
-        if page_num not in self.pages_printed:
-            self.pages_printed.append(page_num)
-            self.save(update_fields=['pages_printed'])
+        return self.mark_print_job_completed(page_num, self._get_copy_count())
+
+    def mark_print_job_completed(self, page_num, copy_index):
+        try:
+            page_num = int(page_num)
+            copy_index = int(copy_index)
+        except (TypeError, ValueError):
+            return False
+
+        if copy_index < 1:
+            return False
+
+        counts = self._get_normalized_page_copy_counts()
+        if page_num not in counts:
+            return False
+
+        current_count = counts.get(page_num, 0)
+        next_count = max(current_count, min(self._get_copy_count(), copy_index))
+        if next_count == current_count:
+            return False
+
+        counts[page_num] = next_count
+        self._sync_print_progress_fields(counts)
+        self.save(update_fields=['page_copy_counts', 'pages_printed'])
+        return True
+
+    def mark_all_print_jobs_completed(self, *, save=True):
+        counts = {page_num: self._get_copy_count() for page_num in self.get_page_list()}
+        self._sync_print_progress_fields(counts)
+        if save:
+            self.save(update_fields=['page_copy_counts', 'pages_printed'])
+        return counts
 
     def get_remaining_pages(self):
         """
         Return a sorted list of pages that still need to be printed
         """
         all_pages = set(self.get_page_list())
-        printed = set(self.pages_printed)
+        printed = set(self.pages_printed or [])
         return sorted(list(all_pages - printed))
 
     def get_page_list(self):
@@ -359,6 +472,7 @@ class Document(models.Model):
         return sorted(list(set(pages)))  # Remove duplicates and sort
 
     def save(self, *args, **kwargs):
+        self._sync_print_progress_fields()
         old_status = None
         if self.pk and Document.objects.filter(pk=self.pk).exists():
             orig = Document.objects.get(pk=self.pk)

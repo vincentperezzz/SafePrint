@@ -629,16 +629,16 @@ def _calculate_unprinted_refund_amount(document):
     if not payment:
         return Decimal('0.00')
 
-    total_pages = max(1, document.get_total_pages() or 0)
-    remaining_pages = len(document.get_remaining_pages())
-    if remaining_pages <= 0:
+    total_sides = max(1, document.get_total_sides() or 0)
+    remaining_sides = len(document.get_remaining_print_jobs())
+    if remaining_sides <= 0:
         return Decimal('0.00')
 
     total_paid = Decimal(payment.price or 0)
-    if remaining_pages >= total_pages:
+    if remaining_sides >= total_sides:
         return total_paid.quantize(Decimal('0.01'))
 
-    refund_amount = (total_paid * Decimal(remaining_pages) / Decimal(total_pages)).quantize(Decimal('0.01'))
+    refund_amount = (total_paid * Decimal(remaining_sides) / Decimal(total_sides)).quantize(Decimal('0.01'))
     return max(Decimal('0.00'), refund_amount)
 
 
@@ -2034,6 +2034,9 @@ def printing_queue(request):
         reroute_histories[doc.doc_id] = history_entries
 
         printed_pages = sorted({int(page) for page in (doc.pages_printed or [])})
+        printed_sides = doc.get_printed_sides_count()
+        total_sides = doc.get_total_sides()
+        remaining_sides = len(doc.get_remaining_print_jobs())
         total_pages = doc.get_total_pages()
         remaining_pages = doc.get_remaining_pages()
         # Match print_document_async: pages are sent highest-first (reverse order).
@@ -2048,6 +2051,8 @@ def printing_queue(request):
         doc.queue_status_meta = []
         if latest_reroute:
             doc.queue_status_meta.append(f'Rerouted to {latest_reroute}')
+        if total_sides:
+            doc.queue_status_meta.append(f'{printed_sides}/{total_sides} side(s) confirmed')
 
         if printed_pages:
             ranges = []
@@ -3500,7 +3505,7 @@ def _finish_document_if_complete(document, *, printer=None):
     if document.doc_status in ['Finished', 'Picked Up', 'Cancelled']:
         return False
 
-    if document.get_remaining_pages():
+    if document.get_remaining_print_jobs():
         return False
 
     completion_printer = printer or document.printed_at or document.printer_assigned
@@ -3525,12 +3530,8 @@ def _finish_document_if_complete(document, *, printer=None):
 
 
 def _iter_document_print_jobs(document):
-    copies = max(1, int(getattr(document, 'num_copies', 1) or 1))
-    remaining_pages = sorted(list(document.get_remaining_pages()), reverse=True)
-
-    for copy_index in range(1, copies + 1):
-        for page_num in remaining_pages:
-            yield page_num, copy_index, copies
+    for page_num, copy_index, copies in document.get_remaining_print_jobs():
+        yield page_num, copy_index, copies
 
 
 def print_page(document, page_num, *, copy_index=1, total_copies=1):
@@ -3886,20 +3887,23 @@ def print_page(document, page_num, *, copy_index=1, total_copies=1):
             
         time.sleep(1)
     # Mark page as printed in DB only after successful print and status transitions
-    if copy_index >= total_copies:
-        page_was_already_recorded = page_num in (document.pages_printed or [])
-        document.mark_page_printed(page_num)
-        if not page_was_already_recorded:
-            RerouteHistory.objects.create(
-                document=document,
-                printer=printer,
-                status=f'Printed page {page_num}'
-            )
-        print(f"[MARKED] Page {page_num} of document {document.doc_id} marked as printed.")
+    page_was_already_recorded = page_num in (document.pages_printed or [])
+    side_recorded = document.mark_print_job_completed(page_num, copy_index)
+    if side_recorded and not page_was_already_recorded and page_num in (document.pages_printed or []):
+        RerouteHistory.objects.create(
+            document=document,
+            printer=printer,
+            status=f'Printed page {page_num}'
+        )
+    if side_recorded:
+        print(
+            f"[MARKED] Page {page_num} copy {copy_index}/{total_copies} of document "
+            f"{document.doc_id} marked as complete."
+        )
     else:
         print(
-            f"[PRINT] Page {page_num} copy {copy_index}/{total_copies} of document {document.doc_id} completed; "
-            "waiting for final copy before marking the page as printed."
+            f"[MARKED] Page {page_num} copy {copy_index}/{total_copies} of document "
+            f"{document.doc_id} was already recorded as complete."
         )
 
     # Subtract 1 sheet from the printer's tray and update tray level
@@ -4042,8 +4046,11 @@ def reroute_document_on_error(document, failed_printer=None, failed_job_id=None,
             if document.doc_status in ('Finished', 'Picked Up', 'Cancelled'):
                 print(f"[REROUTE] {document.doc_id} reached terminal state '{document.doc_status}' mid-reroute; stopping further prints.")
                 break
-            if page_num in (document.pages_printed or []):
-                print(f"[REROUTE] Page {page_num} of {document.doc_id} already marked printed; skipping duplicate submission.")
+            if document.is_print_job_completed(page_num, copy_index):
+                print(
+                    f"[REROUTE] Page {page_num} copy {copy_index}/{total_copies} of {document.doc_id} "
+                    "already marked printed; skipping duplicate submission."
+                )
                 continue
             print_page(
                 document,
@@ -4152,8 +4159,11 @@ def _start_document_print_thread(document, printer, *, source):
             if fresh_doc.doc_status in ('Finished', 'Picked Up', 'Cancelled'):
                 print(f"[{source}] {fresh_doc.doc_id} reached terminal state '{fresh_doc.doc_status}'; stopping further prints.")
                 break
-            if page_num in (fresh_doc.pages_printed or []):
-                print(f"[{source}] Page {page_num} of {fresh_doc.doc_id} already printed; skipping duplicate submission.")
+            if fresh_doc.is_print_job_completed(page_num, copy_index):
+                print(
+                    f"[{source}] Page {page_num} copy {copy_index}/{total_copies} of {fresh_doc.doc_id} "
+                    "already printed; skipping duplicate submission."
+                )
                 continue
 
             print_page(
@@ -4298,10 +4308,9 @@ def customer_documents_event_stream(customer_id):
             # print job is done.
             if doc.doc_status in ('Printing', 'Queued'):
                 try:
-                    total_required = doc.get_total_pages()
-                    printed_set = set(doc.pages_printed or [])
-                    required_set = set(doc.get_page_list())
-                    if total_required > 0 and required_set and required_set.issubset(printed_set):
+                    total_required = doc.get_total_sides()
+                    printed_sides = doc.get_printed_sides_count()
+                    if total_required > 0 and printed_sides >= total_required:
                         previous_status = doc.doc_status
                         completion_printer = doc.printed_at or doc.printer_assigned
                         doc.doc_status = 'Finished'
@@ -4330,6 +4339,9 @@ def customer_documents_event_stream(customer_id):
             # Calculate pages printed vs total
             pages_printed = doc.pages_printed if doc.pages_printed else []
             total_pages = doc.get_total_pages()
+            printed_sides = doc.get_printed_sides_count()
+            total_sides = doc.get_total_sides()
+            remaining_sides = len(doc.get_remaining_print_jobs())
 
             # Determine status type for badge styling
             status_type = 'info'  # default
@@ -4419,6 +4431,9 @@ def customer_documents_event_stream(customer_id):
                 'printed_at': printed_at_name,
                 'pages_printed': pages_printed,
                 'total_pages': total_pages,
+                'printed_sides': printed_sides,
+                'total_sides': total_sides,
+                'remaining_sides': remaining_sides,
                 'reroute_history': reroute_history,
                 'time_submitted': doc.time_submitted.isoformat() if doc.time_submitted else None,
                 'status_updated_at': doc.status_updated_at.isoformat() if doc.status_updated_at else None,
@@ -4497,7 +4512,7 @@ def picked_up_document(request):
 
         if reroute_override:
             if not doc.pages_printed:
-                doc.pages_printed = doc.get_page_list()
+                doc.mark_all_print_jobs_completed(save=False)
             if not doc.printed_at and doc.printer_assigned:
                 doc.printed_at = doc.printer_assigned
 
@@ -4505,7 +4520,7 @@ def picked_up_document(request):
         doc.doc_status = 'Picked Up'
         doc.status_updated_at = timezone.now()
         if reroute_override:
-            doc.save(update_fields=['doc_status', 'status_updated_at', 'pages_printed', 'printed_at'])
+            doc.save(update_fields=['doc_status', 'status_updated_at', 'pages_printed', 'page_copy_counts', 'printed_at'])
         else:
             doc.save()
 
@@ -4587,7 +4602,7 @@ def finish_transaction(request):
             if doc.doc_status == 'Finished' or reroute_override:
                 if reroute_override:
                     if not doc.pages_printed:
-                        doc.pages_printed = doc.get_page_list()
+                        doc.mark_all_print_jobs_completed(save=False)
                     if not doc.printed_at and doc.printer_assigned:
                         doc.printed_at = doc.printer_assigned
 
@@ -4595,7 +4610,7 @@ def finish_transaction(request):
                 doc.status_updated_at = timezone.now()
                 update_fields = ['doc_status', 'status_updated_at']
                 if reroute_override:
-                    update_fields.extend(['pages_printed', 'printed_at'])
+                    update_fields.extend(['pages_printed', 'page_copy_counts', 'printed_at'])
                 doc.save(update_fields=update_fields)
 
         picked_up_count = _delete_customer_documents(customer_id, list(docs_to_process), log_prefix='FINISH TXN')
