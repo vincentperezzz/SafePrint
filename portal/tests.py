@@ -407,6 +407,43 @@ class CustomerDocumentsStreamTests(TestCase):
 		self.assertEqual(doc_payload['remaining_sides'], 5)
 		self.assertEqual(doc_payload['pages_printed'], [])
 
+	def test_stream_reports_auto_voucher_amount_for_cancelled_document(self):
+		document = Document.objects.create(
+			doc_id='DOC-SSE-VOUCHER-AMOUNT-1',
+			customer_id='CID-SSE-VOUCHER-AMOUNT',
+			filename='voucher.pdf',
+			num_copies=1,
+			pages_num='1-2',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='Letter',
+			paper_quality='70',
+			original_name='voucher.pdf',
+			stored_name='voucher.pdf',
+			file_name='voucher.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Cancelled',
+			time_submitted=timezone.now() - timedelta(seconds=5),
+		)
+
+		RerouteHistory.objects.create(
+			document=document,
+			printer=None,
+			status='Error: Letter Auto voucher ABC12345 ₱1.00',
+			timestamp=timezone.now(),
+		)
+
+		generator = customer_documents_event_stream(document.customer_id)
+		payload = next(generator)
+		generator.close()
+
+		data = json.loads(payload.replace('data: ', '', 1).strip())
+		doc_payload = data['documents'][0]
+
+		self.assertEqual(doc_payload['auto_voucher_code'], 'ABC12345')
+		self.assertEqual(doc_payload['auto_voucher_amount'], '1.00')
+
 
 class MultiCopyRerouteAndRefundTests(TestCase):
 	def test_reroute_only_resubmits_unprinted_sides_for_multi_copy_job(self):
@@ -573,6 +610,7 @@ class MultiCopyRerouteAndRefundTests(TestCase):
 		self.assertEqual(document.doc_status, 'Cancelled')
 		self.assertIsNone(document.printer_assigned_id)
 		self.assertEqual(voucher.remaining_balance, Decimal('4.00'))
+		self.assertIn('₱4.00', latest_history.status)
 		self.assertIn('Auto voucher', latest_history.status)
 
 

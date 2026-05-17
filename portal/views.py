@@ -130,6 +130,13 @@ def _extract_voucher_code_from_reason(reason):
     return match.group(1).rstrip('.,;:')
 
 
+def _extract_voucher_amount_from_reason(reason):
+    match = re.search(r'Auto voucher\s+\S+\s+₱([0-9]+(?:\.[0-9]{2})?)', str(reason or ''), re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1)
+
+
 def _create_or_get_cancelled_voucher_ticket(customer_id, documents):
     normalized_customer_id = str(customer_id or '').strip()
     ordered_documents = sorted(
@@ -702,7 +709,9 @@ def _cancel_document_with_auto_voucher(document, *, reason):
 
     paper_size = str(getattr(document, 'paper_size', '') or '').strip()
     if voucher:
-        compact_history_status = f"Error: {paper_size or 'Print'} no printer. Auto voucher {voucher.code}"
+        compact_history_status = (
+            f"Error: {paper_size or 'Print'} Auto voucher {voucher.code} ₱{refund_amount:.2f}"
+        )
     else:
         compact_history_status = f"Error: {paper_size or 'Print'} no printer"
     compact_history_status = compact_history_status[:50]
@@ -978,24 +987,25 @@ def _active_printer_error_count():
     ).count()
 
 
-def _printer_has_hard_fault(printer):
-    status_value = (getattr(printer, 'printer_status', '') or '').strip().lower()
-    if not status_value or status_value in {'ready', 'sleep', 'printing', 'please wait.'}:
-        return False
+PRINTER_OPERATIONAL_STATUSES = {
+    'ready',
+    'sleep',
+    'printing',
+    'please wait.',
+}
 
-    hard_fault_keywords = (
-        'offline',
-        'error',
-        'jam',
-        'out of paper',
-        'no paper',
-        'not detected',
-        'cover open',
-        'door open',
-        'tray empty',
-        'needs refill',
-    )
-    return any(keyword in status_value for keyword in hard_fault_keywords)
+
+def _normalized_printer_status(printer):
+    status_value = (getattr(printer, 'printer_status', '') or '').strip().lower()
+    return status_value
+
+
+def _printer_is_operational(printer):
+    return _normalized_printer_status(printer) in PRINTER_OPERATIONAL_STATUSES
+
+
+def _printer_has_hard_fault(printer):
+    return not _printer_is_operational(printer)
 
 
 def _terminal_no_printer_reason(document, *, exclude_printer_ids=None):
@@ -4381,6 +4391,7 @@ def customer_documents_event_stream(customer_id):
             # Get cancel reason from reroute history if cancelled
             cancel_reason = ''
             auto_voucher_code = None
+            auto_voucher_amount = None
             if doc.doc_status == 'Cancelled':
                 last_error = history_entries.filter(status__startswith='Error').last()
                 if last_error:
@@ -4414,6 +4425,9 @@ def customer_documents_event_stream(customer_id):
                     _vm = re.search(r'Auto voucher\s+(\S+)\s+generated', cancel_reason, re.IGNORECASE)
                     if _vm:
                         auto_voucher_code = _vm.group(1)
+                    if not auto_voucher_code:
+                        auto_voucher_code = _extract_voucher_code_from_reason(cancel_reason)
+                    auto_voucher_amount = _extract_voucher_amount_from_reason(cancel_reason)
 
             # Check for support tickets on this document
             ticket = SupportTicket.objects.filter(document=doc).order_by('-created_at').first()
@@ -4428,6 +4442,7 @@ def customer_documents_event_stream(customer_id):
                 'status_badge': status_badge,
                 'cancel_reason': cancel_reason,
                 'auto_voucher_code': auto_voucher_code,
+                'auto_voucher_amount': auto_voucher_amount,
                 'printer_name': printer_name,
                 'printed_at': printed_at_name,
                 'pages_printed': pages_printed,

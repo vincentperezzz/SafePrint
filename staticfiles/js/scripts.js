@@ -1446,7 +1446,8 @@ function checkForAutoVoucherCancellations(documents) {
             _voucherCancellationShown[doc.doc_id] = true;
             var alertBody = reason;
             if (hasVoucherCode && normalizedReason.indexOf('auto voucher') === -1) {
-                alertBody = reason + (reason ? ' ' : '') + 'Auto voucher ' + doc.auto_voucher_code + ' was issued for the unprinted portion.';
+                var amountSuffix = doc.auto_voucher_amount ? ' worth P' + doc.auto_voucher_amount : '';
+                alertBody = reason + (reason ? ' ' : '') + 'Auto voucher ' + doc.auto_voucher_code + amountSuffix + ' was issued for the unprinted portion.';
             }
             createAlert(
                 'Print Cancelled',
