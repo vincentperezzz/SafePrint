@@ -15,9 +15,12 @@ from portal.views import (
 	_cancel_document_with_auto_voucher,
 	_cancel_cups_job,
 	_iter_document_print_jobs,
+	_resolve_cups_queue_name,
 	assign_document_to_printer,
 	check_queued_documents,
+	customer_documents_event_stream,
 	print_page,
+	QueueResolutionError,
 	reroute_document_on_error,
 	select_printer_for_document,
 )
@@ -111,6 +114,215 @@ class PrintCompletionFallbackTests(TestCase):
 				self.assertEqual(document.pages_printed, [1])
 				self.assertEqual(document.doc_status, 'Finished')
 				self.assertEqual(document.printed_at_id, printer.id)
+
+	@override_settings(MEDIA_ROOT='/tmp/safeprint-test-media')
+	def test_unresolved_queue_mapping_reroutes_without_marking_printer_error(self):
+		with tempfile.TemporaryDirectory(prefix='safeprint-media-') as media_root:
+			with self.settings(MEDIA_ROOT=media_root):
+				uploads_dir = os.path.join(media_root, 'uploads', 'CID-TEST')
+				os.makedirs(uploads_dir, exist_ok=True)
+				file_path = os.path.join(uploads_dir, 'queue-error.pdf')
+				with open(file_path, 'wb') as handle:
+					handle.write(b'%PDF-1.4\n% test\n')
+
+				printer = Printer.objects.create(
+					printer_name='Printer Queue Error',
+					model_name='Brother DCP-T430W',
+					node_name='BRW44F79F1A71F1',
+					printer_status='Ready',
+					last_checked=timezone.now(),
+					ip_address='192.168.0.55',
+				)
+
+				document = Document.objects.create(
+					doc_id='DOC-QUEUE-ERROR-1',
+					customer_id='CID-TEST',
+					filename='queue-error.pdf',
+					num_copies=1,
+					pages_num='1',
+					orientation='Portrait',
+					color_mode='Color',
+					paper_size='A4',
+					paper_quality='70',
+					original_name='queue-error.pdf',
+					stored_name='queue-error.pdf',
+					file_name='queue-error.pdf',
+					file_type='pdf',
+					file_size=16,
+					doc_status='Printing',
+					time_submitted=timezone.now() - timedelta(seconds=5),
+					printer_assigned=printer,
+				)
+
+				with patch('portal.views.reroute_document_on_error') as reroute_mock:
+					print_page(document, 1)
+
+				printer.refresh_from_db()
+				latest_history = RerouteHistory.objects.filter(document=document).latest('timestamp')
+
+				self.assertEqual(printer.printer_status, 'Ready')
+				reroute_mock.assert_called_once()
+				self.assertEqual(latest_history.status, 'Error: Queue map unresolved')
+
+
+class QueueResolutionTests(TestCase):
+	def test_resolver_uses_specific_queue_for_each_node(self):
+		printer_one = Printer.objects.create(
+			printer_name='Printer 2',
+			model_name='Brother DCP-T430W',
+			node_name='BRW44F79F1A6F27',
+			printer_status='Ready',
+			paper_assigned='Letter',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.102',
+		)
+
+		printer_two = Printer.objects.create(
+			printer_name='Printer 3',
+			model_name='Brother DCP-T430W',
+			node_name='BRWF44EB475AC2A',
+			printer_status='Ready',
+			paper_assigned='Letter',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.103',
+		)
+
+		with patch(
+			'portal.views._get_cups_destinations',
+			return_value={
+				'Brother_DCP_T430W_44f79f1a6f27',
+				'Brother_DCP_T430W_f44eb475ac2a',
+			},
+		):
+			self.assertEqual(
+				_resolve_cups_queue_name(printer_one),
+				'Brother_DCP_T430W_44f79f1a6f27',
+			)
+			self.assertEqual(
+				_resolve_cups_queue_name(printer_two),
+				'Brother_DCP_T430W_f44eb475ac2a',
+			)
+
+	def test_resolver_rejects_shared_base_queue_when_node_specific_missing(self):
+		printer = Printer.objects.create(
+			printer_name='Printer 4',
+			model_name='Brother DCP-T430W',
+			node_name='BRW44F79F1A71F1',
+			printer_status='Ready',
+			paper_assigned='A4',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.104',
+		)
+
+		with patch('portal.views._get_cups_destinations', return_value={'Brother_DCP_T430W'}):
+			with self.assertRaises(QueueResolutionError):
+				_resolve_cups_queue_name(printer)
+
+	def test_assignment_skips_printer_with_unresolved_queue(self):
+		document = Document.objects.create(
+			doc_id='DOC-QUEUE-RESOLUTION-1',
+			customer_id='CID-QUEUE-RESOLUTION',
+			filename='assign.pdf',
+			num_copies=1,
+			pages_num='1',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='A4',
+			paper_quality='70',
+			original_name='assign.pdf',
+			stored_name='assign.pdf',
+			file_name='assign.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Queued',
+			time_submitted=timezone.now() - timedelta(seconds=5),
+		)
+
+		Printer.objects.create(
+			printer_name='Unresolved A4',
+			model_name='Brother DCP-T430W',
+			node_name='BRW44F79F1A71F1',
+			printer_status='Ready',
+			paper_assigned='A4',
+			tray_level='Full',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.104',
+		)
+
+		healthy_printer = Printer.objects.create(
+			printer_name='Healthy A4',
+			model_name='Brother DCP-T430W',
+			node_name='BRWF44EB475AC2A',
+			printer_status='Ready',
+			paper_assigned='A4',
+			tray_level='Full',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.105',
+		)
+
+		with patch('portal.views._get_cups_destinations', return_value={'Brother_DCP_T430W_f44eb475ac2a'}):
+			assigned = assign_document_to_printer(document, wait_for_availability=False)
+
+		document.refresh_from_db()
+		self.assertEqual(assigned.id, healthy_printer.id)
+		self.assertEqual(document.printer_assigned_id, healthy_printer.id)
+
+
+class CustomerDocumentsStreamTests(TestCase):
+	def test_stream_reports_current_rerouted_printer(self):
+		old_printer = Printer.objects.create(
+			printer_name='Printer 2',
+			model_name='Brother DCP-T430W',
+			printer_status='Ready',
+			paper_assigned='Letter',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.102',
+		)
+
+		new_printer = Printer.objects.create(
+			printer_name='Printer 3',
+			model_name='Brother DCP-T430W',
+			printer_status='Ready',
+			paper_assigned='Letter',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.103',
+		)
+
+		document = Document.objects.create(
+			doc_id='DOC-SSE-REROUTE-1',
+			customer_id='CID-SSE-REROUTE',
+			filename='reroute.pdf',
+			num_copies=1,
+			pages_num='1-2',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='Letter',
+			paper_quality='70',
+			original_name='reroute.pdf',
+			stored_name='reroute.pdf',
+			file_name='reroute.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Printing',
+			time_submitted=timezone.now() - timedelta(seconds=5),
+			printer_assigned=new_printer,
+		)
+
+		RerouteHistory.objects.create(document=document, printer=old_printer, status='Assigned')
+		RerouteHistory.objects.create(document=document, printer=old_printer, status='Error: Ready')
+		RerouteHistory.objects.create(document=document, printer=new_printer, status='Assigned')
+		RerouteHistory.objects.create(document=document, printer=new_printer, status='Rerouted')
+
+		generator = customer_documents_event_stream(document.customer_id)
+		payload = next(generator)
+		generator.close()
+
+		data = json.loads(payload.replace('data: ', '', 1).strip())
+		doc_payload = data['documents'][0]
+
+		self.assertEqual(doc_payload['printer_name'], new_printer.printer_name)
+		self.assertEqual(doc_payload['reroute_history'][-1]['printer_name'], new_printer.printer_name)
+		self.assertEqual(doc_payload['reroute_history'][-1]['status'], 'Rerouted')
 
 
 class NoPrinterAutoVoucherTests(TestCase):

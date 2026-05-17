@@ -874,11 +874,17 @@ def _available_printers_for_document(
     if lock_rows:
         candidate_printers = candidate_printers.select_for_update()
 
+    destinations = _get_cups_destinations()
     available_printers = []
     for printer in candidate_printers:
         if sync_scheduler_state:
             _sync_printer_scheduler_state(printer)
         if require_idle and (getattr(printer, 'active_job_count', 0) or 0) > 0:
+            continue
+        try:
+            _resolve_cups_queue_name(printer, destinations=destinations)
+        except QueueResolutionError as exc:
+            print(f"[CUPS] Skipping printer {printer.printer_name}: {exc}")
             continue
         if not _printer_has_required_stock(printer, document):
             continue
@@ -3274,6 +3280,10 @@ def _sanitize_cups_queue_name(value):
     return str(value or '').replace('-', '_').replace(' ', '_')
 
 
+class QueueResolutionError(RuntimeError):
+    pass
+
+
 def _get_cups_destinations():
     result = subprocess.run(
         ['lpstat', '-v'],
@@ -3289,9 +3299,13 @@ def _get_cups_destinations():
     return destinations
 
 
-def _resolve_cups_queue_name(printer):
+def _resolve_cups_queue_name(printer, *, destinations=None):
+    if not printer:
+        raise QueueResolutionError('Printer is required for CUPS queue resolution.')
+
     base_queue = _sanitize_cups_queue_name(printer.model_name or printer.printer_name)
-    destinations = _get_cups_destinations()
+    fallback_queue = _sanitize_cups_queue_name(printer.printer_name)
+    destinations = _get_cups_destinations() if destinations is None else set(destinations)
 
     if printer.node_name:
         node_suffix = printer.node_name.lower()
@@ -3301,14 +3315,19 @@ def _resolve_cups_queue_name(printer):
         if specific_queue in destinations:
             return specific_queue
 
-    if base_queue in destinations:
-        return base_queue
+        raise QueueResolutionError(
+            f"No CUPS queue matches printer {printer.printer_name} node {printer.node_name}."
+        )
 
-    fallback_queue = _sanitize_cups_queue_name(printer.printer_name)
     if fallback_queue in destinations:
         return fallback_queue
 
-    return base_queue
+    if base_queue in destinations and base_queue == fallback_queue:
+        return base_queue
+
+    raise QueueResolutionError(
+        f"No unique CUPS queue found for printer {printer.printer_name}."
+    )
 
 
 def _parse_cups_job_id(lp_output):
@@ -3439,7 +3458,12 @@ def _cancel_jobs_for_printer(printer):
     if not printer:
         return []
 
-    queue_name = _resolve_cups_queue_name(printer)
+    try:
+        queue_name = _resolve_cups_queue_name(printer)
+    except QueueResolutionError as exc:
+        print(f"[CUPS] Cannot cancel jobs for printer {printer.printer_name}: {exc}")
+        return []
+
     job_ids = _get_cups_jobs_for_queue(queue_name)
     cancelled = [job_id for job_id in job_ids if _cancel_cups_job(job_id)]
     if cancelled:
@@ -3550,8 +3574,21 @@ def print_page(document, page_num, *, copy_index=1, total_copies=1):
         print(f"[REROUTED] Document {document.doc_id} was rerouted from {printer.printer_name} to {document.printer_assigned.printer_name}. Skipping wait for original printer.")
         # Use the new printer for printing
         printer = document.printer_assigned
-    
-    queue_name = _resolve_cups_queue_name(printer)
+
+    try:
+        queue_name = _resolve_cups_queue_name(printer)
+    except QueueResolutionError as exc:
+        error_status = 'Error: Queue map unresolved'
+        print(f"[CUPS] {exc} Rerouting document {document.doc_id} away from printer {printer.printer_name}.")
+        if not _recent_matching_reroute_history(document, printer, error_status):
+            RerouteHistory.objects.create(
+                document=document,
+                printer=printer,
+                status=error_status,
+                timestamp=timezone.now(),
+            )
+        reroute_document_on_error(document, failed_printer=printer, failure_status=error_status)
+        return
 
     # Use live CUPS queue state as the primary readiness signal before submit.
     # DB/SNMP status remains only as a hardware-fault fallback for cases like
@@ -3885,7 +3922,7 @@ def print_page(document, page_num, *, copy_index=1, total_copies=1):
     _finish_document_if_complete(document, printer=printer)
 
 
-def reroute_document_on_error(document, failed_printer=None, failed_job_id=None):
+def reroute_document_on_error(document, failed_printer=None, failed_job_id=None, failure_status=None):
     """
     Reroute a document using the shared printer scheduler:
     - Preemptive: Document with error is immediately stopped and rerouted (already handled by caller)
@@ -3933,7 +3970,7 @@ def reroute_document_on_error(document, failed_printer=None, failed_job_id=None)
         # Record the error printer in reroute history (if not already done by caller)
         # We can't use get_or_create here because timestamp makes entries unique
         # and we might have multiple error entries for the same printer/document
-        error_status = f"Error: {failed_printer.printer_status}"
+        error_status = failure_status or f"Error: {failed_printer.printer_status}"
 
         if not _recent_matching_reroute_history(document, failed_printer, error_status):
             RerouteHistory.objects.create(
@@ -4043,6 +4080,11 @@ def _claim_next_queued_document_for_printer(printer):
             if locked_printer.printer_status not in ['Ready', 'Sleep']:
                 return None
             if (getattr(locked_printer, 'active_job_count', 0) or 0) > 0:
+                return None
+            try:
+                _resolve_cups_queue_name(locked_printer)
+            except QueueResolutionError as exc:
+                print(f"[CUPS] Skipping queued dispatch for printer {locked_printer.printer_name}: {exc}")
                 return None
 
             queued_docs = Document.objects.select_for_update().filter(
