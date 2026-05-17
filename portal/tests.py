@@ -513,6 +513,68 @@ class MultiCopyRerouteAndRefundTests(TestCase):
 		self.assertEqual(len(document.get_remaining_print_jobs()), 1)
 		self.assertEqual(_calculate_unprinted_refund_amount(document), Decimal('1.00'))
 
+	def test_reroute_cancels_last_remaining_page_when_other_printer_tray_is_not_detected(self):
+		failed_printer = Printer.objects.create(
+			printer_name='Failed Letter Printer',
+			model_name='Brother',
+			printer_status='No Paper Fed [Tray 1]',
+			paper_assigned='Letter',
+			tray_level='Full',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.160',
+		)
+
+		other_faulted_printer = Printer.objects.create(
+			printer_name='Tray Missing Printer',
+			model_name='Brother',
+			printer_status='Paper Tray 1 not detected',
+			paper_assigned='Letter',
+			tray_level='Full',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.161',
+		)
+
+		document = Document.objects.create(
+			doc_id='DOC-LAST-PAGE-AUTO-VOUCHER-1',
+			customer_id='CID-LAST-PAGE-AUTO-VOUCHER',
+			filename='last-page.pdf',
+			num_copies=1,
+			pages_num='1-2',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='Letter',
+			paper_quality='70',
+			original_name='last-page.pdf',
+			stored_name='last-page.pdf',
+			file_name='last-page.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Printing',
+			time_submitted=timezone.now() - timedelta(minutes=1),
+			printer_assigned=failed_printer,
+		)
+
+		Payment.objects.create(
+			doc=document,
+			price=Decimal('8.00'),
+			payment_status='Paid',
+		)
+
+		document.mark_print_job_completed(2, 1)
+
+		with patch('portal.views._cancel_cups_job', return_value=None), \
+			 patch('portal.views._schedule_queue_check', return_value=None):
+			reroute_document_on_error(document, failed_printer=failed_printer, failed_job_id='job-last-page')
+
+		document.refresh_from_db()
+		latest_history = RerouteHistory.objects.filter(document=document).latest('timestamp')
+		voucher = VoucherCredit.objects.get(last_customer_id=document.customer_id)
+
+		self.assertEqual(document.doc_status, 'Cancelled')
+		self.assertIsNone(document.printer_assigned_id)
+		self.assertEqual(voucher.remaining_balance, Decimal('4.00'))
+		self.assertIn('Auto voucher', latest_history.status)
+
 
 class NoPrinterAutoVoucherTests(TestCase):
 	def test_initial_assignment_with_no_viable_printer_creates_auto_voucher(self):
