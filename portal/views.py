@@ -989,6 +989,7 @@ def _printer_has_hard_fault(printer):
         'jam',
         'out of paper',
         'no paper',
+        'not detected',
         'cover open',
         'door open',
         'tray empty',
