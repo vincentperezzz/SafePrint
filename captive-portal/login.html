@@ -103,14 +103,14 @@
         <form name="login" action="$(link-login-only)" method="post" target="hotspot-login-frame" onsubmit="return submitHotspotLogin()">
             <input type="hidden" name="username" value="guest">
             <input type="hidden" name="password" value="none">
-            <input type="hidden" name="dst" value="$(link-status)">
+            <input type="hidden" name="dst" value="http://172.16.0.1/status">
             <button type="submit" class="btn">Print using SAFEPRINT Printing Vendo</button>
         </form>
 
         <div class="manual-link">
             If the captive popup closes on iPhone or Android, open
-            <a href="https://safeprint.duckdns.org/">safeprint.duckdns.org</a>
-            after login.
+            <a href="http://172.16.0.1/status">172.16.0.1/status</a>
+            to return to the SafePrint portal.
         </div>
 
         <div class="footer">
@@ -119,19 +119,43 @@
     </div>
 
     <script>
-        const SAFEPRINT_URL = 'https://safeprint.duckdns.org/';
+        const CAPTIVE_PORTAL_URL = 'http://172.16.0.1/status';
+        const CAPTIVE_PORTAL_ANDROID_INTENT = 'intent://172.16.0.1/status#Intent;scheme=http;package=com.android.chrome;action=android.intent.action.VIEW;S.browser_fallback_url=http%3A%2F%2F172.16.0.1%2Fstatus;end';
+        const HOTSPOT_ANDROID_REDIRECT_DELAY_MS = 1200;
         let hotspotLoginSubmitted = false;
         let hotspotRedirectScheduled = false;
+
+        function isAndroidDevice() {
+            return /Android/i.test(navigator.userAgent || '');
+        }
+
+        function openSafePrintExternal() {
+            if (isAndroidDevice()) {
+                window.location.href = CAPTIVE_PORTAL_ANDROID_INTENT;
+                return;
+            }
+
+            window.location.replace(CAPTIVE_PORTAL_URL);
+        }
+
+        function schedulePortalOpen(delayMs) {
+            window.setTimeout(function () {
+                if (!hotspotRedirectScheduled) {
+                    hotspotRedirectScheduled = true;
+                    openSafePrintExternal();
+                }
+            }, delayMs);
+        }
 
         function submitHotspotLogin() {
             hotspotLoginSubmitted = true;
 
-            window.setTimeout(function () {
-                if (!hotspotRedirectScheduled) {
-                    hotspotRedirectScheduled = true;
-                    window.location.replace(SAFEPRINT_URL);
-                }
-            }, 1800);
+            if (isAndroidDevice()) {
+                schedulePortalOpen(HOTSPOT_ANDROID_REDIRECT_DELAY_MS);
+                return true;
+            }
+
+            schedulePortalOpen(1800);
 
             return true;
         }
@@ -142,7 +166,7 @@
             }
 
             hotspotRedirectScheduled = true;
-            window.location.replace(SAFEPRINT_URL);
+            openSafePrintExternal();
             return true;
         }
     </script>
