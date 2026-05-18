@@ -925,6 +925,20 @@ html {
 }
 
 @media (max-width: 768px) {
+    .footer-section {
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    .footer-container {
+        width: 100%;
+        padding: 10% 10% 0 10%;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        border-radius: 32px 32px 0 0;
+    }
+
     .feedback-illustration {
         display: none;
     }
@@ -3588,7 +3602,8 @@ input:focus::placeholder {
     gap: 14px;
     padding: 1.5%;
     overflow-y: auto;
-    min-width: 1250px;
+    overflow-x: hidden;
+    min-width: 0;
 }
 
 .dashboard-rows {
@@ -3605,7 +3620,7 @@ input:focus::placeholder {
     z-index: 120;
     padding: 10px 0 12px;
     background: #f7f8fc;
-    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+    box-shadow: none;
 }
 
 .dashboard-rows h1 {
@@ -5121,7 +5136,10 @@ input:focus::placeholder {
     display: flex;
     flex-direction: column;
     gap: 15px;
-    min-width: 1335px;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     margin-bottom: 20px;
 }
 
@@ -5161,6 +5179,7 @@ input:focus::placeholder {
 
 .printer-table {
     width: 100%;
+    min-width: 0;
 }
 
 .printer-table-header, .printer-table-row {
@@ -5803,7 +5822,7 @@ input:focus::placeholder {
     border-radius: 16px;
     padding: 10px 20px 20px 20px;
     background: #ffffff; 
-    box-shadow: 0px 6px 0px 0px #18191F;
+    box-shadow: none;
     max-height: none;
     overflow: visible;
 }
@@ -5858,6 +5877,11 @@ input:focus::placeholder {
     align-items: flex-start;
 }
 
+.on-queue-row .queue-col,
+.printer-table-row > div {
+    min-width: 0;
+}
+
 .on-queue-row .doc-printer,
 .on-queue-row .doc-status {
     font-size: 14px;
@@ -5866,7 +5890,28 @@ input:focus::placeholder {
 
 .on-queue-row .doc-status {
     display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.queue-status-main {
+    display: flex;
     align-items: center;
+}
+
+.queue-status-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-left: 18px;
+}
+
+.queue-status-meta-item {
+    color: #6d6d6d;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
 }
 
 .on-queue-empty {
@@ -8237,6 +8282,57 @@ body.admin-shell .admin-popup-submit-row .popup-done-btn {
         flex: 1;
     }
 
+    .on-queue-documents-list,
+    .printer-status-card,
+    .completed-printer-card,
+    .settings-section {
+        box-shadow: none;
+    }
+
+    .on-queue-header {
+        display: none;
+    }
+
+    .on-queue-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px 16px;
+        padding: 14px;
+    }
+
+    .on-queue-row .doc-name,
+    .on-queue-row .doc-status,
+    .on-queue-row .doc-actions {
+        grid-column: 1 / -1;
+    }
+
+    .on-queue-row .queue-col[data-label]::before,
+    .printer-table-row [data-label]::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 4px;
+        color: #6b7280;
+        font-family: 'Montserrat', sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .on-queue-row .doc-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .on-queue-row .doc-actions .queue-cancel-btn {
+        width: 100%;
+    }
+
+    .queue-status-meta {
+        padding-left: 0;
+    }
+
     .vertical-navbar {
         min-width: 160px;
         max-width: 160px;
@@ -8298,6 +8394,11 @@ body.admin-shell .admin-popup-submit-row .popup-done-btn {
         border-radius: 14px;
         margin-bottom: 10px;
         background: #fff;
+    }
+
+    .printer-table-row > [data-label],
+    .paper-refill-table .printer-table-row > [data-label] {
+        word-break: break-word;
     }
 
     .printer-table-row .printer-info {
@@ -8389,6 +8490,18 @@ body.admin-shell .admin-popup-submit-row .popup-done-btn {
         min-width: 0;
     }
 
+
+@media (max-width: 1180px) {
+    .on-queue-row,
+    .printer-table-row,
+    .paper-refill-table .printer-table-row {
+        grid-template-columns: 1fr;
+    }
+
+    .printer-table-row .printer-edit-btn-container {
+        justify-content: flex-start;
+    }
+}
     .sales-stats {
         flex-direction: row;
         gap: 8px;
