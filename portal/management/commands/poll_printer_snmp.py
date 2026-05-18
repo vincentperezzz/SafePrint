@@ -67,6 +67,29 @@ def _normalize_status(status_value, previous_status):
     return status_value
 
 
+def _get_cups_queue_state_snapshot(printer, *, destinations=None):
+    from portal.views import _get_cups_queue_state_for_polling
+
+    return _get_cups_queue_state_for_polling(printer, destinations=destinations)
+
+
+def _apply_cups_status_gate(printer, status_value, previous_status, *, destinations=None):
+    from portal.views import CUPS_CONFIRMED_ENABLED_QUEUE_STATES, CUPS_DISABLED_PRINTER_STATUS, QueueResolutionError
+
+    try:
+        _, cups_state = _get_cups_queue_state_snapshot(printer, destinations=destinations)
+    except QueueResolutionError:
+        cups_state = 'unknown'
+
+    if cups_state == 'stopped':
+        return CUPS_DISABLED_PRINTER_STATUS
+
+    if previous_status == CUPS_DISABLED_PRINTER_STATUS and cups_state not in CUPS_CONFIRMED_ENABLED_QUEUE_STATES:
+        return CUPS_DISABLED_PRINTER_STATUS
+
+    return status_value
+
+
 class Command(BaseCommand):
     help = 'Poll SNMP printer state with a fast status path and slower detail refreshes.'
 
@@ -103,6 +126,14 @@ class Command(BaseCommand):
             prev_status = printer.printer_status
             prev_ink = printer.ink_status
             prev_tray = printer.tray_level
+            cups_destinations = None
+
+            try:
+                from portal.views import _get_cups_destinations
+
+                cups_destinations = _get_cups_destinations()
+            except Exception:
+                cups_destinations = None
 
             status_failures = 0
             while True:
@@ -173,9 +204,16 @@ class Command(BaseCommand):
                     model_val = _extract_value(model) or model_val
                     node_val = _extract_value(node) or node_val
 
+                effective_status = _apply_cups_status_gate(
+                    printer,
+                    status_val,
+                    prev_status,
+                    destinations=cups_destinations,
+                )
+
                 try:
                     current_printer = Printer.objects.get(id=printer.id)
-                    current_printer.printer_status = status_val
+                    current_printer.printer_status = effective_status
                     current_printer.model_name = model_val
                     current_printer.node_name = node_val
                     current_printer.last_checked = timezone.now()
@@ -185,7 +223,7 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING(f"Printer ID {printer.id} no longer exists in database. Skipping update."))
                     return
 
-                self.stdout.write(self.style.SUCCESS(f"Status: {status_val}"))
+                self.stdout.write(self.style.SUCCESS(f"Status: {effective_status}"))
                 self.stdout.write(self.style.SUCCESS(f"Model: {model_val}"))
                 self.stdout.write(self.style.SUCCESS(f"Node: {node_val}"))
                 ink_status = current_printer.ink_status or prev_ink or ''
@@ -229,12 +267,12 @@ class Command(BaseCommand):
                 try:
                     current_printer = Printer.objects.get(id=printer.id)
                     self.stdout.write(self.style.SUCCESS(f"Printer info updated in database for {ip_address}. Ink status: {ink_status}"))
-                    if status_val != prev_status or ink_status != prev_ink or current_printer.tray_level != prev_tray:
+                    if effective_status != prev_status or ink_status != prev_ink or current_printer.tray_level != prev_tray:
                         try:
                             from portal.models import PrinterStatusLog
                             PrinterStatusLog.objects.create(
                                 printer=current_printer,
-                                status=status_val,
+                                status=effective_status,
                                 ink_status=ink_status,
                                 paper_level=current_printer.tray_level or '',
                             )
