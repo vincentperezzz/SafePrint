@@ -1332,6 +1332,7 @@ function storeCustomerDocumentArchive(documents) {
 const confirmationBaseTitle = document.title;
 let confirmationTitleFlashInterval = null;
 let previousDocStatuses = {}; // Track previous statuses by doc_id
+let previousDocRerouteCounts = {}; // Track reroute history markers by doc_id
 const printCompleteAudio = new Audio('/static/sounds/chime.mp3');
 const rerouteAlertAudio = new Audio('/static/sounds/rerouted.mp3');
 
@@ -1392,6 +1393,9 @@ function checkForNewCompletions(documents) {
 
     documents.forEach(doc => {
         const prev = previousDocStatuses[doc.doc_id];
+        const rerouteCount = (doc.reroute_history || []).filter((entry) => String((entry && entry.status) || '') === 'Rerouted').length;
+        const hasSeenRerouteCount = Object.prototype.hasOwnProperty.call(previousDocRerouteCounts, doc.doc_id);
+        const prevRerouteCount = previousDocRerouteCounts[doc.doc_id] || 0;
         if (prev) {
             // Detect newly finished
             if (doc.doc_status === 'Finished' && prev !== 'Finished') {
@@ -1402,11 +1406,15 @@ function checkForNewCompletions(documents) {
                 newlyRerouted++;
             }
         }
+        if (hasSeenRerouteCount && rerouteCount > prevRerouteCount) {
+            newlyRerouted++;
+        }
     });
 
     // Update previous statuses
     documents.forEach(doc => {
         previousDocStatuses[doc.doc_id] = doc.doc_status;
+        previousDocRerouteCounts[doc.doc_id] = (doc.reroute_history || []).filter((entry) => String((entry && entry.status) || '') === 'Rerouted').length;
     });
 
     // Play appropriate sounds (finished takes priority)
@@ -1661,8 +1669,18 @@ function initConfirmationSSE() {
             checkForTimeoutCancellations(data.documents || []);
             checkForAutoVoucherCancellations(data.documents || []);
             checkForAutoTicketTrigger(data);
-            renderDocumentRows(data.documents);
-            updateConfirmationUI(data);
+
+            try {
+                renderDocumentRows(data.documents);
+            } catch (renderError) {
+                console.error('Error rendering confirmation document rows:', renderError, data.documents);
+            }
+
+            try {
+                updateConfirmationUI(data);
+            } catch (uiError) {
+                console.error('Error updating confirmation page state:', uiError, data);
+            }
         } catch (e) {
             console.error('Error parsing SSE data:', e);
         }
@@ -1690,39 +1708,84 @@ function renderDocumentRows(documents) {
     }
 
     container.innerHTML = '';
+    const fragment = document.createDocumentFragment();
 
     documents.forEach(doc => {
         const row = document.createElement('div');
         row.className = 'doc-row';
-        row.setAttribute('data-doc-id', doc.doc_id);
+        row.setAttribute('data-doc-id', doc.doc_id || '');
 
-        // Left side: icon + name + doc ID
         const leftHtml = `
             <div class="doc-left">
                 <img src="/static/assets/pdf-icon.svg" alt="PDF Icon">
                 <div class="doc-meta">
-                    <h6 title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</h6>
-                    <span class="doc-id">#${escapeHtml(doc.doc_id)}</span>
+                    <h6 title="${escapeHtml(doc.filename || doc.doc_id || 'Document')}">${escapeHtml(doc.filename || 'Document')}</h6>
+                    <span class="doc-id">#${escapeHtml(doc.doc_id || '')}</span>
                 </div>
             </div>
         `;
 
-        // Right side: badges based on status and reroute history
-        const rightHtml = buildDocumentBadges(doc);
+        let rightHtml = '';
+        try {
+            rightHtml = buildDocumentBadges(doc);
+        } catch (badgeError) {
+            console.error('Error building confirmation badges for document:', doc, badgeError);
+            rightHtml = renderFallbackDocumentBadges(doc);
+        }
 
         row.innerHTML = leftHtml + rightHtml;
-        container.appendChild(row);
+        fragment.appendChild(row);
     });
+
+    container.appendChild(fragment);
+}
+
+function renderFallbackDocumentBadges(doc) {
+    const status = String((doc && doc.doc_status) || 'Queued');
+    const printerName = (doc && (doc.printer_name || doc.printed_at)) ? ` (${escapeHtml(doc.printer_name || doc.printed_at)})` : '';
+    let badgesHtml = '';
+
+    if (status === 'Finished') {
+        badgesHtml = `
+            <div class="badge status-success">Completed${printerName}</div>
+            <div class="status-group">
+                <div class="badge status-success">Completed</div>
+                <button class="picked-up-btn" onclick="pickedUpDocument('${escapeHtml(doc.doc_id || '')}')">Picked Up</button>
+            </div>
+        `;
+    } else if (status === 'Picked Up') {
+        badgesHtml = `<div class="badge status-success">Picked Up${printerName}</div>`;
+    } else if (status === 'Cancelled') {
+        const reason = doc && doc.cancel_reason ? ` (${escapeHtml(doc.cancel_reason)})` : '';
+        badgesHtml = `<div class="badge status-danger">Cancelled${reason}</div>`;
+    } else if (status === 'Printing') {
+        badgesHtml = `<div class="badge status-info">${escapeHtml(formatCurrentPrintingBadge(doc))}</div>`;
+    } else if (status === 'Pending') {
+        badgesHtml = '<div class="badge status-warning">Waiting for Approval...</div>';
+    } else {
+        badgesHtml = `<div class="badge status-info">Waiting...${printerName}</div>`;
+    }
+
+    if (doc && doc.has_ticket) {
+        const ticketNum = doc.ticket_number ? ` #${escapeHtml(doc.ticket_number)}` : '';
+        badgesHtml += `<div class="badge status-ticket"><i class="fa-solid fa-ticket"></i> Report Filed${ticketNum}</div>`;
+    }
+
+    return `<div class="doc-right">${badgesHtml}</div>`;
 }
 
 function buildDocumentBadges(doc) {
     let badgesHtml = '';
     const history = doc.reroute_history || [];
+    const routePrinters = getRoutePrinterNames(history);
+    const splitActiveMultiCopyBadges = routePrinters.length > 1;
+    const activeRerouteBadgeHtml = renderActiveRerouteBadge(history);
 
     const segments = buildPrintSegments(doc, history);
     const hasPageSegments = segments.some(segment => Array.isArray(segment.pages) && segment.pages.length > 0);
     const rerouteDestination = getLatestRerouteDestination(history);
-    const pickupSummaryHtml = renderPickupHistorySummary(doc, segments);
+    const pickupSummaryHtml = renderPickupHistorySummary(doc, segments, false);
+    const routeHistoryHtml = renderRouteHistoryBadge(history, doc.doc_status);
 
     if (doc.doc_status === 'Pending') {
         // Waiting for admin approval
@@ -1730,7 +1793,7 @@ function buildDocumentBadges(doc) {
     } else if (doc.doc_status === 'Queued') {
         // In queue, no printer assigned yet
         if (segments.length > 0) {
-            badgesHtml = renderCompletedSegments(segments);
+            badgesHtml = renderCompletedSegments(segments, 'status-info', splitActiveMultiCopyBadges);
         }
         if (rerouteDestination) {
             badgesHtml += `<div class="badge status-primary">Rerouted to (${escapeHtml(rerouteDestination)})</div>`;
@@ -1738,17 +1801,25 @@ function buildDocumentBadges(doc) {
         badgesHtml += `<div class="badge status-info">Waiting...</div>`;
     } else if (doc.doc_status === 'Printing') {
         if (segments.length > 0) {
-            badgesHtml = renderCompletedSegments(hasPageSegments ? segments : segments.slice(0, -1));
+            badgesHtml = renderCompletedSegments(hasPageSegments ? segments : segments.slice(0, -1), 'status-info', splitActiveMultiCopyBadges);
         }
-        if (rerouteDestination) {
+        if (!hasPageSegments && routeHistoryHtml) {
+            badgesHtml += routeHistoryHtml;
+        }
+        if (activeRerouteBadgeHtml) {
+            badgesHtml += activeRerouteBadgeHtml;
+        }
+        if (rerouteDestination && !hasPageSegments) {
             badgesHtml += `<div class="badge status-primary">Rerouted to (${escapeHtml(rerouteDestination)})</div>`;
         }
-        badgesHtml += `<div class="badge status-info">${formatCurrentPrintingBadge(doc)}</div>`;
+        badgesHtml += renderCurrentPrintingSegment(doc, hasPageSegments, splitActiveMultiCopyBadges);
     } else if (doc.doc_status === 'Finished') {
         if (pickupSummaryHtml) {
             badgesHtml = pickupSummaryHtml;
+        } else if (routeHistoryHtml) {
+            badgesHtml = routeHistoryHtml;
         } else if (segments.length > 0) {
-            badgesHtml = renderCompletedSegments(segments);
+            badgesHtml = renderCompletedSegments(segments, 'status-success', false);
         }
         badgesHtml += `
             <div class="status-group">
@@ -1760,15 +1831,17 @@ function buildDocumentBadges(doc) {
         // Cancelled - show reason
         const reason = doc.cancel_reason ? ` (${escapeHtml(doc.cancel_reason)})` : ' (No available Printer)';
         if (segments.length > 0) {
-            badgesHtml = renderCompletedSegments(segments);
+            badgesHtml = renderCompletedSegments(segments, 'status-info', false);
         }
         badgesHtml += `<div class="badge status-danger">Cancelled${reason}</div>`;
     } else if (doc.doc_status === 'Picked Up') {
         // Already picked up
         if (pickupSummaryHtml) {
             badgesHtml = pickupSummaryHtml;
+        } else if (routeHistoryHtml) {
+            badgesHtml = routeHistoryHtml;
         } else if (segments.length > 0) {
-            badgesHtml = renderCompletedSegments(segments);
+            badgesHtml = renderCompletedSegments(segments, 'status-success', false);
         }
         badgesHtml += `<div class="badge status-success">Picked Up</div>`;
     }
@@ -1783,17 +1856,21 @@ function buildDocumentBadges(doc) {
 }
 
 function buildPrintSegments(doc, history) {
+    const safeHistory = Array.isArray(history) ? history : [];
     const pageSegments = [];
     let currentPageSegment = null;
 
-    history.forEach((entry) => {
-        const match = /^Printed page\s+(\d+)$/i.exec(entry.status || '');
+    safeHistory.forEach((entry) => {
+        const status = String((entry && entry.status) || '');
+        const match = /^Printed page\s+(\d+)(?:\s+copy\s+(\d+)\/(\d+))?$/i.exec(status);
         if (!match) {
             return;
         }
 
-        const printerName = entry.printer_name || 'Unknown';
+        const printerName = (entry && entry.printer_name) || 'Unknown';
         const pageNumber = Number.parseInt(match[1], 10);
+        const copyIndex = match[2] ? Number.parseInt(match[2], 10) : null;
+        const totalCopies = match[3] ? Number.parseInt(match[3], 10) : null;
         if (Number.isNaN(pageNumber)) {
             return;
         }
@@ -1802,6 +1879,7 @@ function buildPrintSegments(doc, history) {
             currentPageSegment = {
                 printer_name: printerName,
                 pages: [],
+                printJobs: [],
             };
             pageSegments.push(currentPageSegment);
         }
@@ -1809,6 +1887,12 @@ function buildPrintSegments(doc, history) {
         if (!currentPageSegment.pages.includes(pageNumber)) {
             currentPageSegment.pages.push(pageNumber);
         }
+
+        currentPageSegment.printJobs.push({
+            page: pageNumber,
+            copyIndex,
+            totalCopies,
+        });
     });
 
     if (pageSegments.length > 0) {
@@ -1818,21 +1902,22 @@ function buildPrintSegments(doc, history) {
     const segments = [];
     let currentPrinter = null;
 
-    for (let i = 0; i < history.length; i++) {
-        const entry = history[i];
+    for (let i = 0; i < safeHistory.length; i++) {
+        const entry = safeHistory[i] || {};
+        const status = String(entry.status || '');
 
-        if (entry.status === 'Assigned') {
+        if (status === 'Assigned') {
             currentPrinter = entry.printer_name;
-        } else if (entry.status.startsWith('Error') || entry.status.startsWith('Timeout') || entry.status.startsWith('Failed')) {
+        } else if (status.startsWith('Error') || status.startsWith('Timeout') || status.startsWith('Failed')) {
             if (currentPrinter) {
                 segments.push({
                     printer_name: currentPrinter,
                     status: 'error',
-                    error_detail: entry.status,
+                    error_detail: status,
                 });
             }
             currentPrinter = null;
-        } else if (entry.status === 'Rerouted') {
+        } else if (status === 'Rerouted') {
             // Rerouted to a new printer
             if (currentPrinter) {
                 segments.push({
@@ -1859,7 +1944,7 @@ function getLatestRerouteDestination(history) {
     let latestDestination = '';
 
     (history || []).forEach((entry) => {
-        if (entry.status === 'Rerouted' && entry.printer_name) {
+        if (String((entry && entry.status) || '') === 'Rerouted' && entry && entry.printer_name) {
             latestDestination = entry.printer_name;
         }
     });
@@ -1867,18 +1952,122 @@ function getLatestRerouteDestination(history) {
     return latestDestination;
 }
 
-function renderCompletedSegments(segments) {
+function renderCompletedSegments(segments, badgeClass = 'status-primary', splitMultiCopyBadges = false) {
     let html = '';
     segments.forEach(segment => {
         const printerText = segment.printer_name ? ` (${escapeHtml(segment.printer_name)})` : '';
-        if (Array.isArray(segment.pages) && segment.pages.length > 0) {
-            html += `<div class="badge status-primary">Printed: ${formatPrintedPageRanges(segment.pages)}${printerText}</div>`;
+        if (Array.isArray(segment.printJobs) && segment.printJobs.some((job) => job && Number(job.totalCopies) > 1)) {
+            html += splitMultiCopyBadges
+                ? renderPrintJobBadges(segment.printJobs, badgeClass, 'Printed', printerText)
+                : renderGroupedPrintJobBadges(segment.printJobs, badgeClass, 'Printed', printerText);
+        } else if (Array.isArray(segment.pages) && segment.pages.length > 0) {
+            html += `<div class="badge ${badgeClass}">${escapeHtml(formatPrintedPageRanges(segment.pages))}${printerText}</div>`;
         }
     });
     return html;
 }
 
-function renderPickupHistorySummary(doc, segments) {
+function formatNumberRanges(values) {
+    const sorted = Array.from(new Set((values || []).map((value) => Number(value)).filter((value) => Number.isFinite(value)))).sort((a, b) => a - b);
+    if (sorted.length === 0) {
+        return '';
+    }
+
+    const ranges = [];
+    let start = sorted[0];
+    let end = sorted[0];
+
+    for (let index = 1; index < sorted.length; index++) {
+        const value = sorted[index];
+        if (value === end + 1) {
+            end = value;
+            continue;
+        }
+        ranges.push(start === end ? `${start}` : `${start}-${end}`);
+        start = value;
+        end = value;
+    }
+
+    ranges.push(start === end ? `${start}` : `${start}-${end}`);
+    return ranges.join(', ');
+}
+
+function formatPrintedJobLabel(job) {
+    const page = Number(job && job.page);
+    const copyIndex = Number(job && job.copyIndex);
+    const totalCopies = Number(job && job.totalCopies);
+
+    if (Number.isFinite(page) && Number.isFinite(copyIndex) && Number.isFinite(totalCopies) && totalCopies > 1) {
+        return `Page ${page} (Copy ${copyIndex}/${totalCopies})`;
+    }
+
+    if (Number.isFinite(page)) {
+        return `Page ${page}`;
+    }
+
+    return 'Printed';
+}
+
+function renderPrintJobBadges(printJobs, badgeClass, prefix, printerText = '') {
+    const jobs = Array.isArray(printJobs) ? printJobs : [];
+    if (jobs.length === 0) {
+        return '';
+    }
+
+    return jobs.map((job) => {
+        const label = formatPrintedJobLabel(job);
+        return `<div class="badge ${badgeClass}">${escapeHtml(prefix + ': ' + label)}${printerText}</div>`;
+    }).join('');
+}
+
+function renderGroupedPrintJobBadges(printJobs, badgeClass, prefix, printerText = '') {
+    const jobs = Array.isArray(printJobs) ? printJobs : [];
+    if (jobs.length === 0) {
+        return '';
+    }
+
+    const groupedByPage = new Map();
+    jobs.forEach((job) => {
+        const page = Number(job && job.page);
+        if (!Number.isFinite(page)) {
+            return;
+        }
+
+        const copyIndex = Number(job && job.copyIndex);
+        const totalCopies = Number(job && job.totalCopies);
+        const key = `${page}:${Number.isFinite(totalCopies) ? totalCopies : 1}`;
+
+        if (!groupedByPage.has(key)) {
+            groupedByPage.set(key, {
+                page,
+                totalCopies: Number.isFinite(totalCopies) ? totalCopies : 1,
+                copyIndexes: [],
+            });
+        }
+
+        if (Number.isFinite(copyIndex)) {
+            groupedByPage.get(key).copyIndexes.push(copyIndex);
+        }
+    });
+
+    return Array.from(groupedByPage.values())
+        .sort((left, right) => left.page - right.page)
+        .map((group) => {
+            const pageLabel = `Page ${group.page}`;
+            if (group.totalCopies > 1) {
+                const copyRanges = formatNumberRanges(group.copyIndexes);
+                const copyLabel = group.copyIndexes.length > 1
+                    ? `Copies ${copyRanges}/${group.totalCopies}`
+                    : `Copy ${copyRanges}/${group.totalCopies}`;
+                return `<div class="badge ${badgeClass}">${escapeHtml(`${prefix}: ${pageLabel} (${copyLabel})`)}${printerText}</div>`;
+            }
+
+            return `<div class="badge ${badgeClass}">${escapeHtml(`${prefix}: ${pageLabel}`)}${printerText}</div>`;
+        })
+        .join('');
+}
+
+function renderPickupHistorySummary(doc, segments, splitMultiCopyBadges = false) {
     const pageSegments = (segments || []).filter(
         (segment) => Array.isArray(segment.pages) && segment.pages.length > 0
     );
@@ -1887,7 +2076,6 @@ function renderPickupHistorySummary(doc, segments) {
         return '';
     }
 
-    const expectedPages = Array.from(new Set(getDocumentPageList(doc.pages_num))).sort((a, b) => a - b);
     const printedPages = Array.from(
         new Set(pageSegments.flatMap((segment) => segment.pages || []).map((page) => Number(page)).filter((page) => !Number.isNaN(page)))
     ).sort((a, b) => a - b);
@@ -1896,14 +2084,7 @@ function renderPickupHistorySummary(doc, segments) {
     );
     const routePrinters = getRoutePrinterNames(doc.reroute_history || []);
 
-    const coversAllExpectedPages = expectedPages.length > 0
-        && expectedPages.every((page) => printedPages.includes(page));
-
-    if (coversAllExpectedPages && printedPrinters.length === 1 && routePrinters.length <= 1) {
-        return `<div class="badge status-primary">All pages printed to (${escapeHtml(printedPrinters[0])})</div>`;
-    }
-
-    let html = renderCompletedSegments(pageSegments);
+    let html = renderCompletedSegments(pageSegments, 'status-success', splitMultiCopyBadges);
 
     if (routePrinters.length > 1) {
         const missingRoutePrinters = routePrinters.filter((printerName) => !printedPrinters.includes(printerName));
@@ -1913,6 +2094,62 @@ function renderPickupHistorySummary(doc, segments) {
     }
 
     return html;
+}
+
+function getRemainingDocumentPages(doc) {
+    const pageList = getDocumentPageList(doc.pages_num);
+    const printedPages = new Set((doc.pages_printed || []).map((page) => Number(page)).filter((page) => !Number.isNaN(page)));
+    return pageList.filter((page) => !printedPages.has(page));
+}
+
+function getRemainingPrintJobs(doc) {
+    const pageList = getDocumentPageList(doc.pages_num);
+    const totalCopies = Math.max(1, Number.parseInt(doc.num_copies, 10) || 1);
+    const rawCounts = (doc && typeof doc.page_copy_counts === 'object' && doc.page_copy_counts !== null)
+        ? doc.page_copy_counts
+        : {};
+
+    const remainingJobs = [];
+    for (let copyIndex = 1; copyIndex <= totalCopies; copyIndex++) {
+        for (let index = pageList.length - 1; index >= 0; index--) {
+            const page = Number(pageList[index]);
+            const completedCopies = Number.parseInt(rawCounts[String(page)], 10) || 0;
+            if (completedCopies >= copyIndex) {
+                continue;
+            }
+            remainingJobs.push({
+                page,
+                copyIndex,
+                totalCopies,
+            });
+        }
+    }
+
+    return remainingJobs;
+}
+
+function renderCurrentPrintingSegment(doc, hasPageSegments, splitMultiCopyBadges = false) {
+    const currentPrinter = doc.printer_name || doc.printed_at || getLatestRerouteDestination(doc.reroute_history || []);
+    const printerText = currentPrinter ? ` (${escapeHtml(currentPrinter)})` : '';
+
+    if (hasPageSegments) {
+        if ((Number.parseInt(doc.num_copies, 10) || 1) > 1) {
+            const remainingPrintJobs = getRemainingPrintJobs(doc);
+            if (remainingPrintJobs.length > 0) {
+                return splitMultiCopyBadges
+                    ? renderPrintJobBadges(remainingPrintJobs, 'status-info', 'Printing', printerText)
+                    : renderGroupedPrintJobBadges(remainingPrintJobs, 'status-info', 'Printing', printerText);
+            }
+        }
+
+        const remainingPages = getRemainingDocumentPages(doc);
+        if (remainingPages.length > 0) {
+            return `<div class="badge status-info">Printing: ${escapeHtml(formatPrintedPageRanges(remainingPages))}${printerText}</div>`;
+        }
+        return `<div class="badge status-info">Printing...${printerText}</div>`;
+    }
+
+    return `<div class="badge status-info">${formatCurrentPrintingBadge(doc)}</div>`;
 }
 
 function getRoutePrinterNames(history) {
@@ -1938,6 +2175,27 @@ function getRoutePrinterNames(history) {
     });
 
     return routePrinters;
+}
+
+function renderRouteHistoryBadge(history, docStatus) {
+    const routePrinters = getRoutePrinterNames(history);
+    if (routePrinters.length <= 1) {
+        return '';
+    }
+
+    const label = (docStatus === 'Finished' || docStatus === 'Picked Up')
+        ? 'Printed route'
+        : 'Route so far';
+    return `<div class="badge status-info">${escapeHtml(label + ': ' + routePrinters.join(' -> '))}</div>`;
+}
+
+function renderActiveRerouteBadge(history) {
+    const routePrinters = getRoutePrinterNames(history);
+    if (routePrinters.length <= 1) {
+        return '';
+    }
+
+    return `<div class="badge status-primary">${escapeHtml('Rerouted: ' + routePrinters.join(' -> '))}</div>`;
 }
 
 function formatPrintedPageRanges(pages) {

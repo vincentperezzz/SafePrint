@@ -878,13 +878,39 @@ def _printer_has_required_stock(printer, document):
     return True
 
 
+def _printer_has_assignable_cups_queue(printer, *, destinations=None):
+    try:
+        queue_name = _resolve_cups_queue_name(printer, destinations=destinations)
+    except QueueResolutionError as exc:
+        print(f"[CUPS] Skipping printer {printer.printer_name}: {exc}")
+        return False
+
+    cups_printer_state = _get_cups_printer_state(queue_name)
+    if cups_printer_state == 'stopped':
+        print(
+            f"[CUPS] Skipping printer {printer.printer_name}: "
+            f"queue {queue_name} is disabled/stopped."
+        )
+        return False
+
+    return True
+
+
 def _get_matching_printers(document, *, allowed_statuses):
     candidate_printers = Printer.objects.filter(
         paper_assigned=document.paper_size,
         is_temporarily_disabled=False,
         printer_status__in=allowed_statuses,
     )
-    return [printer for printer in candidate_printers if _printer_has_required_stock(printer, document)]
+    destinations = _get_cups_destinations()
+    matching_printers = []
+    for printer in candidate_printers:
+        if not _printer_has_required_stock(printer, document):
+            continue
+        if not _printer_has_assignable_cups_queue(printer, destinations=destinations):
+            continue
+        matching_printers.append(printer)
+    return matching_printers
 
 
 def _available_printers_for_document(
@@ -919,12 +945,9 @@ def _available_printers_for_document(
             _sync_printer_scheduler_state(printer)
         if require_idle and (getattr(printer, 'active_job_count', 0) or 0) > 0:
             continue
-        try:
-            _resolve_cups_queue_name(printer, destinations=destinations)
-        except QueueResolutionError as exc:
-            print(f"[CUPS] Skipping printer {printer.printer_name}: {exc}")
-            continue
         if not _printer_has_required_stock(printer, document):
+            continue
+        if not _printer_has_assignable_cups_queue(printer, destinations=destinations):
             continue
         available_printers.append(printer)
 
@@ -1022,6 +1045,8 @@ PRINTER_OPERATIONAL_STATUSES = {
     'printing',
     'please wait.',
 }
+CUPS_DISABLED_PRINTER_STATUS = 'CUPS Disabled'
+CUPS_CONFIRMED_ENABLED_QUEUE_STATES = {'idle', 'printing'}
 
 
 def _normalized_printer_status(printer):
@@ -3524,6 +3549,11 @@ def _get_cups_printer_state(queue_name):
     return 'unknown'
 
 
+def _get_cups_queue_state_for_polling(printer, *, destinations=None):
+    queue_name = _resolve_cups_queue_name(printer, destinations=destinations)
+    return queue_name, _get_cups_printer_state(queue_name)
+
+
 def _cancel_cups_job(job_id):
     if not job_id:
         return False
@@ -3618,6 +3648,20 @@ def _recent_matching_reroute_history(document, printer, status, *, within_second
     return (timezone.now() - last_entry.timestamp).total_seconds() <= within_seconds
 
 
+def _build_print_confirmation_status(page_num, copy_index, total_copies):
+    try:
+        page_num = int(page_num)
+        copy_index = int(copy_index)
+        total_copies = int(total_copies)
+    except (TypeError, ValueError):
+        return 'Printed page'
+
+    if total_copies > 1:
+        return f'Printed page {page_num} copy {copy_index}/{total_copies}'
+
+    return f'Printed page {page_num}'
+
+
 def _finish_document_if_complete(document, *, printer=None):
     document.refresh_from_db()
     if document.doc_status in ['Finished', 'Picked Up', 'Cancelled']:
@@ -3684,7 +3728,7 @@ def print_page(document, page_num, *, copy_index=1, total_copies=1):
     # Wait until printer is Ready or Sleep
     # Monitor printer status from database more aggressively for error detection
     retries = 0
-    max_retries = 5  # Try 5 times before giving up on this printer
+    max_retries = 2
     
     # First, check if the document has been rerouted and we have a new printer
     # Fetch latest document info to ensure we're using the most recent printer assignment
@@ -3827,6 +3871,7 @@ def print_page(document, page_num, *, copy_index=1, total_copies=1):
     job_started = False
     ready_fallback_cycles = 0
     pending_stall_cycles = 0
+    pending_nonprinting_cycles = 0
     missing_job_cycles = 0
     # Fast-stall counter: CUPS reports the queue idle (not working on anything)
     # while our job is still pending. That means the printer never picked up
@@ -3836,6 +3881,7 @@ def print_page(document, page_num, *, copy_index=1, total_copies=1):
     while True:
         printer.refresh_from_db()
         cups_job_state = _get_cups_job_state(job_id)
+        cups_printer_activity = None
 
         # Also check if the document still exists and hasn't been canceled
         try:
@@ -3883,6 +3929,19 @@ def print_page(document, page_num, *, copy_index=1, total_copies=1):
         # quickly. A busy "now printing" queue resets this counter immediately.
         if job_started and cups_job_state == 'pending':
             cups_printer_activity = _get_cups_printer_state(queue_name)
+            if cups_printer_activity == 'stopped':
+                print(
+                    f"[ERROR] CUPS queue {queue_name} stopped while job {job_id} "
+                    f"for document {document.doc_id} page {page_num} was pending. Initiating reroute."
+                )
+                RerouteHistory.objects.create(
+                    document=document,
+                    printer=printer,
+                    status=f"Error: CUPS queue stopped ({queue_name})",
+                    timestamp=timezone.now(),
+                )
+                reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
+                return
             if cups_printer_activity == 'idle':
                 idle_pending_cycles += 1
             elif cups_printer_activity == 'printing':
@@ -3890,6 +3949,7 @@ def print_page(document, page_num, *, copy_index=1, total_copies=1):
                 # and let the normal completion path handle it.
                 idle_pending_cycles = 0
                 pending_stall_cycles = 0
+                pending_nonprinting_cycles = 0
             else:
                 # Unknown / stopped: don't fast-stall on this cycle but don't
                 # reset either, so a sustained 'unknown' eventually falls through
@@ -3910,14 +3970,41 @@ def print_page(document, page_num, *, copy_index=1, total_copies=1):
                 return
         else:
             idle_pending_cycles = 0
+            pending_nonprinting_cycles = 0
 
         if job_started and cups_job_state == 'pending' and printer.printer_status in ['Ready', 'Sleep']:
+            if cups_printer_activity != 'printing':
+                pending_nonprinting_cycles += 1
+            else:
+                pending_nonprinting_cycles = 0
+
+            if pending_nonprinting_cycles >= 15:
+                final_state = _get_cups_job_state(job_id)
+                if final_state == 'completed':
+                    break
+                print(
+                    f"[STALL] Job {job_id or 'unknown'} for document {document.doc_id} stayed pending "
+                    f"while printer {printer.printer_name} remained {printer.printer_status} "
+                    f"and queue activity was {cups_printer_activity or 'unknown'}. Initiating reroute."
+                )
+                RerouteHistory.objects.create(
+                    document=document,
+                    printer=printer,
+                    status=(
+                        f"Stalled: printer={printer.printer_status}, cups={cups_job_state}, "
+                        f"queue={cups_printer_activity or 'unknown'}"
+                    ),
+                    timestamp=timezone.now()
+                )
+                reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
+                return
+
             pending_stall_cycles += 1
             # Real printers (e.g. Brother DCP-T430W) can take 30-50s to physically
             # print a single page; CUPS keeps the job in 'pending' the entire time.
             # Use a generous 60-cycle (~60s) threshold so we don't reroute a job
             # that is actually being printed right now.
-            if pending_stall_cycles >= 60:
+            if cups_printer_activity != 'printing' and pending_stall_cycles >= 60:
                 # Final completion check: a previous reproduction proved that the
                 # job often moves to 'completed' within ~0.5s of when the stall
                 # would have fired. Poll once more before declaring a stall so we
@@ -3939,6 +4026,7 @@ def print_page(document, page_num, *, copy_index=1, total_copies=1):
                 return
         else:
             pending_stall_cycles = 0
+            pending_nonprinting_cycles = 0
             
         # Only fall back to Ready/Sleep-based completion when CUPS no longer reports the job.
         if job_id and cups_job_state == 'unknown' and printer.printer_status in ['Ready', 'Sleep']:
@@ -4005,15 +4093,13 @@ def print_page(document, page_num, *, copy_index=1, total_copies=1):
             
         time.sleep(1)
     # Mark page as printed in DB only after successful print and status transitions
-    page_was_already_recorded = page_num in (document.pages_printed or [])
     side_recorded = document.mark_print_job_completed(page_num, copy_index)
-    if side_recorded and not page_was_already_recorded and page_num in (document.pages_printed or []):
+    if side_recorded:
         RerouteHistory.objects.create(
             document=document,
             printer=printer,
-            status=f'Printed page {page_num}'
+            status=_build_print_confirmation_status(page_num, copy_index, total_copies)
         )
-    if side_recorded:
         print(
             f"[MARKED] Page {page_num} copy {copy_index}/{total_copies} of document "
             f"{document.doc_id} marked as complete."
@@ -4553,6 +4639,7 @@ def customer_documents_event_stream(customer_id):
                 'printer_name': printer_name,
                 'printed_at': printed_at_name,
                 'pages_printed': pages_printed,
+                'page_copy_counts': doc.page_copy_counts if isinstance(doc.page_copy_counts, dict) else {},
                 'total_pages': total_pages,
                 'printed_sides': printed_sides,
                 'total_sides': total_sides,
@@ -5338,7 +5425,10 @@ def check_printer_availability(request):
                 })
 
         all_printers_status = list(Printer.objects.values_list('printer_status', flat=True))
-        all_offline = all(s in ('Offline', 'Error', '') for s in all_printers_status) if all_printers_status else True
+        all_offline = all(
+            s in ('Offline', 'Error', CUPS_DISABLED_PRINTER_STATUS, '')
+            for s in all_printers_status
+        ) if all_printers_status else True
 
         return JsonResponse({
             'available': len(unavailable_docs) == 0,

@@ -15,6 +15,7 @@ from portal.views import (
 	_claim_next_queued_document_for_printer,
 	_cancel_document_with_auto_voucher,
 	_cancel_cups_job,
+	CUPS_DISABLED_PRINTER_STATUS,
 	_iter_document_print_jobs,
 	_resolve_cups_queue_name,
 	assign_document_to_printer,
@@ -150,6 +151,121 @@ class PrintCompletionFallbackTests(TestCase):
 				self.assertEqual(document.pages_printed, [1])
 				self.assertEqual(document.doc_status, 'Finished')
 				self.assertEqual(document.printed_at_id, printer.id)
+				self.assertTrue(
+					RerouteHistory.objects.filter(document=document, status='Printed page 1', printer=printer).exists()
+				)
+
+	@override_settings(MEDIA_ROOT='/tmp/safeprint-test-media')
+	def test_logs_copy_specific_confirmation_history_for_partial_multi_copy_progress(self):
+		with tempfile.TemporaryDirectory(prefix='safeprint-media-') as media_root:
+			with self.settings(MEDIA_ROOT=media_root):
+				uploads_dir = os.path.join(media_root, 'uploads', 'CID-TEST')
+				os.makedirs(uploads_dir, exist_ok=True)
+				file_path = os.path.join(uploads_dir, 'copy-progress.pdf')
+				with open(file_path, 'wb') as handle:
+					handle.write(b'%PDF-1.4\n% test\n')
+
+				printer = Printer.objects.create(
+					printer_name='Printer Copy Progress',
+					model_name='Brother',
+					printer_status='Ready',
+					paper_assigned='A4',
+					tray_level='Full',
+					last_checked=timezone.now(),
+					ip_address='192.168.0.57',
+				)
+
+				document = Document.objects.create(
+					doc_id='DOC-COPY-PROGRESS-PRINT-1',
+					customer_id='CID-TEST',
+					filename='copy-progress.pdf',
+					num_copies=2,
+					pages_num='1',
+					orientation='Portrait',
+					color_mode='Color',
+					paper_size='A4',
+					paper_quality='70',
+					original_name='copy-progress.pdf',
+					stored_name='copy-progress.pdf',
+					file_name='copy-progress.pdf',
+					file_type='pdf',
+					file_size=16,
+					doc_status='Printing',
+					time_submitted=timezone.now() - timedelta(seconds=5),
+					printer_assigned=printer,
+				)
+
+				with patch('portal.views._resolve_cups_queue_name', return_value='printer_queue'), \
+					 patch('portal.views._get_cups_printer_state', return_value='idle'), \
+					 patch('portal.views.subprocess.run', return_value=SimpleNamespace(stdout='request id is printer_queue-42 (1 file(s))\n', stderr='')), \
+					 patch('portal.views._get_cups_job_state', side_effect=['pending', 'completed']), \
+					 patch('portal.views.time.sleep', return_value=None):
+					print_page(document, 1, copy_index=1, total_copies=2)
+
+				document.refresh_from_db()
+				self.assertTrue(document.is_print_job_completed(1, 1))
+				self.assertFalse(document.is_print_job_completed(1, 2))
+				self.assertEqual(document.pages_printed, [])
+				self.assertTrue(
+					RerouteHistory.objects.filter(
+						document=document,
+						printer=printer,
+						status='Printed page 1 copy 1/2',
+					).exists()
+				)
+
+	@override_settings(MEDIA_ROOT='/tmp/safeprint-test-media')
+	def test_reroutes_pending_sleep_job_before_global_timeout(self):
+		with tempfile.TemporaryDirectory(prefix='safeprint-media-') as media_root:
+			with self.settings(MEDIA_ROOT=media_root):
+				uploads_dir = os.path.join(media_root, 'uploads', 'CID-TEST')
+				os.makedirs(uploads_dir, exist_ok=True)
+				file_path = os.path.join(uploads_dir, 'sleep-stall.pdf')
+				with open(file_path, 'wb') as handle:
+					handle.write(b'%PDF-1.4\n% test\n')
+
+				printer = Printer.objects.create(
+					printer_name='Printer Sleep Stall',
+					model_name='Brother',
+					printer_status='Sleep',
+					paper_assigned='A4',
+					tray_level='Full',
+					last_checked=timezone.now(),
+					ip_address='192.168.0.56',
+				)
+
+				document = Document.objects.create(
+					doc_id='DOC-SLEEP-STALL-1',
+					customer_id='CID-TEST',
+					filename='sleep-stall.pdf',
+					num_copies=1,
+					pages_num='1',
+					orientation='Portrait',
+					color_mode='Color',
+					paper_size='A4',
+					paper_quality='70',
+					original_name='sleep-stall.pdf',
+					stored_name='sleep-stall.pdf',
+					file_name='sleep-stall.pdf',
+					file_type='pdf',
+					file_size=16,
+					doc_status='Printing',
+					time_submitted=timezone.now() - timedelta(seconds=5),
+					printer_assigned=printer,
+				)
+
+				with patch('portal.views._resolve_cups_queue_name', return_value='printer_queue'), \
+					 patch('portal.views._get_cups_printer_state', return_value='unknown'), \
+					 patch('portal.views.subprocess.run', return_value=SimpleNamespace(stdout='request id is printer_queue-42 (1 file(s))\n', stderr='')), \
+					 patch('portal.views._get_cups_job_state', side_effect=lambda job_id: 'pending') as cups_state_mock, \
+					 patch('portal.views.time.sleep', return_value=None), \
+					 patch('portal.views.reroute_document_on_error') as reroute_mock:
+					print_page(document, 1)
+
+				route_entry = RerouteHistory.objects.filter(document=document).latest('timestamp')
+				self.assertTrue(route_entry.status.startswith('Stalled: printer=Sleep, cups=pending, queue=unknown'))
+				reroute_mock.assert_called_once()
+				self.assertLess(cups_state_mock.call_count, 30)
 
 	@override_settings(MEDIA_ROOT='/tmp/safeprint-test-media')
 	def test_unresolved_queue_mapping_reroutes_without_marking_printer_error(self):
@@ -297,12 +413,115 @@ class QueueResolutionTests(TestCase):
 			ip_address='192.168.0.105',
 		)
 
-		with patch('portal.views._get_cups_destinations', return_value={'Brother_DCP_T430W_f44eb475ac2a'}):
+		with patch('portal.views._get_cups_destinations', return_value={'Brother_DCP_T430W_f44eb475ac2a'}), \
+			 patch('portal.views._get_cups_printer_state', return_value='idle'):
 			assigned = assign_document_to_printer(document, wait_for_availability=False)
 
 		document.refresh_from_db()
 		self.assertEqual(assigned.id, healthy_printer.id)
 		self.assertEqual(document.printer_assigned_id, healthy_printer.id)
+
+	def test_assignment_skips_printer_with_stopped_cups_queue(self):
+		document = Document.objects.create(
+			doc_id='DOC-QUEUE-STOPPED-1',
+			customer_id='CID-QUEUE-STOPPED',
+			filename='assign.pdf',
+			num_copies=1,
+			pages_num='1',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='A4',
+			paper_quality='70',
+			original_name='assign.pdf',
+			stored_name='assign.pdf',
+			file_name='assign.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Queued',
+			time_submitted=timezone.now() - timedelta(seconds=5),
+		)
+
+		stopped_printer = Printer.objects.create(
+			printer_name='Stopped Queue Printer',
+			model_name='Brother DCP-T430W',
+			node_name='BRW44F79F1A71F1',
+			printer_status='Ready',
+			paper_assigned='A4',
+			tray_level='Full',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.106',
+		)
+
+		healthy_printer = Printer.objects.create(
+			printer_name='Healthy Queue Printer',
+			model_name='Brother DCP-T430W',
+			node_name='BRWF44EB475AC2A',
+			printer_status='Ready',
+			paper_assigned='A4',
+			tray_level='Full',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.107',
+		)
+
+		with patch(
+			'portal.views._get_cups_destinations',
+			return_value={
+				'Brother_DCP_T430W_44f79f1a71f1',
+				'Brother_DCP_T430W_f44eb475ac2a',
+			},
+		), patch(
+			'portal.views._get_cups_printer_state',
+			side_effect=lambda queue_name: 'stopped' if queue_name == 'Brother_DCP_T430W_44f79f1a71f1' else 'idle',
+		):
+			assigned = assign_document_to_printer(document, wait_for_availability=False)
+
+		document.refresh_from_db()
+		self.assertEqual(assigned.id, healthy_printer.id)
+		self.assertEqual(document.printer_assigned_id, healthy_printer.id)
+		self.assertNotEqual(document.printer_assigned_id, stopped_printer.id)
+
+
+class CupsStatusGateTests(TestCase):
+	def test_keeps_cups_disabled_status_until_cups_confirms_recovery(self):
+		from portal.management.commands.poll_printer_snmp import _apply_cups_status_gate
+
+		printer = Printer.objects.create(
+			printer_name='Poller Printer',
+			model_name='Brother DCP-T430W',
+			node_name='BRW44F79F1A71F1',
+			printer_status='Ready',
+			paper_assigned='A4',
+			tray_level='Full',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.108',
+		)
+
+		with patch(
+			'portal.management.commands.poll_printer_snmp._get_cups_queue_state_snapshot',
+			return_value=('Brother_DCP_T430W_44f79f1a71f1', 'stopped'),
+		):
+			self.assertEqual(
+				_apply_cups_status_gate(printer, 'Ready', 'Ready'),
+				CUPS_DISABLED_PRINTER_STATUS,
+			)
+
+		with patch(
+			'portal.management.commands.poll_printer_snmp._get_cups_queue_state_snapshot',
+			return_value=('Brother_DCP_T430W_44f79f1a71f1', 'unknown'),
+		):
+			self.assertEqual(
+				_apply_cups_status_gate(printer, 'Ready', CUPS_DISABLED_PRINTER_STATUS),
+				CUPS_DISABLED_PRINTER_STATUS,
+			)
+
+		with patch(
+			'portal.management.commands.poll_printer_snmp._get_cups_queue_state_snapshot',
+			return_value=('Brother_DCP_T430W_44f79f1a71f1', 'idle'),
+		):
+			self.assertEqual(
+				_apply_cups_status_gate(printer, 'Ready', CUPS_DISABLED_PRINTER_STATUS),
+				'Ready',
+			)
 
 
 class CustomerDocumentsStreamTests(TestCase):
