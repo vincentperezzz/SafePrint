@@ -115,10 +115,11 @@
             font-weight: 700;
         }
     </style>
+
 </head>
 <body>
     <div class="card">
-        <img src="logo.png" alt="SafePrint Logo" class="logo">
+        <img src="http://172.16.0.1/logo.png" alt="SafePrint Logo" class="logo">
         <h1>Connected to SafePrint Wi-Fi</h1>
         <p class="subtitle">Your session is active. Use the button below when you want to continue to SafePrint.</p>
 
@@ -133,7 +134,7 @@
             <p><strong>Upload:</strong> $(bytes-out-nice)</p>
         </div>
 
-        <a class="btn btn-primary" href="https://safeprint.duckdns.org/" target="_blank" rel="noopener noreferrer">Open SafePrint in Browser</a>
+        <a class="btn btn-primary" href="https://safeprint.duckdns.org/">Open SafePrint</a>
 
         <form action="$(link-logout)" method="post">
             <button type="submit" class="btn btn-danger">Disconnect Session</button>
