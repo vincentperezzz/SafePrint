@@ -1316,6 +1316,21 @@ html {
 }
 
 @media (max-width: 768px) {
+    .doc-left {
+        width: 100%;
+    }
+
+    .doc-meta {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .doc-meta h6 {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+    }
+
     .doc-right {
         align-items: stretch;
         width: 100%;
@@ -1415,7 +1430,7 @@ html {
     .doc-right { 
         width:100%; 
         display:flex; 
-        justify-content:space-between; 
+        justify-content:flex-start;
     }
 
     .confirmation .confirmation-table-header { 

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from portal.models import Document, Payment, Printer, RerouteHistory, SupportTicket, TicketAuditLog, VoucherCredit
@@ -526,6 +527,62 @@ class CupsStatusGateTests(TestCase):
 
 
 class CustomerDocumentsStreamTests(TestCase):
+	def test_snapshot_reports_current_rerouted_printer(self):
+		old_printer = Printer.objects.create(
+			printer_name='Printer 2',
+			model_name='Brother DCP-T430W',
+			printer_status='Ready',
+			paper_assigned='Letter',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.102',
+		)
+
+		new_printer = Printer.objects.create(
+			printer_name='Printer 3',
+			model_name='Brother DCP-T430W',
+			printer_status='Ready',
+			paper_assigned='Letter',
+			last_checked=timezone.now(),
+			ip_address='192.168.0.103',
+		)
+
+		document = Document.objects.create(
+			doc_id='DOC-SNAPSHOT-REROUTE-1',
+			customer_id='CID-SNAPSHOT-REROUTE',
+			filename='reroute.pdf',
+			num_copies=1,
+			pages_num='1-2',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='Letter',
+			paper_quality='70',
+			original_name='reroute.pdf',
+			stored_name='reroute.pdf',
+			file_name='reroute.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Printing',
+			time_submitted=timezone.now() - timedelta(seconds=5),
+			printer_assigned=new_printer,
+		)
+
+		RerouteHistory.objects.create(document=document, printer=old_printer, status='Assigned')
+		RerouteHistory.objects.create(document=document, printer=old_printer, status='Error: Ready')
+		RerouteHistory.objects.create(document=document, printer=new_printer, status='Assigned')
+		RerouteHistory.objects.create(document=document, printer=new_printer, status='Rerouted')
+
+		session = self.client.session
+		session['customer_id'] = document.customer_id
+		session.save()
+
+		response = self.client.get(reverse('customer_documents_snapshot', args=[document.customer_id]))
+
+		self.assertEqual(response.status_code, 200)
+		doc_payload = response.json()['documents'][0]
+		self.assertEqual(doc_payload['printer_name'], new_printer.printer_name)
+		self.assertEqual(doc_payload['reroute_history'][-1]['printer_name'], new_printer.printer_name)
+		self.assertEqual(doc_payload['reroute_history'][-1]['status'], 'Rerouted')
+
 	def test_stream_reports_current_rerouted_printer(self):
 		old_printer = Printer.objects.create(
 			printer_name='Printer 2',

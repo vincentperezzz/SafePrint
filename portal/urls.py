@@ -50,6 +50,7 @@ urlpatterns = [
     path('sse/printer-status/', views.printer_status_stream, name='printer_status_stream'),
     path('sse/dashboard-status/', views.dashboard_status_stream, name='dashboard_status_stream'),
     path('sse/customer-documents/<str:customer_id>/', views.customer_documents_stream, name='customer_documents_stream'),
+    path('api/customer-documents/<str:customer_id>/', views.customer_documents_snapshot, name='customer_documents_snapshot'),
     path('api/picked-up-document/', views.picked_up_document, name='picked_up_document'),
     path('api/finish-transaction/', views.finish_transaction, name='finish_transaction'),
     path('api/acknowledge-cancelled-voucher/', views.acknowledge_cancelled_voucher, name='acknowledge_cancelled_voucher'),

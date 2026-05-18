@@ -1293,6 +1293,8 @@ window.customerDocumentArchive = [];
 let customerSSE = null;
 let lastCustomerDocumentsPayload = null;
 let confirmationRedrawEventsBound = false;
+let customerSnapshotPollTimer = null;
+let customerSnapshotRequestInFlight = false;
 
 function getCustomerDocumentArchiveKey() {
     const customerIdEl = document.getElementById('customer-id-data');
@@ -1436,6 +1438,7 @@ function checkForNewCompletions(documents) {
         }
     } else if (newlyRerouted > 0) {
         playRerouteSound();
+        queueConfirmationDomRefresh();
         if ("Notification" in window && Notification.permission === "granted") {
             new Notification("SafePrint — Print Rerouted", {
                 body: "Your document has been rerouted to another printer.",
@@ -1490,6 +1493,91 @@ function queueConfirmationDomRefresh() {
     setTimeout(() => {
         rerenderConfirmationFromCachedPayload();
     }, 50);
+}
+
+function getConfirmationCustomerId() {
+    const customerIdEl = document.getElementById('customer-id-data');
+    return customerIdEl ? String(customerIdEl.value || '').trim() : '';
+}
+
+function shouldUseConfirmationSnapshotFallback() {
+    if (!document.querySelector('.confirmation')) {
+        return false;
+    }
+
+    try {
+        if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+            return true;
+        }
+    } catch (error) {
+        console.warn('Unable to evaluate mobile media query for confirmation sync:', error);
+    }
+
+    const userAgent = String(navigator.userAgent || '');
+    return (navigator.maxTouchPoints || 0) > 0 || /android|iphone|ipad|ipod|mobile/i.test(userAgent);
+}
+
+function applyCustomerDocumentsPayload(data) {
+    if (!data || !Array.isArray(data.documents)) {
+        return;
+    }
+
+    window.customerDocuments = data.documents || [];
+    lastCustomerDocumentsPayload = data;
+    storeCustomerDocumentArchive(window.customerDocuments);
+    checkForNewCompletions(data.documents || []);
+    checkForTimeoutCancellations(data.documents || []);
+    checkForAutoVoucherCancellations(data.documents || []);
+    checkForAutoTicketTrigger(data);
+    refreshConfirmationFromPayload(data);
+}
+
+function syncConfirmationFromSnapshot() {
+    const customerId = getConfirmationCustomerId();
+    if (!customerId || customerSnapshotRequestInFlight) {
+        return Promise.resolve(false);
+    }
+
+    customerSnapshotRequestInFlight = true;
+
+    return fetch(`/api/customer-documents/${encodeURIComponent(customerId)}/`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+    })
+        .then((response) => {
+            if (!response.ok) {
+                throw new Error(`Confirmation snapshot request failed (${response.status})`);
+            }
+            return response.json();
+        })
+        .then((data) => {
+            applyCustomerDocumentsPayload(data);
+            return true;
+        })
+        .catch((error) => {
+            console.warn('Confirmation snapshot sync failed:', error);
+            return false;
+        })
+        .finally(() => {
+            customerSnapshotRequestInFlight = false;
+        });
+}
+
+function startConfirmationSnapshotPolling() {
+    if (customerSnapshotPollTimer || !shouldUseConfirmationSnapshotFallback()) {
+        return;
+    }
+
+    customerSnapshotPollTimer = window.setInterval(() => {
+        if (document.visibilityState === 'hidden') {
+            return;
+        }
+        void syncConfirmationFromSnapshot();
+    }, 3000);
 }
 
 // Track which docs have already triggered the timeout popup
@@ -1683,10 +1771,7 @@ function dismissToast() {
 // --- End toast notification ---
 
 function initConfirmationSSE() {
-    const customerIdEl = document.getElementById('customer-id-data');
-    if (!customerIdEl) return;
-
-    const customerId = customerIdEl.value;
+    const customerId = getConfirmationCustomerId();
     if (!customerId) return;
 
     console.log('Setting up SSE for customer documents:', customerId);
@@ -1706,14 +1791,7 @@ function initConfirmationSSE() {
     customerSSE.onmessage = function (event) {
         try {
             const data = JSON.parse(event.data);
-            window.customerDocuments = data.documents || [];
-            lastCustomerDocumentsPayload = data;
-            storeCustomerDocumentArchive(window.customerDocuments);
-            checkForNewCompletions(data.documents || []);
-            checkForTimeoutCancellations(data.documents || []);
-            checkForAutoVoucherCancellations(data.documents || []);
-            checkForAutoTicketTrigger(data);
-            refreshConfirmationFromPayload(data);
+            applyCustomerDocumentsPayload(data);
         } catch (e) {
             console.error('Error parsing SSE data:', e);
         }
@@ -1734,13 +1812,35 @@ function initConfirmationSSE() {
         document.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'visible') {
                 rerenderConfirmationFromCachedPayload();
+                if (shouldUseConfirmationSnapshotFallback()) {
+                    void syncConfirmationFromSnapshot();
+                }
             }
         }, { passive: true });
 
-        window.addEventListener('focus', rerenderConfirmationFromCachedPayload, { passive: true });
-        window.addEventListener('pageshow', rerenderConfirmationFromCachedPayload, { passive: true });
+        window.addEventListener('focus', function () {
+            rerenderConfirmationFromCachedPayload();
+            if (shouldUseConfirmationSnapshotFallback()) {
+                void syncConfirmationFromSnapshot();
+            }
+        }, { passive: true });
+
+        window.addEventListener('pageshow', function () {
+            rerenderConfirmationFromCachedPayload();
+            if (shouldUseConfirmationSnapshotFallback()) {
+                void syncConfirmationFromSnapshot();
+            }
+        }, { passive: true });
+
+        window.addEventListener('online', function () {
+            if (shouldUseConfirmationSnapshotFallback()) {
+                void syncConfirmationFromSnapshot();
+            }
+        }, { passive: true });
         confirmationRedrawEventsBound = true;
     }
+
+    startConfirmationSnapshotPolling();
 }
 
 function renderDocumentRows(documents) {
@@ -1884,7 +1984,11 @@ function buildDocumentBadges(doc) {
         if (segments.length > 0) {
             badgesHtml = renderCompletedSegments(segments, 'status-success', splitActiveMultiCopyBadges);
         }
-        if (rerouteDestination) {
+        if (activeRerouteBadgeHtml) {
+            badgesHtml += activeRerouteBadgeHtml;
+        } else if (routeHistoryHtml) {
+            badgesHtml += routeHistoryHtml;
+        } else if (rerouteDestination) {
             badgesHtml += `<div class="badge status-primary">Rerouted to (${escapeHtml(rerouteDestination)})</div>`;
         }
         badgesHtml += `<div class="badge status-info">Waiting...</div>`;
