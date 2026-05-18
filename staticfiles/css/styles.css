@@ -2296,6 +2296,13 @@ input:focus::placeholder {
     outline: none;
 }
 
+.card-textarea {
+    min-height: 108px;
+    height: auto;
+    padding: 12px;
+    resize: vertical;
+}
+
 .card-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -7377,6 +7384,7 @@ body.admin-shell .admin-popup-submit-row .popup-done-btn {
 .receipt-upload-area {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 12px;
     margin-top: 4px;
 }
