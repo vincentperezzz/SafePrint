@@ -4,6 +4,101 @@ let isScanning = false; // Track if any file is being scanned for viruses
 const docs = JSON.parse(sessionStorage.getItem('documents') || '[]');
 document.addEventListener("touchstart", function () { }, true);
 
+function clearActiveCustomerSession() {
+    try {
+        sessionStorage.removeItem('documents');
+        sessionStorage.removeItem('customer_id');
+    } catch (error) {
+        console.warn('Unable to clear customer session storage:', error);
+    }
+
+    document.cookie = 'customer_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+
+    if (customerSSE) {
+        customerSSE.close();
+        customerSSE = null;
+    }
+}
+
+function redirectHomeAfterSessionClear(delayMs = 0) {
+    const performRedirect = () => {
+        clearActiveCustomerSession();
+        window.location.href = '/';
+    };
+
+    if (delayMs > 0) {
+        setTimeout(performRedirect, delayMs);
+        return;
+    }
+
+    performRedirect();
+}
+
+function validateSpecificPageSelection(value, totalPages) {
+    const rawValue = (value || '').trim();
+
+    if (!rawValue) {
+        return { valid: false, error: 'Enter at least one page number.' };
+    }
+
+    if (!/^[\d,\-\s]+$/.test(rawValue)) {
+        return { valid: false, error: 'Use only page numbers, commas, and hyphens.' };
+    }
+
+    const parts = rawValue.split(',').map(part => part.trim()).filter(Boolean);
+    if (!parts.length) {
+        return { valid: false, error: 'Enter at least one valid page or range.' };
+    }
+
+    const normalizedParts = [];
+    let pageCount = 0;
+
+    for (const part of parts) {
+        if (part.includes('-')) {
+            const bounds = part.split('-').map(item => item.trim());
+            if (bounds.length !== 2 || !bounds[0] || !bounds[1]) {
+                return { valid: false, error: 'Use ranges like 1-3.' };
+            }
+
+            const start = Number(bounds[0]);
+            const end = Number(bounds[1]);
+            if (!Number.isInteger(start) || !Number.isInteger(end)) {
+                return { valid: false, error: 'Use whole page numbers only.' };
+            }
+
+            if (start > end) {
+                return { valid: false, error: `Invalid range ${start}-${end}.` };
+            }
+
+            if (start < 1 || end > totalPages) {
+                return { valid: false, error: `Pages must be between 1 and ${totalPages}.` };
+            }
+
+            normalizedParts.push(`${start}-${end}`);
+            pageCount += (end - start + 1);
+            continue;
+        }
+
+        const pageNumber = Number(part);
+        if (!Number.isInteger(pageNumber)) {
+            return { valid: false, error: 'Use whole page numbers only.' };
+        }
+
+        if (pageNumber < 1 || pageNumber > totalPages) {
+            return { valid: false, error: `Pages must be between 1 and ${totalPages}.` };
+        }
+
+        normalizedParts.push(String(pageNumber));
+        pageCount += 1;
+    }
+
+    if (pageCount === 0) {
+        return { valid: false, error: 'Enter at least one valid page or range.' };
+    }
+
+    return { valid: true, normalized: normalizedParts.join(',') };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 
     //Drag and Drop File Upload Functionality
@@ -130,9 +225,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // Track xhr and paused state per file
     const uploadXhrs = {};
     const uploadPaused = {};
+    const cancelledUploads = {};
+
+    function deleteUploadedFileFromServer(filePath) {
+        if (!filePath) return Promise.resolve(false);
+
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+            document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+
+        if (csrfToken) {
+            headers['X-CSRFToken'] = csrfToken;
+        }
+
+        return fetch('/api/delete-file/', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                file_path: filePath,
+            }),
+        })
+            .then(response => response.json())
+            .then(data => !!data.success)
+            .catch(() => false);
+    }
 
     function uploadFile(file, retryFileId = null) {
         const fileId = retryFileId || (Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+        delete cancelledUploads[fileId];
         // If this is a retry, remove any previous failed record
         if (retryFileId && failedUploads[retryFileId]) {
             delete failedUploads[retryFileId];
@@ -213,6 +336,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (xhr.status === 200) {
                 try {
                     const response = JSON.parse(xhr.responseText);
+                    if (cancelledUploads[fileId]) {
+                        delete cancelledUploads[fileId];
+                        if (response.success && response.file_path) {
+                            void deleteUploadedFileFromServer(response.file_path);
+                        }
+                        return;
+                    }
                     if (response.success) {
                         // Upload and scan successful
                         updateFileStatus(fileId, 'completed', file.name, formatFileSize(file.size));
@@ -244,6 +374,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         xhr.addEventListener('error', function () {
+            if (cancelledUploads[fileId]) {
+                delete cancelledUploads[fileId];
+                isScanning = false;
+                updateProceedButton();
+                delete uploadXhrs[fileId];
+                delete uploadPaused[fileId];
+                return;
+            }
             updateFileStatus(fileId, 'error', file.name);
             failedUploads[fileId] = file;
             isScanning = false;
@@ -380,32 +518,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const fileToRemove = uploadedFiles.find(file => file.id === fileId);
 
             if (fileToRemove && fileToRemove.serverPath) {
-                // Get CSRF token
-                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-                    document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-
-                const headers = {
-                    'Content-Type': 'application/json',
-                };
-
-                if (csrfToken) {
-                    headers['X-CSRFToken'] = csrfToken;
-                }
-
-                // Call backend to delete the file from server
-                fetch('/api/delete-file/', {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify({
-                        file_path: fileToRemove.serverPath
-                    })
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
+                deleteUploadedFileFromServer(fileToRemove.serverPath)
+                    .then(deleted => {
+                        if (deleted) {
                             console.log('File deleted from server successfully');
                         } else {
-                            console.error('Failed to delete file from server:', data.error);
+                            console.error('Failed to delete file from server');
                         }
                     })
                     .catch(error => {
@@ -434,11 +552,18 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.cancelUpload = function (fileId) {
-        // Cancel ongoing upload
+        cancelledUploads[fileId] = true;
+        if (uploadXhrs[fileId]) {
+            uploadXhrs[fileId].abort();
+        }
         const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
         if (fileElement) {
             fileElement.remove();
         }
+        delete failedUploads[fileId];
+        delete uploadPaused[fileId];
+        isScanning = false;
+        updateProceedButton();
     };
 
     // Handle proceed button click
@@ -515,7 +640,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const docDivs = uploadedFilesDiv.querySelectorAll('.file');
             let updates = [];
+            let pageValidationError = '';
             docDivs.forEach((fileDiv, idx) => {
+                if (pageValidationError) return;
                 const doc = docs[idx];
                 // Quantity
                 const quantityInput = fileDiv.querySelector('.quantity-input');
@@ -528,7 +655,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     pages = `1-${doc.num_pages}`;
                 } else if (specificPagesRadio && specificPagesRadio.checked) {
                     const pageInput = fileDiv.querySelector('.page-input');
-                    pages = pageInput ? pageInput.value : '';
+                    const validation = validateSpecificPageSelection(pageInput ? pageInput.value : '', doc.num_pages);
+                    if (!validation.valid) {
+                        pageValidationError = `${doc.filename}: ${validation.error}`;
+                        if (pageInput) {
+                            pageInput.focus();
+                            pageInput.select();
+                        }
+                        return;
+                    }
+                    if (pageInput) pageInput.style.borderColor = '';
+                    pages = validation.normalized;
                 }
                 // Orientation
                 const orientationRadio = fileDiv.querySelector('input[name="page-orientation-' + doc.doc_id + '"]:checked');
@@ -542,19 +679,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Paper size
                 const paperSizeSelect = fileDiv.querySelectorAll('.dropdown-select')[0];
                 const paperSize = paperSizeSelect ? paperSizeSelect.value : '';
-                // Paper quality
-                const paperQualitySelect = fileDiv.querySelectorAll('.dropdown-select')[1];
-                const paperQuality = paperQualitySelect ? paperQualitySelect.value : '';
                 updates.push({
                     doc_id: doc.doc_id,
                     quantity,
                     pages,
                     orientation,
                     grayscale,
-                    paper_size: paperSize,
-                    paper_quality: paperQuality
+                    paper_size: paperSize
                 });
             });
+            if (pageValidationError) {
+                if (overlay) overlay.style.display = 'none';
+                alert('Failed to update settings: ' + pageValidationError);
+                return;
+            }
             // Send updates to backend
             fetch('/api/update-document-settings/', {
                 method: 'POST',
@@ -768,6 +906,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const finishBtn = document.getElementById('finish-transaction-btn');
     if (finishBtn) {
         finishBtn.addEventListener('click', function () {
+            if (finishBtn.dataset.mode === 'done') {
+                confirmCancelledVoucherDone();
+                return;
+            }
             showPrintQualityOverlay();
         });
     }
@@ -1021,20 +1163,6 @@ function renderUploadedDocumentsPreview() {
                     </span>
                 </div>
             </div>
-            <div class="file-rows vertical-separator">
-                <h5>Quality of the Paper</h5>
-                <div class="dropdown">
-                    <select class="dropdown-select">
-                        <option value="80" ${doc.paper_quality == '80' || doc.paper_quality == '80gsm' ? 'selected' : ''}>80 GSM (thicker)</option>
-                        <option value="70" ${doc.paper_quality == '70' || doc.paper_quality == '70gsm' ? 'selected' : ''}>70 GSM (thinner)</option>
-                    </select>
-                    <span class="dropdown-arrow">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="35" height="18" viewBox="0 0 24 24" fill="none">
-                            <path d="M7 10l5 5 5-5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </span>
-                </div>
-            </div>
         `;
         uploadedFilesDiv.appendChild(fileDiv);
 
@@ -1161,7 +1289,44 @@ window.addEventListener('DOMContentLoaded', function () {
 
 // Global state for SSE documents (used by problem report)
 window.customerDocuments = [];
+window.customerDocumentArchive = [];
 let customerSSE = null;
+
+function getCustomerDocumentArchiveKey() {
+    const customerIdEl = document.getElementById('customer-id-data');
+    const customerId = customerIdEl ? customerIdEl.value : '';
+    return customerId ? `customerDocumentArchive:${customerId}` : 'customerDocumentArchive';
+}
+
+function loadCustomerDocumentArchive() {
+    try {
+        window.customerDocumentArchive = JSON.parse(sessionStorage.getItem(getCustomerDocumentArchiveKey()) || '[]');
+    } catch (error) {
+        window.customerDocumentArchive = [];
+    }
+    return window.customerDocumentArchive;
+}
+
+function storeCustomerDocumentArchive(documents) {
+    if (!Array.isArray(documents) || documents.length === 0) return;
+
+    const archive = loadCustomerDocumentArchive();
+    const archiveMap = new Map(archive.map(doc => [doc.doc_id, doc]));
+
+    documents.forEach(doc => {
+        if (doc && doc.doc_id) {
+            archiveMap.set(doc.doc_id, { ...archiveMap.get(doc.doc_id), ...doc });
+        }
+    });
+
+    window.customerDocumentArchive = Array.from(archiveMap.values());
+
+    try {
+        sessionStorage.setItem(getCustomerDocumentArchiveKey(), JSON.stringify(window.customerDocumentArchive));
+    } catch (error) {
+        console.warn('Could not store customer document archive:', error);
+    }
+}
 
 // --- Print completion sound & tab title flash ---
 const confirmationBaseTitle = document.title;
@@ -1278,13 +1443,14 @@ function checkForNewCompletions(documents) {
 
 // Track which docs have already triggered the timeout popup
 var _timeoutPopupShown = {};
+var _voucherCancellationShown = {};
 
 function checkForTimeoutCancellations(documents) {
     if (!documents || documents.length === 0) return;
     documents.forEach(function(doc) {
         if (doc.doc_status === 'Cancelled' && !_timeoutPopupShown[doc.doc_id]) {
             var reason = (doc.cancel_reason || '').toLowerCase();
-            if (reason.indexOf('no printer available for') !== -1) {
+            if (reason.indexOf('no printer available for') !== -1 && reason.indexOf('auto voucher') === -1) {
                 _timeoutPopupShown[doc.doc_id] = true;
                 // Auto-show the problem report overlay for this timed-out document
                 if (typeof showProblemReportOverlay === 'function') {
@@ -1295,8 +1461,113 @@ function checkForTimeoutCancellations(documents) {
     });
 }
 
+function checkForAutoVoucherCancellations(documents) {
+    if (!documents || documents.length === 0) return;
+
+    documents.forEach(function(doc) {
+        var reason = doc.cancel_reason || '';
+        var normalizedReason = reason.toLowerCase();
+        var hasVoucherCode = !!(doc.auto_voucher_code && String(doc.auto_voucher_code).trim());
+        if (
+            doc.doc_status === 'Cancelled' &&
+            (normalizedReason.indexOf('auto voucher') !== -1 || hasVoucherCode) &&
+            !_voucherCancellationShown[doc.doc_id]
+        ) {
+            _voucherCancellationShown[doc.doc_id] = true;
+            var alertBody = reason;
+            if (hasVoucherCode && normalizedReason.indexOf('auto voucher') === -1) {
+                var amountSuffix = doc.auto_voucher_amount ? ' worth P' + doc.auto_voucher_amount : '';
+                alertBody = reason + (reason ? ' ' : '') + 'Auto voucher ' + doc.auto_voucher_code + amountSuffix + ' was issued for the unprinted portion.';
+            }
+            createAlert(
+                'Print Cancelled',
+                'Voucher generated for the affected document.',
+                alertBody,
+                'warning',
+                true,
+                false,
+                'pageMessages'
+            );
+        }
+    });
+}
+
 // Track whether auto-ticket popup has already been triggered this page load
 var _autoTicketTriggered = false;
+
+function getCancelledVoucherCodes(documents) {
+    const voucherCodes = [];
+    (documents || []).forEach((doc) => {
+        const reason = String(doc && doc.cancel_reason ? doc.cancel_reason : '');
+        const match = reason.match(/Auto voucher\s+(\S+)/i);
+        if (!match) {
+            return;
+        }
+        const voucherCode = match[1].replace(/[.,;:]+$/, '');
+        if (voucherCode && !voucherCodes.includes(voucherCode)) {
+            voucherCodes.push(voucherCode);
+        }
+    });
+    return voucherCodes;
+}
+
+function confirmCancelledVoucherDone() {
+    const docs = Array.isArray(window.customerDocuments) ? window.customerDocuments : [];
+    const cancelledDocs = docs.filter((doc) => doc.doc_status === 'Cancelled');
+    const customerIdEl = document.getElementById('customer-id-data');
+    const customerId = customerIdEl ? customerIdEl.value : '';
+    const voucherCodes = getCancelledVoucherCodes(cancelledDocs);
+    const voucherLine = voucherCodes.length > 0
+        ? `\n\nVoucher${voucherCodes.length > 1 ? 's' : ''}: ${voucherCodes.join(', ')}`
+        : '';
+
+    const confirmed = confirm(
+        'Have you captured the voucher to reprint later once the printer issue is fixed?' +
+        voucherLine +
+        '\n\nPress OK to continue. A ticket will be automatically created so the admin knows this happened.'
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    if (!customerId || cancelledDocs.length === 0) {
+        hasProceeded = true;
+        redirectHomeAfterSessionClear();
+        return;
+    }
+
+    hasProceeded = true;
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.style.display = 'flex';
+
+    fetch('/api/acknowledge-cancelled-voucher/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({
+            customer_id: customerId,
+            doc_ids: cancelledDocs.map((doc) => doc.doc_id),
+        })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                redirectHomeAfterSessionClear();
+                return;
+            }
+
+            throw new Error(data.error || 'Unable to notify admin about the cancelled voucher.');
+        })
+        .catch(error => {
+            console.error('Error acknowledging cancelled voucher:', error);
+            hasProceeded = false;
+            if (overlay) overlay.style.display = 'none';
+            alert('Could not create the admin ticket automatically. Please try Done again so the voucher capture is recorded.');
+        });
+}
 
 function checkForAutoTicketTrigger(data) {
     if (_autoTicketTriggered) return;
@@ -1385,8 +1656,10 @@ function initConfirmationSSE() {
         try {
             const data = JSON.parse(event.data);
             window.customerDocuments = data.documents || [];
+            storeCustomerDocumentArchive(window.customerDocuments);
             checkForNewCompletions(data.documents || []);
             checkForTimeoutCancellations(data.documents || []);
+            checkForAutoVoucherCancellations(data.documents || []);
             checkForAutoTicketTrigger(data);
             renderDocumentRows(data.documents);
             updateConfirmationUI(data);
@@ -1446,9 +1719,9 @@ function buildDocumentBadges(doc) {
     let badgesHtml = '';
     const history = doc.reroute_history || [];
 
-    // Group reroute history into "print segments" by printer
-    // Each "Assigned" entry followed by an "Error" or "Rerouted" means that segment was on that printer
     const segments = buildPrintSegments(doc, history);
+    const hasPageSegments = segments.some(segment => Array.isArray(segment.pages) && segment.pages.length > 0);
+    const rerouteDestination = getLatestRerouteDestination(history);
 
     if (doc.doc_status === 'Pending') {
         // Waiting for admin approval
@@ -1456,24 +1729,23 @@ function buildDocumentBadges(doc) {
     } else if (doc.doc_status === 'Queued') {
         // In queue, no printer assigned yet
         if (segments.length > 0) {
-            // Was rerouted - show completed segments, then waiting
             badgesHtml = renderCompletedSegments(segments);
-            badgesHtml += `<div class="badge status-info">Waiting...</div>`;
-        } else {
-            badgesHtml = `<div class="badge status-info">Waiting...</div>`;
         }
+        if (rerouteDestination) {
+            badgesHtml += `<div class="badge status-primary">Rerouted to (${escapeHtml(rerouteDestination)})</div>`;
+        }
+        badgesHtml += `<div class="badge status-info">Waiting...</div>`;
     } else if (doc.doc_status === 'Printing') {
-        // Currently printing
-        if (segments.length > 1) {
-            // Has reroute history - show completed segments + current printing
-            badgesHtml = renderCompletedSegments(segments.slice(0, -1));
+        if (segments.length > 0) {
+            badgesHtml = renderCompletedSegments(hasPageSegments ? segments : segments.slice(0, -1));
         }
-        const printerText = doc.printer_name ? ` (${escapeHtml(doc.printer_name)})` : '';
-        badgesHtml += `<div class="badge status-info">Printing...${printerText}</div>`;
+        if (rerouteDestination) {
+            badgesHtml += `<div class="badge status-primary">Rerouted to (${escapeHtml(rerouteDestination)})</div>`;
+        }
+        badgesHtml += `<div class="badge status-info">${formatCurrentPrintingBadge(doc)}</div>`;
     } else if (doc.doc_status === 'Finished') {
-        // Completed - show history segments + completion badge with pickup button
-        if (segments.length > 1) {
-            badgesHtml = renderCompletedSegments(segments.slice(0, -1));
+        if (segments.length > 0) {
+            badgesHtml = renderCompletedSegments(segments);
         }
         const printerText = doc.printed_at ? ` (${escapeHtml(doc.printed_at)})` : '';
         badgesHtml += `
@@ -1507,23 +1779,47 @@ function buildDocumentBadges(doc) {
 }
 
 function buildPrintSegments(doc, history) {
-    /**
-     * Build print segments from reroute history.
-     * Each segment represents a printer that was assigned and what happened there.
-     * Segments show: "Page X-Y (Printer Name)" for completed portions on rerouted printers.
-     */
+    const pageSegments = [];
+    let currentPageSegment = null;
+
+    history.forEach((entry) => {
+        const match = /^Printed page\s+(\d+)$/i.exec(entry.status || '');
+        if (!match) {
+            return;
+        }
+
+        const printerName = entry.printer_name || 'Unknown';
+        const pageNumber = Number.parseInt(match[1], 10);
+        if (Number.isNaN(pageNumber)) {
+            return;
+        }
+
+        if (!currentPageSegment || currentPageSegment.printer_name !== printerName) {
+            currentPageSegment = {
+                printer_name: printerName,
+                pages: [],
+            };
+            pageSegments.push(currentPageSegment);
+        }
+
+        if (!currentPageSegment.pages.includes(pageNumber)) {
+            currentPageSegment.pages.push(pageNumber);
+        }
+    });
+
+    if (pageSegments.length > 0) {
+        return pageSegments;
+    }
+
     const segments = [];
     let currentPrinter = null;
-    let segmentStart = null;
 
     for (let i = 0; i < history.length; i++) {
         const entry = history[i];
 
         if (entry.status === 'Assigned') {
             currentPrinter = entry.printer_name;
-            segmentStart = i;
         } else if (entry.status.startsWith('Error') || entry.status.startsWith('Timeout') || entry.status.startsWith('Failed')) {
-            // This printer had an error - create a completed segment for pages printed there
             if (currentPrinter) {
                 segments.push({
                     printer_name: currentPrinter,
@@ -1555,16 +1851,100 @@ function buildPrintSegments(doc, history) {
     return segments;
 }
 
+function getLatestRerouteDestination(history) {
+    let latestDestination = '';
+
+    (history || []).forEach((entry) => {
+        if (entry.status === 'Rerouted' && entry.printer_name) {
+            latestDestination = entry.printer_name;
+        }
+    });
+
+    return latestDestination;
+}
+
 function renderCompletedSegments(segments) {
     let html = '';
     segments.forEach(segment => {
         const printerText = segment.printer_name ? ` (${escapeHtml(segment.printer_name)})` : '';
-        if (segment.status === 'error' || segment.status === 'rerouted') {
-            // Pages that were printed on a rerouted printer (shown as primary/blue badge)
-            html += `<div class="badge status-primary">Printed on${printerText}</div>`;
+        if (Array.isArray(segment.pages) && segment.pages.length > 0) {
+            html += `<div class="badge status-primary">Printed: ${formatPrintedPageRanges(segment.pages)}${printerText}</div>`;
         }
     });
     return html;
+}
+
+function formatPrintedPageRanges(pages) {
+    const sortedPages = Array.from(new Set((pages || []).map((page) => Number(page)).filter((page) => !Number.isNaN(page)))).sort((a, b) => a - b);
+    if (sortedPages.length === 0) {
+        return 'Page';
+    }
+
+    const ranges = [];
+    let start = sortedPages[0];
+    let end = sortedPages[0];
+
+    for (let i = 1; i < sortedPages.length; i++) {
+        const page = sortedPages[i];
+        if (page === end + 1) {
+            end = page;
+            continue;
+        }
+        ranges.push(start === end ? `${start}` : `${start}-${end}`);
+        start = page;
+        end = page;
+    }
+
+    ranges.push(start === end ? `${start}` : `${start}-${end}`);
+    const label = ranges.length > 1 ? 'Pages' : 'Page';
+    return `${label} ${ranges.join(', ')}`;
+}
+
+function getDocumentPageList(pagesNum) {
+    if (!pagesNum) {
+        return [];
+    }
+
+    const pages = [];
+    String(pagesNum).split(',').forEach((part) => {
+        const trimmed = part.trim();
+        if (!trimmed) {
+            return;
+        }
+
+        if (trimmed.includes('-')) {
+            const [start, end] = trimmed.split('-').map((value) => Number.parseInt(value, 10));
+            if (Number.isNaN(start) || Number.isNaN(end)) {
+                return;
+            }
+            for (let page = start; page <= end; page++) {
+                pages.push(page);
+            }
+            return;
+        }
+
+        const page = Number.parseInt(trimmed, 10);
+        if (!Number.isNaN(page)) {
+            pages.push(page);
+        }
+    });
+
+    return pages;
+}
+
+function formatCurrentPrintingBadge(doc) {
+    const pageList = getDocumentPageList(doc.pages_num);
+    const printedPages = new Set((doc.pages_printed || []).map((page) => Number(page)));
+    // Backend prints pages in reverse order (last page first) so the output
+    // stack ends up in natural reading order. The "currently printing" page is
+    // therefore the HIGHEST page number that has not yet been printed.
+    const remaining = pageList.filter((page) => !printedPages.has(page));
+    const nextPage = remaining.length ? remaining[remaining.length - 1] : undefined;
+    const printerLabel = doc.printer_name ? `${escapeHtml(doc.printer_name)} - ` : '';
+    if (typeof nextPage === 'number') {
+        return `${printerLabel}Now printing page ${escapeHtml(String(nextPage))}`;
+    }
+    return `${printerLabel}Printing...`;
 }
 
 function updateConfirmationUI(data) {
@@ -1577,9 +1957,17 @@ function updateConfirmationUI(data) {
 
     const allPickedUp = data.documents.every(d => d.doc_status === 'Picked Up');
     const allFinished = data.documents.every(d => d.doc_status === 'Finished' || d.doc_status === 'Picked Up');
+    const allTerminal = data.documents.every(d => ['Finished', 'Picked Up', 'Cancelled'].includes(d.doc_status));
+    const allCancelled = data.documents.every(d => d.doc_status === 'Cancelled');
     const anyPrinting = data.documents.some(d => d.doc_status === 'Printing');
     const anyPending = data.documents.some(d => d.doc_status === 'Pending');
     const hasFinished = data.documents.some(d => d.doc_status === 'Finished');
+
+    if (finishBtn) {
+        finishBtn.dataset.mode = 'pickup';
+        finishBtn.textContent = 'Picked Up All Printed Documents';
+        finishBtn.style.display = 'none';
+    }
 
     if (allPickedUp) {
         if (titleEl) titleEl.textContent = 'All done! Thank you!';
@@ -1598,6 +1986,18 @@ function updateConfirmationUI(data) {
         if (titleEl) titleEl.textContent = 'Printing Complete!';
         if (subtitleEl) subtitleEl.textContent = 'Your documents are ready for pickup. Pick them up from the printer trays below.';
         if (finishBtn) finishBtn.style.display = 'block';
+    } else if (allCancelled) {
+        if (titleEl) titleEl.textContent = 'Printing Cancelled';
+        if (subtitleEl) subtitleEl.textContent = 'Your documents have reached their final cancelled state. Tap Done to close this page.';
+        if (finishBtn) {
+            finishBtn.dataset.mode = 'done';
+            finishBtn.textContent = 'Done';
+            finishBtn.style.display = 'block';
+        }
+    } else if (allTerminal && hasFinished) {
+        if (titleEl) titleEl.textContent = 'Printing Complete!';
+        if (subtitleEl) subtitleEl.textContent = 'Finished documents are ready for pickup. Any other documents have already reached their final status.';
+        if (finishBtn) finishBtn.style.display = 'block';
     } else if (anyPrinting) {
         if (titleEl) titleEl.textContent = 'Payment Confirmed! Printing in progress...';
         if (subtitleEl) subtitleEl.textContent = 'Your documents are now being printed. Please wait.';
@@ -1614,7 +2014,7 @@ function updateConfirmationUI(data) {
     }
 }
 
-function pickedUpDocument(docId) {
+function pickedUpDocument(docId, force = false) {
     const btn = event.target;
     btn.disabled = true;
     btn.textContent = 'Processing...';
@@ -1625,7 +2025,7 @@ function pickedUpDocument(docId) {
             'Content-Type': 'application/json',
             'X-CSRFToken': getCsrfToken()
         },
-        body: JSON.stringify({ doc_id: docId })
+        body: JSON.stringify({ doc_id: docId, force })
     })
         .then(response => response.json())
         .then(data => {
@@ -1820,14 +2220,19 @@ function populateDocumentsList() {
     if (!documentsList) return;
 
     documentsList.innerHTML = '';
+    loadCustomerDocumentArchive();
 
     // Use SSE-sourced documents if available, otherwise fall back to DOM scraping
     let docs = [];
 
     if (window.customerDocuments && window.customerDocuments.length > 0) {
-        // Use SSE data - filter to show docs that are Queued, Printing, Finished, or Cancelled
+        // Use SSE data when available.
         docs = window.customerDocuments.filter(doc =>
-            ['Pending', 'Queued', 'Printing', 'Finished', 'Cancelled'].includes(doc.doc_status)
+            ['Pending', 'Queued', 'Printing', 'Finished', 'Cancelled', 'Picked Up'].includes(doc.doc_status)
+        );
+    } else if (window.customerDocumentArchive && window.customerDocumentArchive.length > 0) {
+        docs = window.customerDocumentArchive.filter(doc =>
+            ['Pending', 'Queued', 'Printing', 'Finished', 'Cancelled', 'Picked Up'].includes(doc.doc_status)
         );
     } else {
         // Fallback: scrape from DOM
@@ -2536,7 +2941,7 @@ function confirmAllGood() {
         // Fallback: just redirect
         var overlay = document.getElementById('loading-overlay');
         if (overlay) overlay.style.display = 'flex';
-        window.location.href = '/';
+        redirectHomeAfterSessionClear();
         return;
     }
 
@@ -2557,15 +2962,15 @@ function confirmAllGood() {
             if (data.success) {
                 console.log(`Finished transaction: ${data.picked_up_count} docs picked up`);
                 // Redirect immediately — documents are deleted so SSE can't detect the change
-                setTimeout(() => { window.location.href = '/'; }, 1500);
+                redirectHomeAfterSessionClear(1500);
             } else {
                 console.warn('Finish transaction warning:', data.error);
-                window.location.href = '/';
+                redirectHomeAfterSessionClear();
             }
         })
         .catch(error => {
             console.error('Error finishing transaction:', error);
-            window.location.href = '/';
+            redirectHomeAfterSessionClear();
         });
 }
 
@@ -2790,6 +3195,12 @@ document.addEventListener('change', function(e) {
             label.textContent = e.target.files.length > 0 ? e.target.files[0].name : 'No file chosen';
         }
     }
+    if (e.target && e.target.id === 'payment-ticket-receipt-screenshot') {
+        const label = document.getElementById('payment-ticket-receipt-file-name');
+        if (label) {
+            label.textContent = e.target.files.length > 0 ? e.target.files[0].name : 'No file chosen';
+        }
+    }
     // Proof photos file input: show count and thumbnail previews
     if (e.target && e.target.id === 'ticket-proof-photos') {
         const label = document.getElementById('proof-photos-name');
@@ -2857,13 +3268,16 @@ document.addEventListener('input', function(e) {
     if (!window.PAYMENT_DATA) return;
 
     const PAYMENT = window.PAYMENT_DATA;
+    const GCASH_WEBSITE_URL = 'https://www.gcash.com/';
+    const GCASH_APP_URL = 'gcash://';
+    const GCASH_ANDROID_PACKAGE = 'com.globe.gcash.android';
+    const GCASH_ANDROID_INTENT_URL = 'intent://open/#Intent;scheme=gcash;package=com.globe.gcash.android;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.globe.gcash.android;end';
     let pollInterval = null;
     let pollAttempts = 0;
-    const MAX_POLL_ATTEMPTS = 60; // 5 minutes at 5-second intervals
-    let checkoutUrl = null;
+    let maxPollAttempts = Math.ceil(((PAYMENT.paymentConfig?.paymentExpiryMinutes || 10) * 60) / 5);
+    let paymentOpenUrl = 'gcash://';
     let appliedVoucherCode = null;
     let appliedCreditAmount = 0;
-    const XENDIT_MIN = 5;
 
     /** Show full-screen loading overlay */
     function showOverlay() {
@@ -2877,17 +3291,150 @@ document.addEventListener('input', function(e) {
         if (overlay) overlay.style.display = 'none';
     }
 
+    function isAndroidDevice() {
+        return /Android/i.test(navigator.userAgent || '');
+    }
+
+    async function copyTextWithFallback(text) {
+        if (!text) {
+            return false;
+        }
+
+        if (navigator.clipboard && window.isSecureContext) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (error) {
+                // Fall through to textarea-based copy.
+            }
+        }
+
+        try {
+            const helper = document.createElement('textarea');
+            helper.value = text;
+            helper.setAttribute('readonly', 'readonly');
+            helper.style.position = 'fixed';
+            helper.style.opacity = '0';
+            helper.style.pointerEvents = 'none';
+            document.body.appendChild(helper);
+            helper.focus();
+            helper.select();
+            helper.setSelectionRange(0, helper.value.length);
+            const copied = document.execCommand('copy');
+            document.body.removeChild(helper);
+            return copied;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function getPaymentDocuments() {
+        if (Array.isArray(PAYMENT.documents) && PAYMENT.documents.length > 0) {
+            return PAYMENT.documents;
+        }
+
+        return (PAYMENT.docIds || []).map(function (docId) {
+            return {
+                docId: docId,
+                name: docId,
+            };
+        });
+    }
+
+    function getPaymentTicketSummary() {
+        const docs = getPaymentDocuments();
+        const recipientNumber = document.getElementById('payment-recipient-number')?.textContent?.trim() || PAYMENT.paymentConfig?.recipientNumber || '';
+        const expectedAmount = document.getElementById('payment-send-amount')?.textContent?.trim() || ('₱' + Number(Math.max(0, PAYMENT.totalPrice - appliedCreditAmount)).toFixed(2));
+        const payerNumber = document.getElementById('phone-number')?.value?.replace(/\D/g, '').trim() || '';
+        return {
+            docs: docs,
+            recipientNumber: recipientNumber,
+            expectedAmount: expectedAmount,
+            payerNumber: payerNumber,
+        };
+    }
+
+    function setPaymentTicketStatus(message, tone) {
+        const statusEl = document.getElementById('payment-ticket-status');
+        if (!statusEl) {
+            return;
+        }
+
+        if (!message) {
+            statusEl.style.display = 'none';
+            statusEl.textContent = '';
+            statusEl.style.color = '';
+            return;
+        }
+
+        statusEl.style.display = 'block';
+        statusEl.textContent = message;
+        statusEl.style.color = tone === 'success' ? '#166534' : '#b91c1c';
+    }
+
+    function populatePaymentTicketDefaults() {
+        const phoneInput = document.getElementById('phone-number');
+        const ticketPhone = document.getElementById('payment-ticket-phone');
+        const ticketGcash = document.getElementById('payment-ticket-gcash-number');
+        const normalizedPhone = phoneInput?.value?.replace(/\D/g, '').trim() || '';
+
+        if (ticketPhone && !ticketPhone.value.trim() && normalizedPhone) {
+            ticketPhone.value = normalizedPhone;
+        }
+
+        if (ticketGcash && !ticketGcash.value.trim() && normalizedPhone) {
+            ticketGcash.value = normalizedPhone;
+        }
+    }
+
+    function buildPaymentIssueDescription() {
+        const issueTypeEl = document.getElementById('payment-ticket-issue');
+        const notesEl = document.getElementById('payment-ticket-notes');
+        const ticketGcashEl = document.getElementById('payment-ticket-gcash-number');
+        const summary = getPaymentTicketSummary();
+        const issueLabels = {
+            'wrong-amount': 'Wrong amount sent',
+            'wrong-recipient': 'Sent to the wrong GCash number',
+            'not-detected': 'Payment not auto-detected',
+            'gcash-launch': 'Open GCash button did not open the app correctly',
+            'other': 'Other payment concern',
+        };
+        const issueValue = issueTypeEl?.value || 'other';
+        const noteValue = notesEl?.value?.trim() || '';
+        const payerGcashNumber = ticketGcashEl?.value?.replace(/\D/g, '').trim() || summary.payerNumber || 'Not provided';
+        const lines = [
+            'Payment issue reported from payment page.',
+            'Issue type: ' + (issueLabels[issueValue] || issueLabels.other),
+            'Customer ID: #' + PAYMENT.customerId,
+            'Document IDs: ' + summary.docs.map(function (doc) { return doc.docId; }).join(', '),
+            'Expected Amount: ' + summary.expectedAmount,
+            'Recipient Number: ' + (summary.recipientNumber || 'Not available'),
+            'Customer GCash Number: ' + payerGcashNumber,
+        ];
+
+        if (noteValue) {
+            lines.push('Customer note: ' + noteValue);
+        }
+
+        lines.push('Customer requested personnel follow-up from the payment page.');
+        return lines.join('\n');
+    }
+
+    function setPaymentTicketSubmitting(isSubmitting) {
+        const submitBtn = document.getElementById('payment-ticket-submit-btn');
+        if (!submitBtn) {
+            return;
+        }
+
+        submitBtn.disabled = isSubmitting;
+        submitBtn.textContent = isSubmitting ? 'Creating Ticket...' : 'Create Ticket';
+    }
+
     /** Update the displayed charge amount and button text based on credit */
     function updatePriceDisplay(creditAmount, creditCode) {
         const total = PAYMENT.totalPrice;
         const balanceDue = Math.max(0, total - creditAmount);
-        let chargeAmount = balanceDue;
-        let excessCredit = 0;
-
-        if (balanceDue > 0 && balanceDue < XENDIT_MIN) {
-            excessCredit = XENDIT_MIN - balanceDue;
-            chargeAmount = XENDIT_MIN;
-        }
+        const chargeAmount = balanceDue;
 
         // Update amount display
         const amountEl = document.getElementById('display-amount');
@@ -2897,28 +3444,15 @@ document.addEventListener('input', function(e) {
         const step1Title = document.getElementById('step1-title');
         const step1Hint = document.getElementById('step1-hint');
         const discountSummary = document.getElementById('discount-summary');
-        const minDisclaimer = document.getElementById('minimum-disclaimer');
-        const minRow = document.getElementById('minimum-charge-row');
 
         if (creditAmount > 0) {
             // Show discount breakdown
             discountSummary.style.display = 'block';
             document.getElementById('original-total-display').textContent = '\u20B1' + total.toFixed(2);
             document.getElementById('credit-applied-display').textContent = '-\u20B1' + creditAmount.toFixed(2);
-
-            if (excessCredit > 0) {
-                minRow.style.display = 'flex';
-                document.getElementById('minimum-adj-display').textContent = '+\u20B1' + excessCredit.toFixed(2);
-                minDisclaimer.style.display = 'block';
-            } else {
-                minRow.style.display = 'none';
-                minDisclaimer.style.display = 'none';
-            }
-
             document.getElementById('final-charge-display').textContent = '\u20B1' + chargeAmount.toFixed(2);
         } else {
             discountSummary.style.display = 'none';
-            minDisclaimer.style.display = 'none';
         }
 
         if (balanceDue <= 0) {
@@ -2934,15 +3468,51 @@ document.addEventListener('input', function(e) {
         } else {
             amountEl.textContent = '\u20B1' + chargeAmount.toFixed(2);
             labelEl.textContent = creditAmount > 0 ? 'Balance Due' : 'Amount to Pay';
-            btn.textContent = 'Pay \u20B1' + Math.round(chargeAmount) + ' Now';
+            btn.textContent = 'Continue to GCash Details';
             btn.type = 'submit';
             btn.onclick = null;
             if (phoneSection) phoneSection.style.display = '';
             if (step1Title) step1Title.textContent = 'Pay with E-Wallet';
-            if (step1Hint) step1Hint.textContent = 'Provide the phone number registered with your preferred e-wallet (GCash, Maya, etc.).';
-            // Show min disclaimer if total is below ₱5 minimum (even without credit)
-            if (total < XENDIT_MIN && creditAmount === 0) {
-                minDisclaimer.style.display = 'block';
+            if (step1Hint) step1Hint.textContent = 'Provide the GCash number you will use to send the payment.';
+        }
+    }
+
+    function setPaymentInstructions(data) {
+        const recipientName = data.recipient_name || PAYMENT.paymentConfig?.recipientName || 'GCash Recipient';
+        const recipientNumber = data.recipient_number || PAYMENT.paymentConfig?.recipientNumber || '09XX XXX XXXX';
+        const qrUrl = data.recipient_qr_url || PAYMENT.paymentConfig?.recipientQrUrl || '';
+        const expiryMinutes = data.payment_expiry_minutes || PAYMENT.paymentConfig?.paymentExpiryMinutes || 10;
+        const amount = Number(data.amount || Math.max(0, PAYMENT.totalPrice - appliedCreditAmount));
+
+        PAYMENT.paymentConfig = {
+            recipientName: recipientName,
+            recipientNumber: recipientNumber,
+            recipientQrUrl: qrUrl,
+            paymentExpiryMinutes: expiryMinutes,
+        };
+        paymentOpenUrl = data.open_url || 'gcash://';
+        maxPollAttempts = Math.ceil((expiryMinutes * 60) / 5);
+
+        const recipientNameEl = document.getElementById('payment-recipient-name');
+        const recipientNumberEl = document.getElementById('payment-recipient-number');
+        const amountEl = document.getElementById('payment-send-amount');
+        const expiryEl = document.getElementById('payment-expiry-text');
+        const qrEl = document.getElementById('payment-recipient-qr');
+        const qrPlaceholder = document.getElementById('payment-qr-placeholder');
+
+        if (recipientNameEl) recipientNameEl.textContent = recipientName;
+        if (recipientNumberEl) recipientNumberEl.textContent = recipientNumber;
+        if (amountEl) amountEl.textContent = '₱' + amount.toFixed(2);
+        if (expiryEl) expiryEl.textContent = 'This payment attempt expires after ' + expiryMinutes + ' minutes.';
+
+        if (qrEl) {
+            if (qrUrl) {
+                qrEl.src = qrUrl;
+                qrEl.style.display = 'block';
+                if (qrPlaceholder) qrPlaceholder.style.display = 'none';
+            } else {
+                qrEl.style.display = 'none';
+                if (qrPlaceholder) qrPlaceholder.style.display = 'flex';
             }
         }
     }
@@ -3035,13 +3605,21 @@ document.addEventListener('input', function(e) {
     };
 
     /**
-     * STEP 1: Initiate payment
-     * Sends phone number + CID to Django → KLCiS voucher → opens GCash checkout
+    * STEP 1: Initiate payment
+    * Sends phone number + CID to Django → creates a payment intent → shows GCash instructions
      */
     window.initiatePayment = async function () {
         const phoneInput = document.getElementById('phone-number');
         const btn = document.getElementById('pay-now-btn');
         const balanceDue = PAYMENT.totalPrice - appliedCreditAmount;
+
+        if (!printersAvailable) {
+            if (btn) {
+                btn.disabled = true;
+            }
+            alert('Payment is temporarily unavailable because no printers can accept this job right now.');
+            return;
+        }
 
         // If NOT fully covered by credit, validate phone number
         if (balanceDue > 0) {
@@ -3094,26 +3672,18 @@ document.addEventListener('input', function(e) {
                 document.getElementById('payment-step-1').style.display = 'none';
                 document.getElementById('voucher-section').style.display = 'none';
                 document.getElementById('discount-summary').style.display = 'none';
-                document.getElementById('minimum-disclaimer').style.display = 'none';
                 document.getElementById('payment-step-2').style.display = 'flex';
+                setPaymentInstructions(data);
                 startAutoPolling();
-
-                if (data.checkout_url) {
-                    checkoutUrl = data.checkout_url;
-                    window.open(data.checkout_url, '_blank');
-                    // Always show redirect button (popup blockers may prevent opening)
-                    const redirectBtn = document.getElementById('redirect-payment-btn');
-                    if (redirectBtn) redirectBtn.style.display = '';
-                }
             } else {
                 alert(data.error || 'Payment setup failed. Please try again.');
                 btn.disabled = false;
-                btn.textContent = 'Pay \u20B1' + Math.round(PAYMENT.totalPrice) + ' Now';
+                btn.textContent = 'Continue to GCash Details';
             }
         } catch (err) {
             alert('Network error. Please check your connection and try again.');
             btn.disabled = false;
-            btn.textContent = 'Pay \u20B1' + Math.round(PAYMENT.totalPrice) + ' Now';
+            btn.textContent = 'Continue to GCash Details';
         } finally {
             hideOverlay();
         }
@@ -3121,7 +3691,7 @@ document.addEventListener('input', function(e) {
 
     /**
      * STEP 2: Verify payment
-     * Polls Django → KLCiS sold_vouchers → if paid, redirects to confirmation
+     * Polls Django → Firestore claim matcher → if paid, redirects to confirmation
      */
     window.verifyPayment = async function () {
         const btn = document.getElementById('verify-btn');
@@ -3151,8 +3721,9 @@ document.addEventListener('input', function(e) {
                 alert(data.message || 'Payment verified! Redirecting to print queue...');
                 window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
             } else {
-                if (data.status === 'pending') {
-                    alert('Payment not yet detected. If you already paid, please wait a moment and try again.');
+                if (data.status === 'pending' || data.status === 'expired') {
+                    setPaymentHelpOpen(true);
+                        alert('Payment not yet detected. If you sent a different amount, tap Payment Issue? below and keep your receipt for manual review.');
                 } else {
                     alert(data.error || 'Verification failed.');
                 }
@@ -3175,7 +3746,7 @@ document.addEventListener('input', function(e) {
         pollAttempts = 0;
         pollInterval = setInterval(async () => {
             pollAttempts++;
-            if (pollAttempts > MAX_POLL_ATTEMPTS) {
+            if (pollAttempts > maxPollAttempts) {
                 stopAutoPolling();
                 return;
             }
@@ -3211,6 +3782,56 @@ document.addEventListener('input', function(e) {
         }
     }
 
+    function setPaymentHelpOpen(isOpen) {
+        const panel = document.getElementById('payment-help-panel');
+        const btn = document.getElementById('payment-help-btn');
+        if (!panel || !btn) {
+            return;
+        }
+
+        panel.style.display = isOpen ? 'block' : 'none';
+        btn.textContent = isOpen
+            ? 'Hide Payment Issue?'
+            : 'Payment Issue?';
+
+        if (isOpen) {
+            populatePaymentTicketDefaults();
+            setPaymentTicketStatus('', '');
+        }
+    }
+
+    window.togglePaymentHelp = function () {
+        const panel = document.getElementById('payment-help-panel');
+        if (!panel) {
+            return;
+        }
+        setPaymentHelpOpen(panel.style.display === 'none' || !panel.style.display);
+    };
+
+    window.copyPaymentHelpDetails = async function () {
+        const summary = getPaymentTicketSummary();
+        const helpText = [
+            'SafePrint Payment Ticket Details',
+            'Customer ID: #' + PAYMENT.customerId,
+            'Document IDs: ' + summary.docs.map(function (doc) { return doc.docId; }).join(', '),
+            'Expected Amount: ' + summary.expectedAmount,
+            'My GCash Number: ' + (summary.payerNumber || 'Not provided'),
+            'Recipient Number: ' + (summary.recipientNumber || 'Not available'),
+            'Use this together with your receipt screenshot and reference code.',
+        ].join('\n');
+
+        try {
+            const copied = await copyTextWithFallback(helpText);
+            if (copied) {
+                alert('Payment details copied. You can paste them into your ticket notes if needed.');
+                return;
+            }
+            throw new Error('Copy unavailable');
+        } catch (err) {
+            window.prompt('Copy these payment details for your ticket:', helpText);
+        }
+    };
+
     /**
      * Cancel payment - confirms with user, deletes print job, redirects home
      */
@@ -3219,6 +3840,7 @@ document.addEventListener('input', function(e) {
             return;
         }
         stopAutoPolling();
+        showOverlay();
         fetch('/payment/', {
             method: 'POST',
             headers: {
@@ -3228,23 +3850,238 @@ document.addEventListener('input', function(e) {
             body: JSON.stringify({
                 action: 'cancel',
                 customer_id: PAYMENT.customerId,
+                doc_ids: PAYMENT.docIds,
             }),
-        }).finally(() => {
-            // Clear all browser-side storage to prevent stale redirects
-            sessionStorage.clear();
-            try { localStorage.removeItem('pending_payment'); } catch (e) { /* ignore */ }
-            window.location.href = '/';
-        });
+        })
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (data) {
+                if (!data.success) {
+                    throw new Error(data.error || 'Could not cancel this payment attempt.');
+                }
+
+                sessionStorage.clear();
+                try { localStorage.removeItem('pending_payment'); } catch (e) { /* ignore */ }
+                window.location.href = '/';
+            })
+            .catch(function (error) {
+                hideOverlay();
+                alert(error.message || 'Could not cancel this payment attempt. Please try again.');
+            });
     };
 
     /**
-     * Redirect to Payment - re-opens the checkout URL in a new tab
+     * Copy the recipient number so the user can paste it in GCash.
      */
-    window.redirectToPayment = function () {
-        if (checkoutUrl) {
-            window.open(checkoutUrl, '_blank');
-        } else {
-            alert('Payment link is not available. Please try paying again.');
+    window.copyPaymentNumber = async function (suppressErrors) {
+        const recipientNumber = document.getElementById('payment-recipient-number')?.textContent?.trim();
+        if (!recipientNumber) {
+            if (!suppressErrors) {
+                alert('Recipient number is not available yet.');
+            }
+            return false;
+        }
+
+        try {
+            const copied = await copyTextWithFallback(recipientNumber);
+            if (!copied) {
+                throw new Error('Copy unavailable');
+            }
+            return true;
+        } catch (err) {
+            if (!suppressErrors) {
+                window.prompt('Copy the GCash number manually before sending payment:', recipientNumber);
+            }
+            return false;
+        }
+    };
+
+    function launchGcashWithFallback(targetUrl) {
+        let appLaunchDetected = false;
+
+        function markAppLaunch() {
+            appLaunchDetected = true;
+        }
+
+        function handleVisibilityChange() {
+            if (document.visibilityState === 'hidden') {
+                markAppLaunch();
+            }
+        }
+
+        function cleanup() {
+            window.removeEventListener('blur', markAppLaunch);
+            window.removeEventListener('pagehide', markAppLaunch);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        }
+
+        window.addEventListener('blur', markAppLaunch);
+        window.addEventListener('pagehide', markAppLaunch);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        try {
+            window.location.href = targetUrl;
+        } catch (error) {
+            cleanup();
+            window.location.href = GCASH_WEBSITE_URL;
+            return;
+        }
+
+        window.setTimeout(function () {
+            cleanup();
+            if (!appLaunchDetected && document.visibilityState === 'visible') {
+                window.location.href = GCASH_WEBSITE_URL;
+            }
+        }, 1500);
+    }
+
+    function launchGcashDirect(targetUrl) {
+        try {
+            window.location.href = targetUrl;
+        } catch (error) {
+            // Ignore here; Android should stay on the page if the app cannot be opened.
+        }
+    }
+
+    function openUrlViaAnchor(targetUrl) {
+        const anchor = document.createElement('a');
+        anchor.href = targetUrl;
+        anchor.style.display = 'none';
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+    }
+
+    window.openGCashApp = function () {
+        if (isAndroidDevice()) {
+            try {
+                openUrlViaAnchor(GCASH_ANDROID_INTENT_URL);
+            } catch (error) {
+                launchGcashDirect('intent://open/#Intent;scheme=gcash;package=' + GCASH_ANDROID_PACKAGE + ';action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end');
+            }
+            return;
+        }
+
+        window.copyPaymentNumber(false).then(function () {
+            launchGcashWithFallback(paymentOpenUrl || GCASH_APP_URL);
+        }).catch(function () {
+            launchGcashWithFallback(paymentOpenUrl || GCASH_APP_URL);
+        });
+    };
+
+    window.submitPaymentIssueTicket = async function () {
+        const nameEl = document.getElementById('payment-ticket-name');
+        const emailEl = document.getElementById('payment-ticket-email');
+        const phoneEl = document.getElementById('payment-ticket-phone');
+        const gcashEl = document.getElementById('payment-ticket-gcash-number');
+        const receiptCodeEl = document.getElementById('payment-ticket-receipt-code');
+        const receiptScreenshotEl = document.getElementById('payment-ticket-receipt-screenshot');
+        const notesEl = document.getElementById('payment-ticket-notes');
+        const docs = getPaymentDocuments();
+        const firstDoc = docs[0] || { docId: '', name: 'Payment concern' };
+        const customerName = nameEl?.value?.trim() || '';
+        const email = emailEl?.value?.trim() || '';
+        const phoneNumber = phoneEl?.value?.replace(/\D/g, '').trim() || '';
+        const gcashNumber = gcashEl?.value?.replace(/\D/g, '').trim() || '';
+        const receiptCode = receiptCodeEl?.value?.trim() || '';
+        const receiptScreenshot = receiptScreenshotEl?.files?.[0] || null;
+        const notesValue = notesEl?.value?.trim() || '';
+
+        if (!customerName) {
+            alert('Please enter your name so personnel can identify your ticket.');
+            nameEl?.focus();
+            return;
+        }
+
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            alert('Please enter a valid email address.');
+            emailEl?.focus();
+            return;
+        }
+
+        if (!/^09\d{9}$/.test(phoneNumber)) {
+            alert('Please enter a valid Philippine mobile number (e.g. 09171234567).');
+            phoneEl?.focus();
+            return;
+        }
+
+        if (gcashNumber && !/^09\d{9}$/.test(gcashNumber)) {
+            alert('Please enter a valid GCash mobile number (e.g. 09171234567).');
+            gcashEl?.focus();
+            return;
+        }
+
+        if (!receiptCode) {
+            alert('Please enter the receipt reference code from GCash.');
+            receiptCodeEl?.focus();
+            return;
+        }
+
+        if (!receiptScreenshot) {
+            alert('Please upload your GCash receipt screenshot so personnel can review the payment.');
+            receiptScreenshotEl?.focus();
+            return;
+        }
+
+        if (!notesValue) {
+            alert('Please describe what happened so personnel know how to help.');
+            notesEl?.focus();
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('customer_id', PAYMENT.customerId);
+        formData.append('document_id', firstDoc.docId || '');
+        formData.append('document_name', docs.length > 1 ? docs.length + ' payment-related documents' : (firstDoc.name || firstDoc.docId || 'Payment concern'));
+        formData.append('customer_name', customerName);
+        formData.append('email', email);
+        formData.append('phone_number', phoneNumber);
+        formData.append('problem_type', 'other');
+        formData.append('description', buildPaymentIssueDescription());
+        formData.append('page_range', 'all');
+        formData.append('specific_pages', '');
+        formData.append('reprinted', 'false');
+        formData.append('receipt_code', receiptCode);
+        formData.append('receipt_screenshot', receiptScreenshot);
+        formData.append('proof_photos', receiptScreenshot);
+        if (gcashNumber) {
+            formData.append('gcash_number', gcashNumber);
+        }
+        if (docs.length > 1) {
+            formData.append('documents', JSON.stringify(docs.map(function (doc) {
+                return {
+                    doc_id: doc.docId,
+                    doc_name: doc.name,
+                };
+            })));
+        }
+
+        setPaymentTicketSubmitting(true);
+        setPaymentTicketStatus('', '');
+
+        try {
+            const response = await fetch('/api/submit-ticket/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: formData,
+            });
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'Ticket creation failed.');
+            }
+
+            stopAutoPolling();
+            setPaymentTicketStatus('Ticket ' + (data.ticket_number || '') + ' created. SafePrint personnel can now review the payment and contact you.', 'success');
+            alert('Payment ticket created: ' + (data.ticket_number || 'Ticket submitted') + '. SafePrint personnel can now review your payment concern.');
+        } catch (error) {
+            setPaymentTicketStatus(error.message || 'Could not create the ticket right now.', 'error');
+            alert(error.message || 'Could not create the ticket right now.');
+        } finally {
+            setPaymentTicketSubmitting(false);
         }
     };
 
@@ -3268,17 +4105,19 @@ document.addEventListener('input', function(e) {
             const data = await response.json();
             const banner = document.getElementById('printer-unavailable-banner');
             const payBtn = document.getElementById('pay-now-btn');
+            const phoneInput = document.getElementById('phone-number');
 
             if (!data.available) {
                 printersAvailable = false;
                 if (payBtn) payBtn.disabled = true;
+                if (phoneInput) phoneInput.disabled = true;
                 if (banner) {
                     let msg = '';
                     if (data.all_offline) {
                         msg = 'All printers are currently offline. Payment is temporarily unavailable. Please try again later.';
                     } else if (data.unavailable_docs && data.unavailable_docs.length > 0) {
                         const specs = data.unavailable_docs.map(function(d) {
-                            return d.paper_size + (d.paper_quality ? ' ' + d.paper_quality : '');
+                            return d.required_sheets ? `${d.paper_size} (${d.required_sheets} sheets needed)` : d.paper_size;
                         });
                         msg = 'No available printer for: ' + specs.join(', ') + '. Please try again later.';
                     } else {
@@ -3290,6 +4129,7 @@ document.addEventListener('input', function(e) {
             } else {
                 printersAvailable = true;
                 if (payBtn && !payBtn.classList.contains('processing')) payBtn.disabled = false;
+                if (phoneInput) phoneInput.disabled = false;
                 if (banner) banner.style.display = 'none';
             }
         } catch (e) {
@@ -3304,8 +4144,5 @@ document.addEventListener('input', function(e) {
         if (printerCheckInterval) clearInterval(printerCheckInterval);
     });
 
-    // ── Initialize: show ₱5 minimum disclaimer if applicable ──
-    if (PAYMENT.totalPrice < XENDIT_MIN) {
-        updatePriceDisplay(0, null);
-    }
+    updatePriceDisplay(0, null);
 })();

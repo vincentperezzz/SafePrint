@@ -132,7 +132,7 @@ function setupPagination(containerId, rowSelector, controlsId, perPage) {
 
     function getRows() {
         return Array.from(container.querySelectorAll(rowSelector)).filter(function(r) {
-            return !r.classList.contains('empty-row') && r.style.display !== 'none-by-search';
+            return !r.classList.contains('empty-row') && r.dataset.paginationHidden !== 'true';
         });
     }
 
@@ -900,18 +900,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const updateTicketCounts = () => {
         const activeCountEl = document.getElementById('active-tickets-count');
-        const resolvedCountEl = document.getElementById('resolved-tickets-count');
 
         if (activeResults && activeCountEl) {
             const activeRows = Array.from(activeResults.querySelectorAll('.document-item'))
                 .filter((row) => !row.classList.contains('empty-row'));
             activeCountEl.textContent = activeRows.length.toString();
-        }
-
-        if (resolvedResults && resolvedCountEl) {
-            const resolvedRows = Array.from(resolvedResults.querySelectorAll('.document-item.resolved-row'))
-                .filter((row) => !row.classList.contains('empty-row'));
-            resolvedCountEl.textContent = resolvedRows.length.toString();
         }
     };
 
@@ -1342,12 +1335,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     const username = usernameDiv.textContent.toLowerCase();
                     const name = nameDiv.textContent.toLowerCase();
                     const match = username.includes(filter) || name.includes(filter);
+                    row.dataset.paginationHidden = match ? 'false' : 'true';
                     row.style.display = match ? '' : 'none';
                     if (match) visibleCount++;
                 }
             });
             // Show "No match found" only if there are no visible user rows
             document.getElementById('no-match-row').style.display = visibleCount === 0 ? 'flex' : 'none';
+            if (userAccountsPg) userAccountsPg.render();
         });
     }
 
@@ -1580,7 +1575,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     })
 
-    // Printer Status Dropdowns Update Database
+    // Printer status controls update the database.
     const dropdownSelects = document.querySelectorAll('.dropdown-select');
     if (dropdownSelects.length > 0) {
         dropdownSelects.forEach(function (select) {
@@ -1618,7 +1613,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     .then(data => {
                         // Show appropriate success message based on field
                         let fieldLabel = field === 'paper_assigned' ? 'Paper Assigned' : 
-                                         field === 'paper_quality' ? 'GSM' : 'Printer setting';
+                                         field === 'is_temporarily_disabled' ? 'Printer availability' : 'Printer setting';
                         createAlert('Success', 'Printer Updated', `${fieldLabel} has been updated successfully.`, 'success', true, true, 'pageMessages');
                         // Reload page after short delay to reflect changes in Paper Refill section
                         setTimeout(() => {
@@ -1628,6 +1623,52 @@ document.addEventListener('DOMContentLoaded', () => {
                     .catch(error => {
                         console.error('Error updating printer setting:', error);
                         createAlert('Error', 'Update Failed', 'Failed to update printer setting. Please try again or contact support.', 'danger', true, true, 'pageMessages');
+                    });
+            });
+        });
+    }
+
+    const printerToggleInputs = document.querySelectorAll('.printer-toggle-input');
+    if (printerToggleInputs.length > 0) {
+        printerToggleInputs.forEach(function (toggle) {
+            toggle.addEventListener('change', function () {
+                const printerId = this.dataset.printerId;
+                const field = this.dataset.field;
+                if (!printerId || !field) {
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('printer_id', printerId);
+                formData.append('field', field);
+                formData.append('value', this.checked ? 'false' : 'true');
+
+                fetch('/portal/api/update_printer_field/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.success) {
+                            throw new Error(data.error || 'Update failed');
+                        }
+                        const row = toggle.closest('.printer-table-row');
+                        const label = row ? row.querySelector('.printer-toggle-text') : null;
+                        if (label) {
+                            label.textContent = toggle.checked ? 'Enabled' : 'Disabled';
+                        }
+                        createAlert('Success', 'Printer Updated', 'Printer availability has been updated successfully.', 'success', true, true, 'pageMessages');
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    })
+                    .catch(error => {
+                        console.error('Error updating printer availability:', error);
+                        toggle.checked = !toggle.checked;
+                        createAlert('Error', 'Update Failed', 'Failed to update printer availability. Please try again or contact support.', 'danger', true, true, 'pageMessages');
                     });
             });
         });
@@ -1908,7 +1949,327 @@ document.addEventListener('DOMContentLoaded', () => {
                 saveCustomerSoundPrefs({ reroute_sound: this.value });
             });
         }
+
+        const paymentRecipientNameInput = document.getElementById('payment-recipient-name-setting');
+        const paymentRecipientNumberInput = document.getElementById('payment-recipient-number-setting');
+        const paymentExpiryInput = document.getElementById('payment-expiry-minutes-setting');
+        const blockPaymentWhenOfflineInput = document.getElementById('block-payment-when-offline-setting');
+        const paymentQrInput = document.getElementById('payment-qr-image-setting');
+        const paymentQrPreview = document.getElementById('payment-qr-preview');
+        const paymentQrPreviewEmpty = document.getElementById('payment-qr-preview-empty');
+        const paymentQrFileName = document.getElementById('payment-qr-file-name');
+        const paymentQrBrowseBtn = document.getElementById('payment-qr-browse-btn');
+        const editPaymentGatewayBtn = document.getElementById('edit-payment-gateway-btn');
+        const paymentGatewaySection = document.querySelector('.payment-gateway-section');
+        const paymentGatewayControls = [
+            paymentRecipientNameInput,
+            paymentRecipientNumberInput,
+            paymentExpiryInput,
+            blockPaymentWhenOfflineInput,
+            paymentQrInput,
+            paymentQrBrowseBtn,
+        ].filter(Boolean);
+        let paymentGatewayOriginalValues = null;
+
+        const getPaymentGatewayValues = () => ({
+            recipient_name: paymentRecipientNameInput ? paymentRecipientNameInput.value.trim() : '',
+            recipient_number: paymentRecipientNumberInput ? paymentRecipientNumberInput.value.trim() : '',
+            payment_expiry_minutes: paymentExpiryInput ? paymentExpiryInput.value.trim() : '10',
+            block_payment_when_printers_unavailable: !!(blockPaymentWhenOfflineInput && blockPaymentWhenOfflineInput.checked),
+        });
+
+        const setPaymentGatewayButtonState = (mode, isBusy = false) => {
+            if (!editPaymentGatewayBtn) {
+                return;
+            }
+
+            editPaymentGatewayBtn.dataset.mode = mode;
+            editPaymentGatewayBtn.disabled = isBusy;
+            editPaymentGatewayBtn.classList.toggle('is-save-mode', mode === 'save' && !isBusy);
+            editPaymentGatewayBtn.textContent = isBusy ? 'Saving...' : (mode === 'save' ? 'Save Changes' : 'Edit');
+        };
+
+        const setPaymentGatewayEditing = (isEditing) => {
+            paymentGatewayControls.forEach((control) => {
+                control.disabled = !isEditing;
+            });
+
+            if (paymentGatewaySection) {
+                paymentGatewaySection.classList.toggle('is-locked', !isEditing);
+            }
+
+            setPaymentGatewayButtonState(isEditing ? 'save' : 'edit');
+        };
+
+        if (paymentQrInput) {
+            paymentQrInput.addEventListener('change', function () {
+                const file = this.files && this.files[0];
+                if (paymentQrFileName) {
+                    paymentQrFileName.textContent = file ? file.name : 'No file chosen';
+                }
+                if (!file || !paymentQrPreview) return;
+
+                const reader = new FileReader();
+                reader.onload = function (event) {
+                    paymentQrPreview.src = event.target.result;
+                    paymentQrPreview.style.display = 'block';
+                    if (paymentQrPreviewEmpty) paymentQrPreviewEmpty.style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        if (paymentGatewayControls.length) {
+            paymentGatewayOriginalValues = getPaymentGatewayValues();
+            setPaymentGatewayEditing(false);
+        }
+
+        if (editPaymentGatewayBtn) {
+            editPaymentGatewayBtn.addEventListener('click', function () {
+                const pageMessages = document.getElementById('pageMessages');
+                if (pageMessages) {
+                    pageMessages.innerHTML = '';
+                }
+
+                if (editPaymentGatewayBtn.dataset.mode !== 'save') {
+                    paymentGatewayOriginalValues = getPaymentGatewayValues();
+                    setPaymentGatewayEditing(true);
+                    if (paymentRecipientNameInput) {
+                        paymentRecipientNameInput.focus();
+                    }
+                    return;
+                }
+
+                const currentPaymentGatewayValues = getPaymentGatewayValues();
+                const hasQrFile = !!(paymentQrInput && paymentQrInput.files && paymentQrInput.files[0]);
+                if (paymentGatewayOriginalValues && JSON.stringify(currentPaymentGatewayValues) === JSON.stringify(paymentGatewayOriginalValues) && !hasQrFile) {
+                    setPaymentGatewayEditing(false);
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('gcash_recipient_name', currentPaymentGatewayValues.recipient_name);
+                formData.append('gcash_recipient_number', currentPaymentGatewayValues.recipient_number);
+                formData.append('payment_expiry_minutes', currentPaymentGatewayValues.payment_expiry_minutes);
+                formData.append('block_payment_when_printers_unavailable', currentPaymentGatewayValues.block_payment_when_printers_unavailable ? 'true' : 'false');
+
+                if (paymentQrInput && paymentQrInput.files && paymentQrInput.files[0]) {
+                    formData.append('gcash_qr_image', paymentQrInput.files[0]);
+                }
+
+                setPaymentGatewayButtonState('save', true);
+
+                fetch('/api/update-payment-gateway-settings/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                    },
+                    body: formData,
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            if (paymentRecipientNameInput) paymentRecipientNameInput.value = data.payment_config.recipient_name || '';
+                            if (paymentRecipientNumberInput) paymentRecipientNumberInput.value = data.payment_config.recipient_number || '';
+                            if (paymentExpiryInput) paymentExpiryInput.value = data.payment_config.payment_expiry_minutes || '10';
+                            if (blockPaymentWhenOfflineInput) blockPaymentWhenOfflineInput.checked = !!data.payment_config.block_payment_when_printers_unavailable;
+                            if (paymentQrPreview && data.payment_config.recipient_qr_url) {
+                                paymentQrPreview.src = data.payment_config.recipient_qr_url;
+                                paymentQrPreview.style.display = 'block';
+                                if (paymentQrPreviewEmpty) paymentQrPreviewEmpty.style.display = 'none';
+                            }
+                            if (paymentQrInput) {
+                                paymentQrInput.value = '';
+                            }
+                            if (paymentQrFileName) {
+                                paymentQrFileName.textContent = 'No file chosen';
+                            }
+                            paymentGatewayOriginalValues = getPaymentGatewayValues();
+                            setPaymentGatewayEditing(false);
+                            createAlert('Success', 'Payment Gateway Updated', 'GCash recipient settings have been saved.', 'success', true, true, 'pageMessages');
+                        } else {
+                            setPaymentGatewayButtonState('save');
+                            createAlert('Error', 'Update Failed', data.error || 'Failed to update payment gateway settings.', 'danger', true, true, 'pageMessages');
+                        }
+                    })
+                    .catch(() => {
+                        setPaymentGatewayButtonState('save');
+                        createAlert('Error', 'Update Failed', 'An error occurred while saving payment gateway settings.', 'danger', true, true, 'pageMessages');
+                    });
+            });
+        }
     }
+
+        const salesFullThresholdInput = document.getElementById('sales-full-threshold-setting');
+        const salesPricingFieldMap = [
+            { key: 'letter_bw_price', input: document.getElementById('sales-letter-bw-price-setting'), defaultValue: '1' },
+            { key: 'letter_partial_price', input: document.getElementById('sales-letter-partial-price-setting'), defaultValue: '3' },
+            { key: 'letter_full_price', input: document.getElementById('sales-letter-full-price-setting'), defaultValue: '8' },
+            { key: 'a4_bw_price', input: document.getElementById('sales-a4-bw-price-setting'), defaultValue: '1' },
+            { key: 'a4_partial_price', input: document.getElementById('sales-a4-partial-price-setting'), defaultValue: '3' },
+            { key: 'a4_full_price', input: document.getElementById('sales-a4-full-price-setting'), defaultValue: '8' },
+            { key: 'long_bw_price', input: document.getElementById('sales-long-bw-price-setting'), defaultValue: '2' },
+            { key: 'long_partial_price', input: document.getElementById('sales-long-partial-price-setting'), defaultValue: '4' },
+            { key: 'long_full_price', input: document.getElementById('sales-long-full-price-setting'), defaultValue: '10' },
+        ];
+        const salesThresholdRuleText = document.getElementById('sales-threshold-rule-text');
+        const editSalesPricingBtn = document.getElementById('edit-sales-pricing-btn');
+        const salesPricingCard = document.querySelector('.sales-pricing-card');
+        const salesPricingInputs = [salesFullThresholdInput].concat(salesPricingFieldMap.map((field) => field.input)).filter(Boolean);
+        let salesPricingOriginalValues = null;
+
+        const formatThresholdPercent = (value) => {
+            const numericValue = Number.parseFloat(value);
+            if (Number.isNaN(numericValue)) return '0';
+            return String(Math.round(numericValue));
+        };
+
+        const getSalesPricingValues = () => {
+            const values = {
+                color_full_threshold_percent: salesFullThresholdInput ? formatThresholdPercent(salesFullThresholdInput.value) : '10',
+            };
+            salesPricingFieldMap.forEach((field) => {
+                values[field.key] = field.input ? field.input.value.trim() : field.defaultValue;
+            });
+            return values;
+        };
+
+        const syncSalesThresholdValue = () => {
+            const thresholdValue = formatThresholdPercent(salesFullThresholdInput ? salesFullThresholdInput.value : '10');
+            if (salesFullThresholdInput) {
+                salesFullThresholdInput.value = thresholdValue;
+            }
+            if (salesThresholdRuleText) {
+                salesThresholdRuleText.textContent = `Partial Color: above 0% and below ${thresholdValue}%. Full Color: ${thresholdValue}% and above.`;
+            }
+        };
+
+        const setSalesPricingButtonState = (mode, isBusy = false) => {
+            if (!editSalesPricingBtn) {
+                return;
+            }
+
+            editSalesPricingBtn.dataset.mode = mode;
+            editSalesPricingBtn.disabled = isBusy;
+            editSalesPricingBtn.classList.toggle('is-save-mode', mode === 'save' && !isBusy);
+            editSalesPricingBtn.textContent = isBusy ? 'Saving...' : (mode === 'save' ? 'Save Changes' : 'Edit Pricing Rules');
+        };
+
+        const setSalesPricingEditing = (isEditing) => {
+            salesPricingInputs.forEach((input) => {
+                input.disabled = !isEditing;
+            });
+
+            if (salesPricingCard) {
+                salesPricingCard.classList.toggle('is-editing', isEditing);
+            }
+
+            setSalesPricingButtonState(isEditing ? 'save' : 'edit');
+        };
+
+        const applySalesPricingConfig = (pricingConfig) => {
+            const savedThresholdValue = formatThresholdPercent(pricingConfig.color_full_threshold_percent || '10');
+            if (salesFullThresholdInput) salesFullThresholdInput.value = savedThresholdValue;
+            salesPricingFieldMap.forEach((field) => {
+                if (field.input) {
+                    field.input.value = pricingConfig[field.key] || field.defaultValue;
+                }
+            });
+            syncSalesThresholdValue();
+        };
+
+        if (salesFullThresholdInput) {
+            syncSalesThresholdValue();
+            salesFullThresholdInput.addEventListener('input', syncSalesThresholdValue);
+            salesFullThresholdInput.addEventListener('change', syncSalesThresholdValue);
+        }
+
+        if (salesPricingInputs.length) {
+            salesPricingOriginalValues = getSalesPricingValues();
+            setSalesPricingEditing(false);
+        }
+
+        if (editSalesPricingBtn) {
+            editSalesPricingBtn.addEventListener('click', function () {
+                const pageMessages = document.getElementById('pageMessages');
+                if (pageMessages) {
+                    pageMessages.innerHTML = '';
+                }
+
+                if (editSalesPricingBtn.dataset.mode !== 'save') {
+                    salesPricingOriginalValues = getSalesPricingValues();
+                    setSalesPricingEditing(true);
+                    if (salesFullThresholdInput) {
+                        salesFullThresholdInput.focus();
+                    }
+                    return;
+                }
+
+                const currentPricingValues = getSalesPricingValues();
+                if (salesPricingOriginalValues && JSON.stringify(currentPricingValues) === JSON.stringify(salesPricingOriginalValues)) {
+                    setSalesPricingEditing(false);
+                    return;
+                }
+
+                const formData = new FormData();
+                Object.entries(currentPricingValues).forEach(([key, value]) => {
+                    formData.append(key, value);
+                });
+
+                setSalesPricingButtonState('save', true);
+
+                fetch('/api/update-pricing-settings/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                    },
+                    body: formData,
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            applySalesPricingConfig(data.pricing_config || {});
+                            salesPricingOriginalValues = getSalesPricingValues();
+                            setSalesPricingEditing(false);
+                            createAlert('Success', 'Pricing Updated', 'Sales pricing rules have been saved.', 'success', true, true, 'pageMessages');
+                        } else {
+                            setSalesPricingButtonState('save');
+                            createAlert('Error', 'Update Failed', data.error || 'Failed to update pricing rules.', 'danger', true, true, 'pageMessages');
+                        }
+                    })
+                    .catch(() => {
+                        setSalesPricingButtonState('save');
+                        createAlert('Error', 'Update Failed', 'An error occurred while saving pricing rules.', 'danger', true, true, 'pageMessages');
+                    });
+            });
+        }
+
+        const salesTabButtons = document.querySelectorAll('.sales-tab-btn');
+        const salesTabPanels = document.querySelectorAll('.sales-tab-panel');
+
+        if (salesTabButtons.length && salesTabPanels.length) {
+            const setActiveSalesTab = (tabName) => {
+                salesTabButtons.forEach((button) => {
+                    const isActive = button.dataset.salesTab === tabName;
+                    button.classList.toggle('is-active', isActive);
+                    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                });
+
+                salesTabPanels.forEach((panel) => {
+                    const isActive = panel.dataset.salesPanel === tabName;
+                    panel.classList.toggle('is-active', isActive);
+                    panel.hidden = !isActive;
+                });
+            };
+
+            setActiveSalesTab('transactions');
+
+            salesTabButtons.forEach((button) => {
+                button.addEventListener('click', function () {
+                    setActiveSalesTab(button.dataset.salesTab || 'transactions');
+                });
+            });
+        }
 
     // Printer Search Functionality
     const printerSearchInput = document.getElementById('printer-search');
@@ -1999,6 +2360,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Queue page pagination ---
     if (document.getElementById('queue-rows-container')) {
         setupPagination('queue-rows-container', '.on-queue-row:not(.on-queue-empty)', 'queue-pagination', 5);
+    }
+
+    // --- Sales page pagination ---
+    if (document.getElementById('sales-transactions-table')) {
+        setupPagination('sales-transactions-table', '.printer-table-row', 'sales-transactions-pagination', 10);
+    }
+
+    // --- Settings page pagination ---
+    var userAccountsPg = null;
+    if (document.getElementById('user-accounts-table')) {
+        userAccountsPg = setupPagination('user-accounts-table', '.user-account-row', 'user-accounts-pagination', 8);
+    }
+
+    if (document.getElementById('feedback-list-container')) {
+        setupPagination('feedback-list-container', '.feedback-card', 'feedback-pagination', 5);
+    }
+
+    if (document.getElementById('problem-list-container')) {
+        setupPagination('problem-list-container', '.feedback-card', 'problem-pagination', 5);
     }
 
     // --- Completed page pagination (per printer card) ---
@@ -2380,7 +2760,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             <div class="queue-col doc-id">${docIdText}</div>
                             <div class="queue-col doc-customer">${customerId}</div>
                             <div class="queue-col doc-actions">
-                                <button class="queue-cancel-btn">Cancel</button>
+                                <button class="queue-cancel-btn">Cancel Queued</button>
                             </div>
                         `;
                             onQueueList.appendChild(newRow);
@@ -2427,6 +2807,45 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    window.cancelQueueDocument = function (docId, buttonEl) {
+        if (!docId) return;
+
+        const row = buttonEl && typeof buttonEl.closest === 'function'
+            ? buttonEl.closest('.on-queue-row')
+            : document.getElementById('onqueue-doc-' + docId);
+
+        fetch('/api/deny-document/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ doc_id: docId })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    alert('Cancel failed: ' + (data.error || 'Unknown error.'));
+                    return;
+                }
+
+                if (row) {
+                    row.remove();
+                }
+
+                if (typeof createAlert === 'function') {
+                    createAlert('Success', 'Cancelled', 'Document cancelled.', 'success', true, true, 'pageMessages');
+                }
+
+                updateOnQueueEmptyState();
+
+                if (document.getElementById('queue-rows-container')) {
+                    setTimeout(() => window.location.reload(), 300);
+                }
+            })
+            .catch(() => alert('An error occurred while cancelling the document.'));
+    };
+
     // Cancel button for on-queue documents
     document.querySelectorAll('.queue-cancel-btn').forEach(btn => {
         btn.addEventListener('click', function () {
@@ -2436,27 +2855,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 docId = row.id.replace('onqueue-doc-', '');
             }
             if (!docId) return;
-            fetch('/api/deny-document/', {
-                method: "POST",
-                headers: {
-                    "X-CSRFToken": csrfToken,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ doc_id: docId })
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        row.remove();
-                        if (typeof createAlert === "function") {
-                            createAlert('Success', 'Cancelled', 'Document cancelled.', 'success', true, true, 'pageMessages');
-                        }
-                        updateOnQueueEmptyState();
-                    } else {
-                        alert('Cancel failed: ' + (data.error || 'Unknown error.'));
-                    }
-                })
-                .catch(() => alert('An error occurred while cancelling the document.'));
+            window.cancelQueueDocument(docId, btn);
         });
     });
 
@@ -2466,7 +2865,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const row = btn.closest('.completed-row');
             const docId = row ? row.getAttribute('data-doc-id') : null;
             if (!docId) return;
-            fetch('/api/deny-document/', {
+            fetch('/api/picked-up-document/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -2512,7 +2911,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const jobsItem = wrapper ? wrapper.parentElement : null;
             const docId = btn.getAttribute('data-doc-id');
             if (!docId) return;
-            fetch('/api/deny-document/', {
+            fetch('/api/picked-up-document/', {
                 method: "POST",
                 headers: {
                     "X-CSRFToken": csrfToken,
@@ -2660,7 +3059,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        // Update paper assigned and GSM dropdowns if needed
+        // Update paper assignment and temporary availability controls if needed.
         if (printer.paper_assigned) {
             const paperSelect = row.querySelector('select[data-field="paper_assigned"]');
             if (paperSelect) {
@@ -2668,10 +3067,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        if (printer.paper_quality) {
-            const gsmSelect = row.querySelector('select[data-field="paper_quality"]');
-            if (gsmSelect) {
-                gsmSelect.value = printer.paper_quality;
+        const availabilityToggle = row.querySelector('input[data-field="is_temporarily_disabled"]');
+        if (availabilityToggle) {
+            availabilityToggle.checked = !printer.is_temporarily_disabled;
+            const label = row.querySelector('.printer-toggle-text');
+            if (label) {
+                label.textContent = availabilityToggle.checked ? 'Enabled' : 'Disabled';
             }
         }
     }
@@ -2972,10 +3373,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (errorElem && stats.hasOwnProperty('active_tickets_count')) {
                         errorElem.textContent = String(stats.active_tickets_count);
                     }
-                    // Update Resolved Tickets
-                    const pendingElem = document.getElementById('resolved-tickets-count');
-                    if (pendingElem && stats.hasOwnProperty('resolved_tickets_count')) {
-                        pendingElem.textContent = String(stats.resolved_tickets_count);
+                    // Update Sales Today
+                    const pendingElem = document.getElementById('sales-today-count');
+                    if (pendingElem && stats.hasOwnProperty('sales_today_amount')) {
+                        pendingElem.textContent = '₱' + Number(stats.sales_today_amount || 0).toFixed(2);
                     }
 
                     // Update Completed Jobs List (dashboard-right)
@@ -3235,8 +3636,19 @@ if (addPrinterForm) {
     let lastActiveCount = null;
     let lastResolvedCount = null;
 
+    function formatDashboardCustomerId(customerId) {
+        const value = String(customerId || '').trim();
+        if (!value) {
+            return '—';
+        }
+        return value.startsWith('#') ? value : `#${value}`;
+    }
+
     function renderActiveTicketRow(ticket) {
         const paymentDisplay = ticket.payment_amount ? `₱${ticket.payment_amount.toFixed(2)}` : '—';
+        const customerIdDisplay = ticket.customer_id_display || formatDashboardCustomerId(ticket.customer_id);
+        const documentIdsDisplay = ticket.document_ids_display || ticket.doc_id || ticket.document_name || '—';
+        const documentMetaDisplay = ticket.document_meta_display || '';
         let actionButtons = `
             <button class="deny-btn" type="button" data-action="void" data-ticket-id="${ticket.id}">Void</button>
             <button class="approve-btn" type="button" data-open-ticket-modal
@@ -3269,9 +3681,12 @@ if (addPrinterForm) {
                         <span>${paymentDisplay}</span>
                     </div>
                 </div>
-                <div class="ticket-issue">${ticket.problem_type}</div>
+                <div class="ticket-customer">${customerIdDisplay}</div>
                 <div class="ticket-date">${ticket.created_at}</div>
-                <div class="ticket-customer">#${ticket.customer_id}</div>
+                <div class="ticket-documents">
+                    <span>${documentIdsDisplay}</span>
+                    ${documentMetaDisplay ? `<span>${documentMetaDisplay}</span>` : ''}
+                </div>
                 <div class="actions">
                     ${actionButtons}
                 </div>
@@ -3340,11 +3755,14 @@ if (addPrinterForm) {
                         </svg>
                     </span>
                 </div>
-                <div class="document-item-title">
-                    <span>Ticket Number</span>
-                    <p>Issue</p>
-                    <p>Date Submitted</p>
+                <div class="document-item-title active-header">
+                    <div class="ticket-header-cell">
+                        <span class="ticket-header-spacer" aria-hidden="true"></span>
+                        <span>Ticket Number</span>
+                    </div>
                     <p>Customer ID</p>
+                    <p>Date Submitted</p>
+                    <p>Document ID</p>
                     <span class="action-title"></span>
                 </div>
             `;
@@ -3671,11 +4089,18 @@ if (addPrinterForm) {
             .then(data => {
                 if (data.success) {
                     const activeCount = data.active_count || 0;
-                    const resolvedCount = data.resolved_count || 0;
+                    const salesTodayAmount = Number(data.sales_today_amount || 0);
 
-                    // Update counts in stat cards
-                    document.getElementById('active-tickets-count').textContent = activeCount;
-                    document.getElementById('resolved-tickets-count').textContent = resolvedCount;
+                    // Update dashboard-only stat cards when present.
+                    const activeTicketsCountEl = document.getElementById('active-tickets-count');
+                    if (activeTicketsCountEl) {
+                        activeTicketsCountEl.textContent = activeCount;
+                    }
+
+                    const salesTodayCountEl = document.getElementById('sales-today-count');
+                    if (salesTodayCountEl) {
+                        salesTodayCountEl.textContent = '₱' + salesTodayAmount.toFixed(2);
+                    }
 
                     // Update notification bell badge if present
                     const notifCountEl = document.getElementById('notification-count');
@@ -3807,11 +4232,14 @@ if (addPrinterForm) {
 
     // Create notification dropdown panel dynamically
     const bellParent = bell.closest('div[style*="position:relative"]') || bell.parentElement;
+    if (bellParent) {
+        bellParent.style.position = 'relative';
+    }
     let panel = document.getElementById('notification-panel');
     if (!panel) {
         panel = document.createElement('div');
         panel.id = 'notification-panel';
-        panel.style.cssText = 'display:none; position:absolute; top:100%; right:0; width:320px; max-height:400px; overflow-y:auto; background:#fff; border:2px solid #18191F; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:2000; font-family:Montserrat,sans-serif;';
+        panel.style.cssText = 'display:none; position:absolute; top:100%; right:0; width:320px; max-height:400px; overflow-y:auto; background:#fff; border:2px solid #18191F; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:2600; font-family:Montserrat,sans-serif;';
         panel.innerHTML = '<div id="notification-panel-list" style="padding:8px;"><div style="padding:8px;color:#666;">Loading...</div></div>';
         bellParent.appendChild(panel);
     }
@@ -3869,6 +4297,7 @@ if (addPrinterForm) {
         e.stopPropagation();
         var isOpen = panel.style.display === 'block';
         panel.style.display = isOpen ? 'none' : 'block';
+        bell.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
         if (!isOpen) fetchAndPopulatePanel();
     });
 
@@ -3878,6 +4307,190 @@ if (addPrinterForm) {
             panel.style.display = 'none';
         }
     });
+})();
+
+// Live logs drawer — admin-only log tail viewer attached beside the notification bell
+(function () {
+    const drawer = document.getElementById('live-logs-drawer');
+    const backdrop = document.getElementById('live-logs-backdrop');
+    const statusText = document.getElementById('live-logs-status');
+    const sourceSelect = document.getElementById('live-logs-source-select');
+    const content = document.getElementById('live-logs-content');
+    const closeBtn = document.getElementById('live-logs-close');
+    const refreshBtn = document.getElementById('live-logs-refresh');
+    const pauseBtn = document.getElementById('live-logs-pause');
+    const lineCountSelect = document.getElementById('live-logs-line-count');
+    const bell = document.getElementById('notification-bell');
+    const navLogsButton = document.getElementById('live-logs-toggle-nav');
+    const terminalIconPath = document.body.dataset.terminalIcon || '/static/assets/terminal.svg';
+
+    if (!drawer || !backdrop || !statusText || !sourceSelect || !content || !closeBtn || !refreshBtn || !pauseBtn || !lineCountSelect || !bell) {
+        return;
+    }
+
+    let selectedSource = 'gunicorn_error';
+    let isOpen = false;
+    let isPaused = false;
+    let refreshTimer = null;
+
+    const bellContainer = bell.closest('div[style*="position:relative"]') || bell.parentElement;
+    let logsButton = navLogsButton;
+
+    if (!logsButton) {
+        if (bellContainer) {
+            bellContainer.style.display = 'inline-flex';
+            bellContainer.style.alignItems = 'center';
+            bellContainer.style.gap = '10px';
+        }
+
+        logsButton = document.createElement('button');
+        logsButton.type = 'button';
+        logsButton.id = 'live-logs-toggle';
+        logsButton.className = 'live-logs-toggle';
+        logsButton.setAttribute('aria-label', 'Hide or show live terminal logs');
+        logsButton.innerHTML = '<img src="' + terminalIconPath + '" alt="" class="live-logs-toggle-icon" aria-hidden="true">';
+        logsButton.title = 'Terminal logs';
+        if (bellContainer) {
+            bellContainer.appendChild(logsButton);
+        }
+    }
+
+    function setDrawerOpen(nextOpen) {
+        isOpen = nextOpen;
+        drawer.classList.toggle('is-open', nextOpen);
+        drawer.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
+        backdrop.hidden = !nextOpen;
+        logsButton.classList.toggle('is-active', nextOpen);
+        logsButton.classList.toggle('active', nextOpen);
+
+        if (!nextOpen) {
+            window.clearInterval(refreshTimer);
+            refreshTimer = null;
+            return;
+        }
+
+        loadLogs();
+        refreshTimer = window.setInterval(function () {
+            if (!isPaused) {
+                loadLogs();
+            }
+        }, 3000);
+    }
+
+    function renderSources(sources) {
+        if (!Array.isArray(sources) || !sources.length) {
+            return;
+        }
+
+        sourceSelect.innerHTML = '';
+        sources.forEach(function (source) {
+            const option = document.createElement('option');
+            option.value = source.id;
+            option.textContent = source.label;
+            sourceSelect.appendChild(option);
+        });
+        sourceSelect.value = selectedSource;
+    }
+
+    function updateToolbarState() {
+        pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+        pauseBtn.setAttribute('aria-pressed', isPaused ? 'true' : 'false');
+    }
+
+    function formatUpdatedAt(updatedAt) {
+        if (!updatedAt) {
+            return 'idle';
+        }
+
+        const date = new Date(updatedAt * 1000);
+        if (Number.isNaN(date.getTime())) {
+            return 'Updated just now';
+        }
+
+        return 'last sync ' + date.toLocaleTimeString();
+    }
+
+    function loadLogs() {
+        const params = new URLSearchParams({
+            source: selectedSource,
+            lines: String(lineCountSelect.value || 120)
+        });
+
+        statusText.textContent = '$ tail -f ' + selectedSource.replace(/_/g, '-');
+
+        fetch('/portal/api/live-logs/?' + params.toString(), {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(function (response) {
+                return response.json().then(function (data) {
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.error || 'Failed to load logs.');
+                    }
+                    return data;
+                });
+            })
+            .then(function (data) {
+                selectedSource = data.selected_source || selectedSource;
+                renderSources(data.sources);
+
+                if (data.unavailable_reason) {
+                    content.textContent = '[unavailable] ' + data.unavailable_reason;
+                    statusText.textContent = '[unavailable]';
+                    return;
+                }
+
+                content.textContent = data.content || '$ no log lines available yet';
+                content.scrollTop = content.scrollHeight;
+                statusText.textContent = formatUpdatedAt(data.updated_at);
+            })
+            .catch(function (error) {
+                content.textContent = '[error] Unable to load logs.';
+                statusText.textContent = error.message || '[error]';
+            });
+    }
+
+    logsButton.addEventListener('click', function () {
+        setDrawerOpen(!isOpen);
+    });
+
+    closeBtn.addEventListener('click', function () {
+        setDrawerOpen(false);
+    });
+
+    backdrop.addEventListener('click', function () {
+        setDrawerOpen(false);
+    });
+
+    refreshBtn.addEventListener('click', function () {
+        loadLogs();
+    });
+
+    pauseBtn.addEventListener('click', function () {
+        isPaused = !isPaused;
+        updateToolbarState();
+        if (!isPaused) {
+            loadLogs();
+        }
+    });
+
+    lineCountSelect.addEventListener('change', function () {
+        loadLogs();
+    });
+
+    sourceSelect.addEventListener('change', function () {
+        selectedSource = sourceSelect.value || selectedSource;
+        loadLogs();
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && isOpen) {
+            setDrawerOpen(false);
+        }
+    });
+
+    updateToolbarState();
 })();
 
 // Paper Refill - Tray Capacity editing and Mark as Refilled

@@ -50,13 +50,14 @@ Printing Queue
                         <div class="queue-col doc-status">Status</div>
                         <div class="queue-col doc-customer">Customer ID</div>
                         <div class="queue-col doc-id">Document ID</div>
+                        <div class="queue-col doc-actions">Actions</div>
                     </div>
                 </div>
 
                 <div class="on-queue-rows-scroll" id="queue-rows-container">
                 {% for doc in on_queue_documents %}
                     <div class="on-queue-row" id="onqueue-doc-{{ doc.doc_id }}">
-                        <div class="queue-col doc-name">
+                        <div class="queue-col doc-name" data-label="Document Name">
                             <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon" class="pdf-icon">
                             <div class="doc-info">
                                 <div class="doc-title" title="{{ doc.filename }}">{{ doc.filename }}</div>
@@ -71,19 +72,41 @@ Printing Queue
                                 </div>
                             </div>
                         </div>
-                        <div class="queue-col doc-printer">
+                        <div class="queue-col doc-printer" data-label="Printer Assigned">
                             {% if doc.printer_assigned %}
                                 {{ doc.printer_assigned.printer_name }}
                             {% else %}
                                 No Printer Assigned
                             {% endif %}
                         </div>
-                        <div class="queue-col doc-status">
-                            <span class="status-circle status-{{ doc.doc_status|lower }}"></span>
-                            {{ doc.doc_status }}
+                        <div class="queue-col doc-status" data-label="Status">
+                            <div class="queue-status-main">
+                                <span class="status-circle status-{{ doc.doc_status|lower }}"></span>
+                                <span>{{ doc.doc_status }}</span>
+                            </div>
+                            {% if doc.queue_status_meta %}
+                            <div class="queue-status-meta">
+                                {% for item in doc.queue_status_meta %}
+                                <div class="queue-status-meta-item">{{ item }}</div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </div>
-                        <div class="queue-col doc-customer">#{{ doc.customer_id }}</div>
-                        <div class="queue-col doc-id">#{{ doc.doc_id }}</div>
+                        <div class="queue-col doc-customer" data-label="Customer ID">#{{ doc.customer_id }}</div>
+                        <div class="queue-col doc-id" data-label="Document ID">#{{ doc.doc_id }}</div>
+                        <div class="queue-col doc-actions" data-label="Actions">
+                            {% if doc.doc_status == 'Pending' or doc.doc_status == 'Queued' or doc.doc_status == 'Printing' %}
+                            <button class="queue-cancel-btn" type="button" onclick="cancelQueueDocument('{{ doc.doc_id }}', this)">
+                                {% if doc.doc_status == 'Pending' %}
+                                Cancel Pending
+                                {% elif doc.doc_status == 'Queued' %}
+                                Cancel Queued
+                                {% else %}
+                                Cancel Print
+                                {% endif %}
+                            </button>
+                            {% endif %}
+                        </div>
                     </div>
                     {% empty %}
                         <div class="on-queue-row on-queue-empty" id="no-onqueue-documents-row">

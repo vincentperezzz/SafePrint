@@ -134,6 +134,69 @@ Account Settings
       </div>
     </div>
 
+    <div class="settings-section payment-gateway-section is-locked">
+      <div class="payment-gateway-header">
+        <span class="settings-title">Payment Gateway</span>
+        <button id="edit-payment-gateway-btn" class="general-btn payment-gateway-edit-btn" type="button">Edit</button>
+      </div>
+      <div class="settings-field-row">
+        <div class="settings-field">
+          <label for="payment-recipient-name-setting">Recipient Name</label>
+          <input type="text" id="payment-recipient-name-setting" value="{{ site_settings.gcash_recipient_name }}" placeholder="GCash Recipient Name" disabled>
+        </div>
+      </div>
+      <div class="settings-field-row">
+        <div class="settings-field">
+          <label for="payment-recipient-number-setting">Recipient Number</label>
+          <input type="text" id="payment-recipient-number-setting" value="{{ site_settings.gcash_recipient_number }}" placeholder="09XXXXXXXXX" maxlength="20" disabled>
+        </div>
+      </div>
+      <div class="settings-field-row">
+        <div class="settings-field">
+          <label for="payment-expiry-minutes-setting">Payment Expiry Window (minutes)</label>
+          <input type="number" id="payment-expiry-minutes-setting" value="{{ site_settings.payment_expiry_minutes|default:10 }}" min="1" max="60" disabled>
+        </div>
+      </div>
+      <div class="settings-field-row">
+        <div class="sound-enabled">Block Payment When Matching Printers Are Offline</div>
+        <div class="switch">
+          <input type="checkbox" class="switch-input-blue" id="block-payment-when-offline-setting" {% if site_settings.block_payment_when_printers_unavailable %}checked{% endif %} disabled>
+          <label class="switch-label-blue" for="block-payment-when-offline-setting">
+            <span class="switch-circle">
+              <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none">
+                <rect x="1" y="1" width="34" height="34" rx="17" fill="white" stroke="#18191F" stroke-width="2"/>
+                <rect x="11" y="11" width="14" height="14" rx="7" stroke="#18191F" stroke-width="2"/>
+              </svg>
+            </span>
+          </label>
+        </div>
+      </div>
+      <div class="settings-field-row payment-gateway-row">
+        <div class="settings-field payment-gateway-field">
+          <label for="payment-qr-image-setting">Recipient QR Code</label>
+          <input type="file" id="payment-qr-image-setting" accept="image/*" style="display:none;" disabled>
+          <div class="payment-qr-upload-bar">
+            <button type="button" id="payment-qr-browse-btn" class="browse-btn payment-qr-browse-btn" onclick="document.getElementById('payment-qr-image-setting').click();" disabled>Browse Files</button>
+            <span id="payment-qr-file-name" class="payment-qr-file-name">No file chosen</span>
+          </div>
+          <div class="payment-gateway-panel">
+            <div class="payment-gateway-preview-wrap">
+              {% if site_settings.gcash_qr_image %}
+              <img id="payment-qr-preview" src="{{ site_settings.gcash_qr_image.url }}" alt="Payment QR Preview" class="payment-qr-preview-image">
+              <div id="payment-qr-preview-empty" class="payment-qr-preview-empty" style="display:none;">No QR uploaded yet</div>
+              {% else %}
+              <div id="payment-qr-preview-empty" class="payment-qr-preview-empty">No QR uploaded yet</div>
+              <img id="payment-qr-preview" src="" alt="Payment QR Preview" class="payment-qr-preview-image" style="display:none;">
+              {% endif %}
+            </div>
+            <div class="payment-gateway-actions">
+              <p class="payment-gateway-helper">Changes here update the customer's payment instructions as soon as the save completes.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Hidden audio elements for preview playback -->
     <audio id="sound-preview" preload="auto" style="display:none"></audio>
     <audio id="customer-sound-preview" preload="auto" style="display:none"></audio>
@@ -154,7 +217,7 @@ Account Settings
             </span>
         </div>
 
-        <div class="user-accounts-table">
+        <div id="user-accounts-table" class="user-accounts-table">
             <div class="user-accounts-header">
                 <span>User Accounts</span>
             </div>
@@ -179,19 +242,20 @@ Account Settings
                 </div>
             {% endif %}
             {% empty %}
-            <div class="user-account-row">
+            <div class="user-account-row empty-row">
                 <div class="user-info">
                     <div class="user-name">No users found.</div>
                 </div>
             </div>
             {% endfor %}
 
-           <div class="user-account-row" id="no-match-row" style="display:none;">
+             <div class="user-account-row empty-row" id="no-match-row" style="display:none;">
               <div class="user-info">
                   <div class="user-name">No match found.</div>
               </div>
           </div> 
         </div>
+          <div id="user-accounts-pagination" class="pagination-controls"></div>
 
         <button class="create-account-btn" id="createAccountBtn" onclick="showPopupOverlay('createAccountOverlay')">
             Create new account
@@ -217,7 +281,7 @@ Account Settings
         <button class="modal-header-btn" id="closeFeedbackModal">Done</button>
     </div>
     <hr class="modal-divider">
-    <div class="feedback-list">
+    <div id="feedback-list-container" class="feedback-list">
       {% for feedback in feedback_comments %}
         <div class="feedback-card">
           <b>Name</b><br>
@@ -230,11 +294,12 @@ Account Settings
           {{ feedback.submitted_at|date:"Y-m-d h:i A" }}
         </div>
       {% empty %}
-        <div class="feedback-card">
+        <div class="feedback-card empty-row">
           <b>No feedback comments found.</b>
         </div>
       {% endfor %}
     </div>
+    <div id="feedback-pagination" class="pagination-controls"></div>
   </div>
 </div>
 
@@ -246,7 +311,7 @@ Account Settings
         <button class="problem-header-btn" id="closeProblemModal">Done</button>
     </div>
     <hr class="modal-divider">
-    <div class="feedback-list">
+    <div id="problem-list-container" class="feedback-list">
       {% for feedback in problem_reports %}
         <div class="feedback-card">
           <b>Name</b><br>
@@ -259,11 +324,12 @@ Account Settings
           {{ feedback.submitted_at|date:"Y-m-d h:i A" }}
         </div>
       {% empty %}
-        <div class="feedback-card">
+        <div class="feedback-card empty-row">
           <b>No problem reports found.</b>
         </div>
       {% endfor %}
     </div>
+    <div id="problem-pagination" class="pagination-controls"></div>
   </div>
 </div>
 <!-- Overlay background -->
@@ -274,11 +340,13 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('editNameOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="edit-name-form" method="post">
+    <form id="edit-name-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="text" name="new_name" class="popup-input" placeholder="Enter new Name" required autocomplete="name">
       <input type="text" name="confirm_name" class="popup-input" placeholder="Re-enter new Name" required autocomplete="name">
-      <button type="submit" class="popup-done-btn">Done</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Done</button>
+      </div>
     </form>
   </div>
 </div>
@@ -290,11 +358,13 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('editUsernameOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="edit-username-form" method="post">
+    <form id="edit-username-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="text" name="new_username" class="popup-input" placeholder="Enter new Username" required autocomplete="username">
       <input type="text" name="confirm_username" class="popup-input" placeholder="Re-enter new Username" required autocomplete="username">
-      <button type="submit" class="popup-done-btn">Done</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Done</button>
+      </div>
     </form>
   </div>
 </div>
@@ -306,13 +376,15 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('editPasswordOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="edit-password-form" method="post">
+    <form id="edit-password-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="text" name="username" autocomplete="username" style="display:none;">
       <input type="password" name="current_password" class="popup-input" placeholder="Current Password" required autocomplete="current-password">
       <input type="password" name="new_password" class="popup-input" placeholder="Enter new Password" required autocomplete="new-password">
       <input type="password" name="confirm_password" class="popup-input" placeholder="Re-enter new Password" required  autocomplete="new-password">
-      <button type="submit" class="popup-done-btn">Done</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Done</button>
+      </div>
     </form>
   </div>
 </div>
@@ -325,11 +397,13 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('editEmailOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="edit-email-form" method="post">
+    <form id="edit-email-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="email" name="new_email" class="popup-input" placeholder="Enter email address" autocomplete="email">
       <p style="font-size: 0.8rem; color: #6b7280; margin: 0 0 12px;">Leave blank to disable email notifications for this account.</p>
-      <button type="submit" class="popup-done-btn">Done</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Done</button>
+      </div>
     </form>
   </div>
 </div>
@@ -342,7 +416,7 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('editUserPasswordOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="edit-user-password-form" method="post">
+    <form id="edit-user-password-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="hidden" name="user_id" id="edit-user-password-id">
       <input type="text" name="username" id="edit-user-password-username" style="display:none;" autocomplete="username">
@@ -350,7 +424,9 @@ Account Settings
       <input type="password" name="new_user_password" id="new_user_password" class="popup-input" placeholder="Enter new password" required autocomplete="new-password">
       <label for="confirm_user_password">Re-enter New Password</label>
       <input type="password" name="confirm_user_password" id="confirm_user_password" class="popup-input" placeholder="Re-enter new password" required autocomplete="new-password">
-      <button type="submit" class="popup-done-btn">Done</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Done</button>
+      </div>
     </form>
   </div>
 </div>
@@ -377,14 +453,16 @@ Account Settings
       <span class="popup-close" onclick="hidePopupOverlay('createAccountOverlay')">&times;</span>
     </div>
     <hr class="popup-divider">
-    <form id="create-account-form" method="post">
+    <form id="create-account-form" method="post" class="admin-popup-stack">
       {% csrf_token %}
       <input type="text" name="name" class="popup-input" placeholder="Enter Name" required autocomplete="name">
       <input type="email" name="email" class="popup-input" placeholder="Enter Email (for alerts)" autocomplete="email">
       <input type="text" name="username" class="popup-input" placeholder="Enter Username" required autocomplete="username">
       <input type="password" name="password" class="popup-input" placeholder="Enter Password" required autocomplete="new-password">
       <input type="password" name="confirm_password" class="popup-input" placeholder="Re-enter Password" required autocomplete="new-password">
-      <button type="submit" class="popup-done-btn">Create Account</button>
+      <div class="admin-popup-submit-row">
+        <button type="submit" class="popup-done-btn">Create Account</button>
+      </div>
     </form>
     </div>
 </div>

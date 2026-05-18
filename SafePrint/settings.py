@@ -107,6 +107,7 @@ USE_I18N = True
 USE_L10N = True
 
 USE_TZ = True
+ENABLE_QUEUE_MONITOR = config('ENABLE_QUEUE_MONITOR', default=True, cast=bool)
 
 # Static files configuration
 STATIC_URL = '/static/'
@@ -139,3 +140,15 @@ DEFAULT_FROM_EMAIL = f"{EMAIL_FROM_NAME} <{EMAIL_HOST_USER}>"
 KLCIS_BASE_URL = config('KLCIS_BASE_URL', default='https://s2.klinternetservices.com')
 KLCIS_USERNAME = config('KLCIS_USERNAME', default='')
 KLCIS_PASSWORD = config('KLCIS_PASSWORD', default='')
+
+# Firebase-backed GCash listener integration
+FIREBASE_SERVICE_ACCOUNT_FILENAME = 'safeprint-f59ec-firebase-adminsdk-fbsvc-ef87b9325a.json'
+_firebase_service_account_candidates = [
+    BASE_DIR / FIREBASE_SERVICE_ACCOUNT_FILENAME,
+    BASE_DIR / 'venv' / FIREBASE_SERVICE_ACCOUNT_FILENAME,
+]
+FIREBASE_SERVICE_ACCOUNT_PATH = config(
+    'FIREBASE_SERVICE_ACCOUNT_PATH',
+    default=str(next((path for path in _firebase_service_account_candidates if path.exists()), _firebase_service_account_candidates[0]))
+)
+FIREBASE_GCASH_COLLECTION = config('FIREBASE_GCASH_COLLECTION', default='gcash_notifications')

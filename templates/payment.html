@@ -9,7 +9,7 @@ SafePrint - Payment
 <div class="confirmation">
     <div class="confirmation-wrapper">
         <div class="confirmation-title">Complete your Payment!</div>
-        <div class="confirmation-subtitle">Pro Tip: Disable pop-up blockers for SafePrint to view the payment gateway.</div>
+        <div class="confirmation-subtitle">Send the exact amount through GCash, then return here so SafePrint can verify the payment automatically.</div>
     </div>
 
     <div class="customer-id">
@@ -29,12 +29,10 @@ SafePrint - Payment
 
         {% for doc in documents %}
         <div class="document-item">
-            <div class="document-item-wrapper">
-                <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
-                <div class="document-info">
-                    <h6 title="{{ doc.name }}">{{ doc.name }}</h6>
-                    <span>#{{ doc.doc_id }}</span>
-                </div>
+            <img src="{% static 'assets/pdf-icon.svg' %}" alt="PDF Icon">
+            <div class="document-info">
+                <h6 title="{{ doc.name }}">{{ doc.name }}</h6>
+                <span>#{{ doc.doc_id }}</span>
             </div>
             <div class="document-id">₱{{ doc.price|floatformat:2 }}</div>
         </div>
@@ -45,12 +43,6 @@ SafePrint - Payment
         <div class="amount">
             <h3 id="display-amount">₱{{ total_price|floatformat:2 }}</h3>
             <span id="amount-label">Amount to Pay</span>
-        </div>
-
-        <!-- MINIMUM CHARGE DISCLAIMER -->
-        <div id="minimum-disclaimer" class="minimum-disclaimer" style="display: none;">
-            <p>⚠️ Our payment partner requires a minimum of <strong>₱5.00</strong> per transaction. 
-            The excess will be saved as credit for your next print!</p>
         </div>
 
         <!-- VOUCHER CREDIT SECTION (Collapsible) -->
@@ -88,10 +80,6 @@ SafePrint - Payment
                 <span>Voucher Credit</span>
                 <span id="credit-applied-display">-₱0.00</span>
             </div>
-            <div class="discount-row minimum-row" id="minimum-charge-row" style="display: none;">
-                <span>Min. charge adjustment</span>
-                <span id="minimum-adj-display">+₱0.00</span>
-            </div>
             <hr />
             <div class="discount-row total-row">
                 <span>You Pay</span>
@@ -103,7 +91,7 @@ SafePrint - Payment
         <div id="payment-step-1" class="card-payment-details">
             <h3 id="step1-title">Pay with E-Wallet</h3>
             <p class="payment-hint" id="step1-hint">
-                Provide the phone number registered with your preferred e-wallet (GCash, Maya, etc.).
+                Provide the GCash number you will use to send the payment.
             </p>
             <form class="card-payment-form" autocomplete="off" onsubmit="event.preventDefault(); initiatePayment();">
                 <div id="phone-section">
@@ -119,8 +107,8 @@ SafePrint - Payment
                         required
                     />
                 </div>
-                <button type="submit" id="pay-now-btn" class="card-pay-btn">
-                    Pay ₱{{ total_price|floatformat:0 }} Now
+                <button type="submit" id="pay-now-btn" class="card-pay-btn payment-gcash-btn">
+                    Continue to GCash Details
                 </button>
             </form>
             <button type="button" class="card-cancel-btn" onclick="cancelPayment()">Cancel</button>
@@ -128,15 +116,105 @@ SafePrint - Payment
 
         <!-- STEP 2: Waiting for payment confirmation -->
         <div id="payment-step-2" class="card-payment-details" style="display: none;">
-            <h3>Waiting for Payment</h3>
+            <h3>Send the Payment in GCash</h3>
             <p id="step2-instructions" class="payment-hint">
-                Complete the payment on the GCash page, then click the button below.
+                Use the recipient details below, then return here once you have sent the payment.
             </p>
-            <button type="button" id="verify-btn" class="card-pay-btn" onclick="verifyPayment()">
-                I Have Paid ✓
+            <div class="payment-destination">
+                <div class="payment-destination-copy">
+                    <span class="payment-destination-label">Recipient</span>
+                    <div id="payment-recipient-name" class="payment-recipient-name">{{ payment_config.recipient_name }}</div>
+                    <span class="payment-destination-label">GCash Number</span>
+                    <div class="payment-number-row">
+                        <strong id="payment-recipient-number">{{ payment_config.recipient_number }}</strong>
+                        <button type="button" class="card-redirect-btn payment-copy-btn payment-gcash-btn" onclick="copyPaymentNumber()">Copy Number</button>
+                    </div>
+                    <span class="payment-destination-label">Exact Amount</span>
+                    <div id="payment-send-amount" class="payment-send-amount">₱{{ total_price|floatformat:2 }}</div>
+                    <p id="payment-expiry-text" class="payment-fineprint">This payment attempt expires after {{ payment_config.payment_expiry_minutes }} minutes.</p>
+                    <p class="payment-fineprint">If auto-detection fails, keep your receipt so the payment can be checked manually.</p>
+                </div>
+                <div class="payment-qr-wrap">
+                    {% if payment_config.recipient_qr_url %}
+                    <img id="payment-recipient-qr" src="{{ payment_config.recipient_qr_url }}" alt="GCash QR Code" class="payment-recipient-qr">
+                    <div id="payment-qr-placeholder" class="payment-qr-placeholder" style="display:none;">QR not set yet</div>
+                    {% else %}
+                    <img id="payment-recipient-qr" src="" alt="GCash QR Code" class="payment-recipient-qr" style="display:none;">
+                    <div id="payment-qr-placeholder" class="payment-qr-placeholder">QR placeholder</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="payment-step-actions">
+                <button type="button" id="open-gcash-btn" class="card-redirect-btn payment-gcash-btn" onclick="openGCashApp()">
+                    Open GCash App
+                </button>
+            </div>
+            <button type="button" id="payment-help-btn" class="card-cancel-btn" onclick="togglePaymentHelp()">
+                Payment Issue?
             </button>
-            <button type="button" id="redirect-payment-btn" class="card-redirect-btn" style="display: none;" onclick="redirectToPayment()">
-                Redirect to Payment
+            <div id="payment-help-panel" class="card-payment-details" style="display: none; margin-top: 12px; border-style: dashed;">
+                <h3 style="margin-bottom: 10px;">Create a Payment Ticket</h3>
+                <p class="payment-fineprint" style="margin-bottom: 10px;">
+                    If you sent the wrong amount or the payment was not detected, submit a ticket here. SafePrint personnel can review it and contact you using the details below.
+                </p>
+                <div class="card-payment-form" style="gap: 12px;">
+                    <div>
+                        <label class="card-label" for="payment-ticket-issue">Issue Type</label>
+                        <select id="payment-ticket-issue" class="card-input">
+                            <option value="wrong-amount">I sent the wrong amount</option>
+                            <option value="wrong-recipient">I sent it to the wrong GCash number</option>
+                            <option value="not-detected">I paid but SafePrint did not detect it</option>
+                            <option value="gcash-launch">The Open GCash button did not open the app correctly</option>
+                            <option value="other">Other payment concern</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-name">Your Name</label>
+                        <input id="payment-ticket-name" type="text" class="card-input" placeholder="Enter your name">
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-email">Email Address</label>
+                        <input id="payment-ticket-email" type="email" class="card-input" placeholder="Enter your email address">
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-phone">Contact Number</label>
+                        <input id="payment-ticket-phone" type="tel" class="card-input phone-input" inputmode="numeric" maxlength="11" placeholder="09XXXXXXXXX">
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-gcash-number">Your GCash Number</label>
+                        <input id="payment-ticket-gcash-number" type="tel" class="card-input phone-input" inputmode="numeric" maxlength="11" placeholder="09XXXXXXXXX">
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-receipt-code">Receipt Reference Code</label>
+                        <input id="payment-ticket-receipt-code" type="text" class="card-input" placeholder="Enter the code from your GCash receipt">
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-receipt-screenshot">Receipt Screenshot</label>
+                        <div class="receipt-upload-area">
+                            <input id="payment-ticket-receipt-screenshot" type="file" accept="image/*" style="display:none;">
+                            <button type="button" class="browse-btn receipt-browse-btn" onclick="document.getElementById('payment-ticket-receipt-screenshot').click()">
+                                Browse Image
+                            </button>
+                            <span class="receipt-file-name" id="payment-ticket-receipt-file-name">No file chosen</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-notes">What happened?</label>
+                        <textarea id="payment-ticket-notes" class="card-input card-textarea" rows="5" placeholder="Example: I sent 18 pesos instead of 16 pesos. Please contact me before I send again."></textarea>
+                    </div>
+                </div>
+                <p id="payment-ticket-status" class="payment-fineprint" style="display: none; margin-top: 14px;"></p>
+                <div class="payment-step-actions" style="margin-top: 14px;">
+                    <button type="button" class="card-redirect-btn payment-copy-btn payment-gcash-btn" onclick="copyPaymentHelpDetails()">
+                        Copy Payment Details
+                    </button>
+                    <button type="button" id="payment-ticket-submit-btn" class="card-pay-btn payment-success-btn" onclick="submitPaymentIssueTicket()">
+                        Create Ticket
+                    </button>
+                </div>
+            </div>
+            <button type="button" id="verify-btn" class="card-pay-btn payment-success-btn" onclick="verifyPayment()">
+                I Have Paid ✓
             </button>
             <button type="button" class="card-cancel-btn" onclick="cancelPayment()">Cancel</button>
         </div>
@@ -150,7 +228,21 @@ SafePrint - Payment
     window.PAYMENT_DATA = {
         customerId: '{{ customer_id }}',
         docIds: {{ doc_ids_json|safe|default:"[]" }},
+        documents: [
+            {% for doc in documents %}
+            {
+                docId: '{{ doc.doc_id|escapejs }}',
+                name: '{{ doc.name|escapejs }}'
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ],
         totalPrice: {{ total_price|default:0 }},
+        paymentConfig: {
+            recipientName: '{{ payment_config.recipient_name|escapejs }}',
+            recipientNumber: '{{ payment_config.recipient_number|escapejs }}',
+            recipientQrUrl: '{{ payment_config.recipient_qr_url|escapejs }}',
+            paymentExpiryMinutes: {{ payment_config.payment_expiry_minutes|default:10 }},
+        },
     };
 </script>
 
