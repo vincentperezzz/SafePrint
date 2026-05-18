@@ -13,9 +13,15 @@ mkdir -p "$(dirname $LOG_FILE)"
 is_running() {
     if [ -f "$PID_FILE" ]; then
         pid=$(cat "$PID_FILE")
-        if ps -p "$pid" > /dev/null 2>&1; then
-            return 0  # Process is running
+        if [[ -n "$pid" ]] && ps -p "$pid" > /dev/null 2>&1; then
+            cmd=$(ps -p "$pid" -o args= 2>/dev/null || true)
+            if [[ "$cmd" == *"scripts/poll_printers_daemon.sh"* ]]; then
+                return 0  # Poller daemon is running
+            fi
         fi
+
+        # Stale or unrelated PID; clear it so the daemon can restart.
+        rm -f "$PID_FILE"
     fi
     return 1  # Process is not running
 }
