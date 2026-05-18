@@ -4479,6 +4479,190 @@ def customer_documents_stream(request, customer_id):
     return response
 
 
+def _build_customer_documents_payload(customer_id):
+    documents = Document.objects.filter(
+        customer_id=customer_id
+    ).select_related('printer_assigned', 'printed_at').order_by('time_submitted')
+
+    docs_data = []
+    all_finished_or_picked_up = True
+
+    for doc in documents:
+        history_entries = RerouteHistory.objects.filter(
+            document=doc
+        ).select_related('printer').order_by('timestamp')
+
+        reroute_history = []
+        for entry in history_entries:
+            reroute_history.append({
+                'printer_name': entry.printer.printer_name if entry.printer else 'Unknown',
+                'printer_id': entry.printer.id if entry.printer else None,
+                'status': entry.status,
+                'timestamp': entry.timestamp.isoformat() if entry.timestamp else None,
+            })
+
+        if doc.doc_status in ('Printing', 'Queued'):
+            try:
+                total_required = doc.get_total_sides()
+                printed_sides = doc.get_printed_sides_count()
+                if total_required > 0 and printed_sides >= total_required:
+                    previous_status = doc.doc_status
+                    completion_printer = doc.printed_at or doc.printer_assigned
+                    doc.doc_status = 'Finished'
+                    doc.status_updated_at = timezone.now()
+                    update_fields = ['doc_status', 'status_updated_at']
+                    if completion_printer and doc.printed_at_id != completion_printer.id:
+                        doc.printed_at = completion_printer
+                        update_fields.append('printed_at')
+                    doc.save(update_fields=update_fields)
+                    print(
+                        f"[SSE-HEAL] Document {doc.doc_id} had all {total_required} page(s) printed "
+                        f"but was still '{previous_status}'. Auto-marked Finished."
+                    )
+            except Exception as heal_exc:
+                print(f"[SSE-HEAL] Failed to auto-finish {doc.doc_id}: {heal_exc}")
+
+        printer_name = None
+        if doc.printer_assigned:
+            printer_name = doc.printer_assigned.printer_name
+
+        printed_at_name = None
+        if doc.printed_at:
+            printed_at_name = doc.printed_at.printer_name
+
+        pages_printed = doc.pages_printed if doc.pages_printed else []
+        total_pages = doc.get_total_pages()
+        printed_sides = doc.get_printed_sides_count()
+        total_sides = doc.get_total_sides()
+        remaining_sides = len(doc.get_remaining_print_jobs())
+
+        status_type = 'info'
+        if doc.doc_status == 'Pending':
+            status_type = 'warning'
+        elif doc.doc_status == 'Finished':
+            status_type = 'success'
+        elif doc.doc_status == 'Cancelled':
+            status_type = 'danger'
+        elif doc.doc_status == 'Picked Up':
+            status_type = 'success'
+
+        if doc.doc_status not in ('Finished', 'Picked Up'):
+            all_finished_or_picked_up = False
+
+        if doc.doc_status == 'Pending':
+            status_badge = 'Waiting for Approval...'
+        elif doc.doc_status == 'Queued':
+            status_badge = 'Waiting...'
+        elif doc.doc_status == 'Printing':
+            status_badge = f'Printing... ({printer_name})' if printer_name else 'Printing...'
+        elif doc.doc_status == 'Finished':
+            status_badge = f'Completed ({printed_at_name})' if printed_at_name else 'Completed'
+        elif doc.doc_status == 'Cancelled':
+            status_badge = 'Cancelled'
+        elif doc.doc_status == 'Picked Up':
+            status_badge = 'Picked Up'
+        else:
+            status_badge = doc.doc_status
+
+        cancel_reason = ''
+        auto_voucher_code = None
+        auto_voucher_amount = None
+        if doc.doc_status == 'Cancelled':
+            last_error = history_entries.filter(status__startswith='Error').last()
+            if last_error:
+                cancel_reason = last_error.status
+            else:
+                cancel_reason = 'No available Printer'
+            try:
+                _all_history = list(history_entries.values('status', 'timestamp', 'printer_id'))
+                _all_error_history = [h for h in _all_history if (h.get('status') or '').startswith('Error')]
+                _dbg('views.py:sse:cancel_reason_picked', 'cancel_reason chosen for SSE payload', {
+                    'doc_id': doc.doc_id,
+                    'doc_status': doc.doc_status,
+                    'cancel_reason': cancel_reason,
+                    'last_error_status': last_error.status if last_error else None,
+                    'last_error_ts': last_error.timestamp.isoformat() if last_error and last_error.timestamp else None,
+                    'all_error_entries': [
+                        {
+                            'status': h.get('status'),
+                            'ts': h.get('timestamp').isoformat() if h.get('timestamp') else None,
+                            'printer_id': h.get('printer_id'),
+                        }
+                        for h in _all_error_history
+                    ],
+                }, hypothesisId='H1')
+            except Exception:
+                pass
+
+            if cancel_reason:
+                _vm = re.search(r'Auto voucher\s+(\S+)\s+generated', cancel_reason, re.IGNORECASE)
+                if _vm:
+                    auto_voucher_code = _vm.group(1)
+                if not auto_voucher_code:
+                    auto_voucher_code = _extract_voucher_code_from_reason(cancel_reason)
+                auto_voucher_amount = _extract_voucher_amount_from_reason(cancel_reason)
+
+        ticket = SupportTicket.objects.filter(document=doc).order_by('-created_at').first()
+        has_ticket = ticket is not None
+        ticket_number = ticket.ticket_number if ticket else None
+
+        doc_data = {
+            'doc_id': doc.doc_id,
+            'filename': doc.filename,
+            'doc_status': doc.doc_status,
+            'status_type': status_type,
+            'status_badge': status_badge,
+            'cancel_reason': cancel_reason,
+            'auto_voucher_code': auto_voucher_code,
+            'auto_voucher_amount': auto_voucher_amount,
+            'printer_name': printer_name,
+            'printed_at': printed_at_name,
+            'pages_printed': pages_printed,
+            'page_copy_counts': doc.page_copy_counts if isinstance(doc.page_copy_counts, dict) else {},
+            'total_pages': total_pages,
+            'printed_sides': printed_sides,
+            'total_sides': total_sides,
+            'remaining_sides': remaining_sides,
+            'reroute_history': reroute_history,
+            'time_submitted': doc.time_submitted.isoformat() if doc.time_submitted else None,
+            'status_updated_at': doc.status_updated_at.isoformat() if doc.status_updated_at else None,
+            'has_ticket': has_ticket,
+            'ticket_number': ticket_number,
+            'num_copies': doc.num_copies,
+            'orientation': doc.orientation,
+            'color_mode': doc.color_mode,
+            'paper_size': doc.paper_size,
+            'paper_quality': doc.paper_quality,
+            'pages_num': doc.pages_num,
+        }
+        docs_data.append(doc_data)
+
+    other_queue_count = Document.objects.exclude(
+        customer_id=customer_id
+    ).filter(
+        doc_status__in=['Queued', 'Printing']
+    ).count()
+
+    auto_ticket_timeout = SiteSetting.load().auto_ticket_timeout_minutes
+
+    return {
+        'documents': docs_data,
+        'all_done': all_finished_or_picked_up and len(docs_data) > 0,
+        'other_queue_count': other_queue_count,
+        'auto_ticket_timeout': auto_ticket_timeout,
+    }
+
+
+def customer_documents_snapshot(request, customer_id):
+    session_customer_id = request.session.get('customer_id')
+    if not session_customer_id or session_customer_id != customer_id:
+        return JsonResponse({'success': False, 'error': 'Not found'}, status=404)
+
+    response = JsonResponse(_build_customer_documents_payload(customer_id))
+    response['Cache-Control'] = 'no-store'
+    return response
+
+
 def customer_documents_event_stream(customer_id):
     """Generator that yields SSE events for customer document status changes."""
     from django.db import close_old_connections
@@ -4487,198 +4671,7 @@ def customer_documents_event_stream(customer_id):
     try:
         while True:
             close_old_connections()
-            documents = Document.objects.filter(
-                customer_id=customer_id
-            ).select_related('printer_assigned', 'printed_at').order_by('time_submitted')
-
-            docs_data = []
-            all_finished_or_picked_up = True
-
-            for doc in documents:
-                # Build reroute history for this document
-                history_entries = RerouteHistory.objects.filter(
-                    document=doc
-                ).select_related('printer').order_by('timestamp')
-
-                reroute_history = []
-                for entry in history_entries:
-                    reroute_history.append({
-                        'printer_name': entry.printer.printer_name if entry.printer else 'Unknown',
-                        'printer_id': entry.printer.id if entry.printer else None,
-                        'status': entry.status,
-                        'timestamp': entry.timestamp.isoformat() if entry.timestamp else None,
-                    })
-
-                # Self-healing safety net: if every page is actually printed but the
-                # document is still marked as Printing/Queued (e.g. a reroute path
-                # bypassed the completion check), flip it to Finished here so the
-                # UI never shows a stale "Printing..." badge after the physical
-                # print job is done.
-                if doc.doc_status in ('Printing', 'Queued'):
-                    try:
-                        total_required = doc.get_total_sides()
-                        printed_sides = doc.get_printed_sides_count()
-                        if total_required > 0 and printed_sides >= total_required:
-                            previous_status = doc.doc_status
-                            completion_printer = doc.printed_at or doc.printer_assigned
-                            doc.doc_status = 'Finished'
-                            doc.status_updated_at = timezone.now()
-                            update_fields = ['doc_status', 'status_updated_at']
-                            if completion_printer and doc.printed_at_id != completion_printer.id:
-                                doc.printed_at = completion_printer
-                                update_fields.append('printed_at')
-                            doc.save(update_fields=update_fields)
-                            print(
-                                f"[SSE-HEAL] Document {doc.doc_id} had all {total_required} page(s) printed "
-                                f"but was still '{previous_status}'. Auto-marked Finished."
-                            )
-                    except Exception as heal_exc:
-                        print(f"[SSE-HEAL] Failed to auto-finish {doc.doc_id}: {heal_exc}")
-
-                # Determine badge info
-                printer_name = None
-                if doc.printer_assigned:
-                    printer_name = doc.printer_assigned.printer_name
-
-                printed_at_name = None
-                if doc.printed_at:
-                    printed_at_name = doc.printed_at.printer_name
-
-                # Calculate pages printed vs total
-                pages_printed = doc.pages_printed if doc.pages_printed else []
-                total_pages = doc.get_total_pages()
-                printed_sides = doc.get_printed_sides_count()
-                total_sides = doc.get_total_sides()
-                remaining_sides = len(doc.get_remaining_print_jobs())
-
-                # Determine status type for badge styling
-                status_type = 'info'  # default
-                if doc.doc_status == 'Pending':
-                    status_type = 'warning'
-                elif doc.doc_status == 'Queued':
-                    status_type = 'info'
-                elif doc.doc_status == 'Printing':
-                    status_type = 'info'
-                elif doc.doc_status == 'Finished':
-                    status_type = 'success'
-                elif doc.doc_status == 'Cancelled':
-                    status_type = 'danger'
-                elif doc.doc_status == 'Picked Up':
-                    status_type = 'success'
-
-                if doc.doc_status not in ('Finished', 'Picked Up'):
-                    all_finished_or_picked_up = False
-
-                # Build status badge text
-                if doc.doc_status == 'Pending':
-                    status_badge = 'Waiting for Approval...'
-                elif doc.doc_status == 'Queued':
-                    status_badge = 'Waiting...'
-                elif doc.doc_status == 'Printing':
-                    status_badge = f'Printing... ({printer_name})' if printer_name else 'Printing...'
-                elif doc.doc_status == 'Finished':
-                    status_badge = f'Completed ({printed_at_name})' if printed_at_name else 'Completed'
-                elif doc.doc_status == 'Cancelled':
-                    status_badge = 'Cancelled'
-                elif doc.doc_status == 'Picked Up':
-                    status_badge = 'Picked Up'
-                else:
-                    status_badge = doc.doc_status
-
-                # Get cancel reason from reroute history if cancelled
-                cancel_reason = ''
-                auto_voucher_code = None
-                auto_voucher_amount = None
-                if doc.doc_status == 'Cancelled':
-                    last_error = history_entries.filter(status__startswith='Error').last()
-                    if last_error:
-                        cancel_reason = last_error.status
-                    else:
-                        cancel_reason = 'No available Printer'
-                    # #region agent log
-                    try:
-                        _all_history = list(history_entries.values('status', 'timestamp', 'printer_id'))
-                        _all_error_history = [h for h in _all_history if (h.get('status') or '').startswith('Error')]
-                        _dbg('views.py:sse:cancel_reason_picked', 'cancel_reason chosen for SSE payload', {
-                            'doc_id': doc.doc_id,
-                            'doc_status': doc.doc_status,
-                            'cancel_reason': cancel_reason,
-                            'last_error_status': last_error.status if last_error else None,
-                            'last_error_ts': last_error.timestamp.isoformat() if last_error and last_error.timestamp else None,
-                            'all_error_entries': [
-                                {
-                                    'status': h.get('status'),
-                                    'ts': h.get('timestamp').isoformat() if h.get('timestamp') else None,
-                                    'printer_id': h.get('printer_id'),
-                                }
-                                for h in _all_error_history
-                            ],
-                        }, hypothesisId='H1')
-                    except Exception:
-                        pass
-                    # #endregion
-
-                    if cancel_reason:
-                        _vm = re.search(r'Auto voucher\s+(\S+)\s+generated', cancel_reason, re.IGNORECASE)
-                        if _vm:
-                            auto_voucher_code = _vm.group(1)
-                        if not auto_voucher_code:
-                            auto_voucher_code = _extract_voucher_code_from_reason(cancel_reason)
-                        auto_voucher_amount = _extract_voucher_amount_from_reason(cancel_reason)
-
-                # Check for support tickets on this document
-                ticket = SupportTicket.objects.filter(document=doc).order_by('-created_at').first()
-                has_ticket = ticket is not None
-                ticket_number = ticket.ticket_number if ticket else None
-
-                doc_data = {
-                    'doc_id': doc.doc_id,
-                    'filename': doc.filename,
-                    'doc_status': doc.doc_status,
-                    'status_type': status_type,
-                    'status_badge': status_badge,
-                    'cancel_reason': cancel_reason,
-                    'auto_voucher_code': auto_voucher_code,
-                    'auto_voucher_amount': auto_voucher_amount,
-                    'printer_name': printer_name,
-                    'printed_at': printed_at_name,
-                    'pages_printed': pages_printed,
-                    'page_copy_counts': doc.page_copy_counts if isinstance(doc.page_copy_counts, dict) else {},
-                    'total_pages': total_pages,
-                    'printed_sides': printed_sides,
-                    'total_sides': total_sides,
-                    'remaining_sides': remaining_sides,
-                    'reroute_history': reroute_history,
-                    'time_submitted': doc.time_submitted.isoformat() if doc.time_submitted else None,
-                    'status_updated_at': doc.status_updated_at.isoformat() if doc.status_updated_at else None,
-                    'has_ticket': has_ticket,
-                    'ticket_number': ticket_number,
-                    # Extra info for problem report form
-                    'num_copies': doc.num_copies,
-                    'orientation': doc.orientation,
-                    'color_mode': doc.color_mode,
-                    'paper_size': doc.paper_size,
-                    'paper_quality': doc.paper_quality,
-                    'pages_num': doc.pages_num,
-                }
-                docs_data.append(doc_data)
-
-            # Count OTHER customers' documents that are Queued or Printing
-            other_queue_count = Document.objects.exclude(
-                customer_id=customer_id
-            ).filter(
-                doc_status__in=['Queued', 'Printing']
-            ).count()
-
-            # Get auto-ticket timeout setting
-            auto_ticket_timeout = SiteSetting.load().auto_ticket_timeout_minutes
-
-            data = {
-                'documents': docs_data,
-                'all_done': all_finished_or_picked_up and len(docs_data) > 0,
-                'other_queue_count': other_queue_count,
-                'auto_ticket_timeout': auto_ticket_timeout,
-            }
+            data = _build_customer_documents_payload(customer_id)
 
             json_data = json.dumps(data)
             if json_data != last_data:
