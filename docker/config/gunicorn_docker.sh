@@ -10,6 +10,7 @@ DJANGODIR=/home/safeprint/dev/SafePrint
 USER=safeprint
 GROUP=www-data
 WORKERS=3
+THREADS=4
 BIND=unix:/home/safeprint/dev/SafePrint/safeprint.sock
 DJANGO_SETTINGS_MODULE=SafePrint.settings
 DJANGO_WSGI_MODULE=SafePrint.wsgi
@@ -44,7 +45,8 @@ echo "Starting $NAME as $(whoami)"
 exec gunicorn ${DJANGO_WSGI_MODULE}:application \
   --name $NAME \
   --workers $WORKERS \
-  --worker-class gevent \
+  --worker-class gthread \
+  --threads $THREADS \
   --reload \
   \
   --bind=$BIND \

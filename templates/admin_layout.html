@@ -18,9 +18,248 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     <link rel="icon" href="{% static 'assets/safeprint-logo.ico' %}" type="image/x-icon">
     <title>{% block title %}SafePrint{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=20260315x">
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=20260518b">
+    <style>
+        .live-logs-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            border: none;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+            cursor: pointer;
+            transition: transform 0.18s ease, opacity 0.18s ease;
+        }
+
+        .live-logs-toggle:hover,
+        .live-logs-toggle:focus-visible,
+        .live-logs-toggle.is-active {
+            background: transparent;
+            box-shadow: none;
+            transform: none;
+            opacity: 1;
+            outline: none;
+        }
+
+        .live-logs-toggle-icon {
+            width: 34px;
+            height: 34px;
+            filter: none;
+        }
+
+        .live-logs-toggle:hover .live-logs-toggle-icon,
+        .live-logs-toggle:focus-visible .live-logs-toggle-icon,
+        .live-logs-toggle.is-active .live-logs-toggle-icon {
+            filter: none;
+        }
+
+        .live-logs-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.16);
+            z-index: 2100;
+        }
+
+        .live-logs-drawer {
+            position: fixed;
+            top: 0;
+            left: auto;
+            right: 0;
+            width: min(520px, 42vw);
+            min-width: 380px;
+            height: 100vh;
+            background: #050505;
+            color: #f5f5f5;
+            border-right: none;
+            border-left: 1px solid #2a2a2a;
+            box-shadow: -18px 0 40px rgba(0, 0, 0, 0.38);
+            transform: translateX(100%);
+            transition: transform 0.22s ease;
+            z-index: 2200;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .live-logs-drawer.is-open {
+            transform: translateX(0);
+        }
+
+        .live-logs-shell-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 18px;
+            background: #0f0f0f;
+            border-bottom: 1px solid #242424;
+        }
+
+        .live-logs-shell-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .live-logs-shell-controls span {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .live-logs-shell-controls span:nth-child(1) {
+            background: #5a5a5a;
+        }
+
+        .live-logs-shell-controls span:nth-child(2) {
+            background: #8c8c8c;
+        }
+
+        .live-logs-shell-controls span:nth-child(3) {
+            background: #e5e5e5;
+        }
+
+        .live-logs-shell-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            color: #ffffff;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .live-logs-shell-title img {
+            width: 16px;
+            height: 16px;
+            filter: grayscale(1) brightness(2.2);
+        }
+
+        .live-logs-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 18px 10px;
+            border-bottom: 1px solid #1e1e1e;
+        }
+
+        .live-logs-header h2 {
+            margin: 0;
+            color: #ffffff;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 1rem;
+            font-weight: 700;
+        }
+
+        .live-logs-header p {
+            margin: 6px 0 0;
+            color: #b7b7b7;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.78rem;
+        }
+
+        .live-logs-close {
+            width: 38px;
+            height: 38px;
+            border: 1px solid #343434;
+            border-radius: 10px;
+            background: #111111;
+            color: #ffffff;
+            cursor: pointer;
+        }
+
+        .live-logs-toolbar {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 10px 18px;
+            border-bottom: 1px solid #1c1c1c;
+        }
+
+        .live-logs-lines {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #e5e5e5;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.78rem;
+        }
+
+        .live-logs-lines select,
+        .live-logs-toolbar-btn {
+            border: 1px solid #353535;
+            border-radius: 8px;
+            background: #0f0f0f;
+            color: #ffffff;
+            padding: 7px 10px;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.78rem;
+        }
+
+        .live-logs-toolbar-btn {
+            cursor: pointer;
+        }
+
+        .live-logs-source-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 18px;
+            background: #0b0b0b;
+            border-bottom: 1px solid #1c1c1c;
+        }
+
+        .live-logs-source-label {
+            color: #e5e5e5;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.78rem;
+            white-space: nowrap;
+        }
+
+        .live-logs-source-select {
+            flex: 1;
+            min-width: 0;
+            border: 1px solid #353535;
+            border-radius: 8px;
+            background: #111111;
+            color: #ffffff;
+            padding: 9px 12px;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.78rem;
+        }
+
+        .live-logs-content {
+            flex: 1;
+            margin: 0;
+            padding: 16px 18px 22px;
+            overflow: auto;
+            background: #000000;
+            color: #f5f5f5;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.8rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+            border-top: 1px solid #2a2a2a;
+        }
+
+        @media (max-width: 767px) {
+            .live-logs-drawer {
+                left: auto;
+                right: 0;
+                width: 100vw;
+                min-width: 0;
+                transform: translateX(100%);
+            }
+        }
+    </style>
 </head>
-<body>
+<body class="admin-shell" data-terminal-icon="{% static 'assets/terminal.svg' %}">
     <div class="dashboard-layout">
         <!-- Mobile Top Bar -->
         <div class="mobile-topbar">
@@ -46,6 +285,8 @@
             <ul class="navbar-menu">
                 <li><a href="{% url 'dashboard' %}" class="navbar-item {% if 'dashboard' in request.path %}active{% endif %}">
                     <img src="{% static 'assets/dashboard.svg' %}" alt="Dashboard Icon"> Dashboard</a></li>
+                <li><a href="{% url 'sales_dashboard' %}" class="navbar-item {% if 'sales' in request.path %}active{% endif %}">
+                    <img src="{% static 'assets/sales.svg' %}" alt="Sales Icon" class="navbar-sales-icon"> Sales</a></li>
                 <li><a href="{% url 'printing_queue' %}" class="navbar-item {% if 'queue' in request.path %}active{% endif %}">
                     <img src="{% static 'assets/printing-queue.svg' %}" alt="Printing Queue Icon"> Print Queue</a></li>
                 <li><a href="{% url 'print_completed' %}" class="navbar-item {% if 'completed' in request.path %}active{% endif %}">
@@ -67,7 +308,51 @@
             {% endblock %}
         </div>
     </div>
+    <div id="live-logs-backdrop" class="live-logs-backdrop" hidden></div>
+    <aside id="live-logs-drawer" class="live-logs-drawer" aria-hidden="true">
+        <div class="live-logs-shell-bar">
+            <div class="live-logs-shell-controls" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <div class="live-logs-shell-title">
+                <img src="{% static 'assets/terminal.svg' %}" alt="" aria-hidden="true">
+                <span>safeprint@admin: live-logs</span>
+            </div>
+        </div>
+        <div class="live-logs-header">
+            <div>
+                <h2>Live Logs</h2>
+                <p id="live-logs-status">idle</p>
+            </div>
+            <button id="live-logs-close" class="live-logs-close" type="button" aria-label="Close live logs">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="live-logs-toolbar">
+            <label class="live-logs-lines" for="live-logs-line-count">
+                <span>Lines</span>
+                <select id="live-logs-line-count">
+                    <option value="80">80</option>
+                    <option value="120" selected>120</option>
+                    <option value="200">200</option>
+                    <option value="300">300</option>
+                </select>
+            </label>
+            <button id="live-logs-refresh" class="live-logs-toolbar-btn" type="button">Refresh</button>
+            <button id="live-logs-pause" class="live-logs-toolbar-btn" type="button" aria-pressed="false">Pause</button>
+        </div>
+        <div class="live-logs-source-bar">
+            <label class="live-logs-source-label" for="live-logs-source-select">Source</label>
+            <select id="live-logs-source-select" class="live-logs-source-select" aria-label="Live log source"></select>
+        </div>
+        <pre id="live-logs-content" class="live-logs-content">$ open live logs</pre>
+    </aside>
 {% block modals %}{% endblock %}
-<script src="{% static 'js/admin.js' %}?v=20260315s"></script>
+<script>
+    var csrfToken = "{{ csrf_token }}";
+</script>
+<script src="{% static 'js/admin.js' %}?v=20260514a"></script>
 </body>
 </html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<link rel="stylesheet" href="assets/css/bootstrap.min.css">
+	<link rel="stylesheet" href="assets/css/toast.min.css">
+	<link rel="stylesheet" href="assets/css/core.css">
+	<link rel="stylesheet" href="assets/css/JuanFi.css">
+    <title>JuanFi - Status</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<script src="assets/js/config.js"></script>
+
+</head>
+<body id="loginBody">
+
+<div class="container">
+<center>
+		<form action="$(link-logout)" name="logout" >
+			<input type="hidden" name="erase-cookie" value="true" />
+		</form>
+		
+            <div class="col-sm-12">
+                <div class="row">
+                    <img src="assets/MainPic.PNG" class="img-fluid" style="width: 90%; margin: auto"/>
+                </div>
+				<div style="color: #fff">You're currently on pause.</div>
+				<span class="odometer" id="pauseRemainTime" style="font-size: 25px; color: #ffc107; font-weight: bold; text-shadow: 1px 1px 3px #000"></span><br>
+				<div style="margin-top: 10px"></div>	
+				<span class="status-connected">Status: <span class="blinking1" id="connectionStatus" style="color: #4cd137">Paused</span></span>
+				<div class="info">
+						<div class="info-ip">
+						IP: <span>$(ip)</span>
+						</div>
+						<div class="info-mac">
+						MAC: <span>$(mac)</span>
+						</div>
+						<div class="status-holder">
+						Code: <span style="font-weight: bold; text-shadow: 1px 1px 3px #000">$(username)</span><br>
+						Expiry: <span id="expirationTime" style="text-shadow: 1px 1px 3px #000"></span><br>
+						Download: <span style="text-shadow: 1px 1px 3px #000">$(bytes-in-nice)</span><br>
+						Upload: <span style="text-shadow: 1px 1px 3px #000">$(bytes-out-nice)</span><br>
+						Data: <span id="totalDataInfo" style="text-shadow: 1px 1px 3px #000">$(remain-bytes-total-nice)</span><br>
+						</div>
+				</div>
+            </div>
+
+            <div class="col-sm-12">
+                <div class="login">
+				
+				<button type="button" id="connectBtn" onClick="resume(); return false" class="btn btn-success btn-rc">RESUME SESSION</button>
+				<button type="button" id="cancelBtn" onClick="cancelPause(); return false" class="btn btn-danger btn-rc">CANCEL SESSION</button>
+		
+
+                </div>
+				
+			<div class="footer">
+					<span class="footers">
+					<a href="https://juanfi.juansystems.com/">JuanFI</a> &copy; 2023<br>
+					</span>				
+				</div>
+            </div>
+			<script src="assets/js/jquery.min.js"></script>
+			<script src="assets/js/popper.min.js"></script>
+			<script src="assets/js/bootstrap.min.js"></script>
+			<script src="assets/js/toast.min.js"></script>
+			<script src="assets/js/core.js"></script>
+			<script src="assets/js/eload.js"></script>
+
+			<script>
+				var loginError = "";
+				var mac = "$(mac)";
+				var logoutUrl = "$(link-logout)";
+				var remainingTimer = null;
+				var hotspotAddress = "$(server-address)"; 
+				var interfaceName = "$(interface-name)";
+		
+				$(document).ready(function(){
+					$("#expirationTime").html("Loading...");
+					setTimeout(function(){
+						fetchValidity(1);
+					}, 1000);
+				});
+			</script>
+
+			
+			<div id="loaderDiv" class="spinner hidden">
+				<center>
+					<img src="assets/loading.svg" />
+				</center>
+			</div>
+</center>
+</div>
+</body>
+
+</html>

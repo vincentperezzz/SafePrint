@@ -36,11 +36,20 @@ SafePrint
 <!-- Payment Channels Supported -->
 <div class="payment-channels-section">
     <p class="payment-channels-title">Payment Channels Supported</p>
-    <div class="payment-channels-logos">
-        <img src="{% static 'assets/gcash-logo.png' %}" alt="GCash">
-        <img src="{% static 'assets/shopeepay-logo.png' %}" alt="ShopeePay">
-        <img src="{% static 'assets/maya-logo.png' %}" alt="Maya">
-        <img src="{% static 'assets/grabpay-logo.png' %}" alt="GrabPay">
+    <div class="coupon-banner payment-gateway-banner">
+        <div class="coupon-tab payment-gateway-tab">
+            <span class="coupon-tab-text payment-gateway-tab-text">Payment</span>
+        </div>
+        <div class="coupon-hole payment-gateway-hole"></div>
+        <div class="coupon-body payment-gateway-body">
+            <div class="payment-gateway-logo-wrap">
+                <img src="{% static 'assets/gcash-logo.png' %}" alt="GCash" class="payment-gateway-logo">
+            </div>
+            <div class="payment-gateway-copy">
+                <div class="coupon-flat payment-gateway-label">GCash Payment Supported</div>
+                <div class="coupon-code payment-gateway-headline">Experience the Power of Digital Payments</div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -79,7 +88,7 @@ SafePrint
         <div class="card-text">
             <h3 class="card-title">Payment</h3>
             <h3 class="card-title">Process</h3>
-            <p class="card-description">We support GCash, Maya, ShopeePay, and GrabPay. To pay, simply enter your registered mobile number in e-wallet, then save your receipt.</p>
+            <p class="card-description">SafePrint currently accepts GCash payments only. Use your registered GCash mobile number to pay, then save your receipt.</p>
         </div>
         <img src="{% static 'assets/payment.svg' %}" alt="Payment Icon" class="card-icon">
     </div>
@@ -87,7 +96,7 @@ SafePrint
         <div class="card-text">
             <h3 class="card-title">Screenshot</h3>
             <h3 class="card-title">Your Receipt</h3>
-            <p class="card-description">Once your payment is successful, please take a screenshot of the "Thank You" page showing your Transaction Code. This screenshot is required if you need to report any technical issues or request a refund.</p>
+            <p class="card-description">Once your payment is successful, save a screenshot of your GCash receipt and reference details. Keep it in case you need to report a technical issue or request a refund.</p>
         </div>
         <img src="{% static 'assets/screenshot.svg' %}" alt="Screenshot Receipt Icon" class="card-icon">
     </div>
@@ -226,39 +235,6 @@ SafePrint
         <div class="faq-card-content">
             <span class="faq-line"></span>
             <p>The Track Status page works for both your Customer ID and Voucher Code. Enter a CID (e.g. CID-1234) to see real-time updates on your print job, including printer assignment and page progress. You can also enter a voucher code to instantly check your remaining credit balance and expiry date — no account needed.</p>
-        </div>
-    </div>
-    <div class="faq-card" tabindex="0">
-        <div class="faq-card-header">
-            <span class="faq-card-number">10</span>
-            <span class="faq-card-title">Why am I seeing a different name during payment?</span>
-            <img src="{% static 'assets/plus-icon.svg' %}" alt="Toggle Icon" class="faq-card-toggle">
-        </div>
-        <div class="faq-card-content">
-            <span class="faq-line"></span>
-            <p>No cap, it's still us! To give you a seamless cashless experience without the corporate red tape, we use "CK French Perfume and Souvenir Shop" as our official payment gateway partner. Your payment is 100% secure and directly tied to your SafePrint job.</p>
-        </div>
-    </div>
-    <div class="faq-card" tabindex="0">
-        <div class="faq-card-header">
-            <span class="faq-card-number">11</span>
-            <span class="faq-card-title">Can I give my leftover credit to a friend?</span>
-            <img src="{% static 'assets/plus-icon.svg' %}" alt="Toggle Icon" class="faq-card-toggle">
-        </div>
-        <div class="faq-card-content">
-            <span class="faq-line"></span>
-            <p>Absolutely! Your credit code isn't tied to any account, it's just a code. Share it with anyone and they can use it at checkout. Just make sure they enter it before paying!</p>
-        </div>
-    </div>
-    <div class="faq-card" tabindex="0">
-        <div class="faq-card-header">
-            <span class="faq-card-number">12</span>
-            <span class="faq-card-title">Why do I have to pay ₱5 if my job only costs ₱2?</span>
-            <img src="{% static 'assets/plus-icon.svg' %}" alt="Toggle Icon" class="faq-card-toggle">
-        </div>
-        <div class="faq-card-content">
-            <span class="faq-line"></span>
-            <p>Our payment provider requires a minimum of ₱5 per transaction. Don't worry though, the extra ₱3 isn't lost! It's saved as credit on a voucher code shown on your confirmation page. You can use it on your next print job or share it with a friend.</p>
         </div>
     </div>
 </div>

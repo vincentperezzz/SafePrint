@@ -1,10 +1,15 @@
 import os
 import json
+import re
+import sys
 import time
 import logging
 import threading
 import subprocess
-from django.db.models import Q
+from collections import deque
+from datetime import datetime, time as datetime_time, timedelta
+from decimal import Decimal
+from django.db.models import Count, Q, Sum
 from .forms import FeedbackForm
 from django.http import Http404
 from django.conf import settings
@@ -15,14 +20,446 @@ from django.utils.timezone import localtime
 from django.shortcuts import render, redirect
 from portal.models import AdminUser, Feedback
 from django.views.decorators.csrf import csrf_exempt
-from .models import AdminUser, Printer, Document, Payment, NotificationSound, SupportTicket, SiteSetting, TicketAuditLog
+from .models import AdminUser, Printer, Document, Payment, PaymentIntent, NotificationSound, SupportTicket, SiteSetting, TicketAuditLog, VoucherCredit, VoucherCreditAuditLog
 from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.decorators import login_required
+from portal.services.firebase_payment import FirebasePaymentError, claim_notification, list_matching_notifications, normalize_phone_number
 
 logger = logging.getLogger(__name__)
 
 now = timezone.now()
+QUEUE_MONITOR_INTERVAL_SECONDS = 60.0
+QUEUE_MONITOR_RETRY_SECONDS = 5.0
+
+
+def _trigger_upload_folder_cleanup():
+    if getattr(settings, 'TESTING', False):
+        return
+    subprocess.Popen([sys.executable, '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+
+
+def _schedule_queue_check(delay_seconds=1.0):
+    timer = threading.Timer(delay_seconds, check_queued_documents)
+    timer.daemon = True
+    timer.start()
+
+
+def _format_dashboard_customer_id(customer_id):
+    value = str(customer_id or '').strip()
+    if not value:
+        return '—'
+    return value if value.startswith('#') else f'#{value}'
+
+
+def _normalize_doc_id_value(doc_id):
+    return str(doc_id or '').strip().strip('#')
+
+
+def _get_ticket_primary_doc_id(ticket):
+    if ticket.document:
+        return _normalize_doc_id_value(ticket.document.doc_id)
+    return _normalize_doc_id_value(ticket.document_id_snapshot)
+
+
+def _get_ticket_payment_record(ticket):
+    payment_filters = Q()
+    primary_doc_id = _get_ticket_primary_doc_id(ticket)
+
+    if ticket.document:
+        payment_filters |= Q(doc=ticket.document)
+    if primary_doc_id:
+        payment_filters |= Q(doc_id_snapshot=primary_doc_id) | Q(doc__doc_id=primary_doc_id)
+
+    if not payment_filters:
+        return None
+
+    payment_qs = Payment.objects.filter(payment_filters)
+    normalized_customer_id = str(ticket.customer_id or '').strip()
+    if normalized_customer_id:
+        payment_qs = payment_qs.filter(
+            Q(customer_id_snapshot=normalized_customer_id) |
+            Q(doc__customer_id=normalized_customer_id)
+        )
+
+    return payment_qs.order_by('-approved_at', '-id').first()
+
+
+def _get_ticket_payment_amount(ticket):
+    if ticket.payment_amount_snapshot is not None:
+        return ticket.payment_amount_snapshot
+
+    payment = _get_ticket_payment_record(ticket)
+    return payment.price if payment else None
+
+
+def _preserve_or_delete_document_payment(doc):
+    payments = list(
+        Payment.objects.filter(
+            Q(doc=doc) | Q(doc_id_snapshot=doc.doc_id)
+        )
+    )
+
+    for payment in payments:
+        payment.capture_document_snapshot()
+        if str(payment.payment_status or '').lower() == 'paid':
+            payment.doc = None
+            payment.save()
+            continue
+        payment.delete()
+
+
+def _log_voucher_audit(voucher, *, action, amount, customer_id='', performed_by='', reference='', details=''):
+    VoucherCreditAuditLog.objects.create(
+        voucher=voucher,
+        voucher_code_snapshot=voucher.code if voucher else reference,
+        action=action,
+        amount=Decimal(amount),
+        balance_after=voucher.remaining_balance if voucher else None,
+        customer_id=customer_id,
+        performed_by=performed_by,
+        reference=reference,
+        details=details,
+    )
+
+
+def _extract_voucher_code_from_reason(reason):
+    match = re.search(r'Auto voucher\s+(\S+)', str(reason or ''), re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1).rstrip('.,;:')
+
+
+def _extract_voucher_amount_from_reason(reason):
+    match = re.search(r'Auto voucher\s+\S+\s+₱([0-9]+(?:\.[0-9]{2})?)', str(reason or ''), re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _create_or_get_cancelled_voucher_ticket(customer_id, documents):
+    normalized_customer_id = str(customer_id or '').strip()
+    ordered_documents = sorted(
+        list(documents),
+        key=lambda doc: (
+            doc.time_submitted or timezone.now(),
+            doc.doc_id,
+        ),
+    )
+
+    if not normalized_customer_id or not ordered_documents:
+        raise ValueError('customer_id and documents are required')
+
+    related_doc_ids = [doc.doc_id for doc in ordered_documents]
+    related_doc_ids_json = json.dumps(related_doc_ids) if len(related_doc_ids) > 1 else ''
+    primary_document = ordered_documents[0]
+
+    existing_ticket_qs = SupportTicket.objects.filter(
+        customer_id=normalized_customer_id,
+        status__in=['open', 'in-progress'],
+    )
+    if related_doc_ids_json:
+        existing_ticket = existing_ticket_qs.filter(related_doc_ids=related_doc_ids_json).order_by('-created_at').first()
+    else:
+        existing_ticket = existing_ticket_qs.filter(
+            Q(document=primary_document) |
+            Q(document_id_snapshot=primary_document.doc_id)
+        ).order_by('-created_at').first()
+
+    if existing_ticket:
+        return existing_ticket, False
+
+    voucher_codes = []
+    document_lines = []
+    for document in ordered_documents:
+        last_error = RerouteHistory.objects.filter(
+            document=document,
+            status__startswith='Error'
+        ).order_by('timestamp').last()
+        cancel_reason = last_error.status if last_error else 'No available Printer'
+        voucher_code = _extract_voucher_code_from_reason(cancel_reason)
+        if voucher_code and voucher_code not in voucher_codes:
+            voucher_codes.append(voucher_code)
+        document_lines.append(f'- {document.doc_id} ({document.filename}): {cancel_reason}')
+
+    phone_number = ''
+    payment = Payment.objects.filter(
+        Q(doc__customer_id=normalized_customer_id) |
+        Q(customer_id_snapshot=normalized_customer_id)
+    ).exclude(
+        phone_number__isnull=True
+    ).exclude(
+        phone_number=''
+    ).order_by('-approved_at', '-id').first()
+    if payment:
+        phone_number = str(payment.phone_number or '').strip()
+
+    ticket_description_parts = [
+        'Auto-generated after customer confirmed they captured the voucher for reprint once the printer issue is fixed.',
+    ]
+    if voucher_codes:
+        ticket_description_parts.append(f"Voucher codes: {', '.join(voucher_codes)}")
+    ticket_description_parts.append('Affected cancelled documents:')
+    ticket_description_parts.extend(document_lines)
+    ticket_description = '\n'.join(ticket_description_parts)
+
+    document_name = primary_document.original_name or primary_document.filename
+    if len(ordered_documents) > 1:
+        document_name = f'{len(ordered_documents)} auto-cancelled documents'
+
+    ticket = SupportTicket.objects.create(
+        customer_id=normalized_customer_id,
+        document=primary_document,
+        document_id_snapshot=primary_document.doc_id,
+        document_name=document_name,
+        customer_name=f'Customer {normalized_customer_id}',
+        email='auto-ticket@safeprint.local',
+        phone_number=phone_number,
+        problem_type='no-print',
+        description=ticket_description,
+        related_doc_ids=related_doc_ids_json,
+        admin_notes='Auto-generated after customer acknowledged voucher capture from the all-cancelled confirmation page.',
+    )
+
+    TicketAuditLog.objects.create(
+        ticket=ticket,
+        action='created',
+        new_status='open',
+        performed_by='SYSTEM',
+        details='Auto-ticket created after voucher acknowledgement from the confirmation page.'
+    )
+
+    try:
+        from portal.services.email_notify import alert_new_ticket
+        alert_new_ticket(ticket.ticket_number, ticket.customer_name, ticket.problem_type, ticket.description)
+    except Exception:
+        pass
+
+    return ticket, True
+
+
+def _delete_customer_documents(customer_id, documents, *, log_prefix):
+    uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
+    deleted_count = 0
+
+    for document in documents:
+        if document.stored_name:
+            customer_dir = os.path.join(uploads_dir, customer_id)
+            file_path = os.path.join(customer_dir, document.stored_name)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+                print(f"[{log_prefix}] Deleted file {file_path} for document {document.doc_id}")
+
+        _preserve_or_delete_document_payment(document)
+        document.delete()
+        deleted_count += 1
+
+    VoucherCredit.objects.filter(last_customer_id=customer_id).update(last_customer_id=None)
+    _trigger_upload_folder_cleanup()
+
+    return deleted_count
+
+
+def _get_dashboard_document_display(ticket):
+    raw_related_doc_ids = str(ticket.related_doc_ids or '').strip()
+    related_doc_ids = []
+
+    if raw_related_doc_ids:
+        try:
+            parsed_doc_ids = json.loads(raw_related_doc_ids)
+            if isinstance(parsed_doc_ids, list):
+                related_doc_ids = [str(doc_id).strip() for doc_id in parsed_doc_ids if str(doc_id).strip()]
+            elif parsed_doc_ids:
+                related_doc_ids = [str(parsed_doc_ids).strip()]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            related_doc_ids = [part.strip() for part in raw_related_doc_ids.split(',') if part.strip()]
+
+    primary_doc_id = _get_ticket_primary_doc_id(ticket)
+    ordered_doc_ids = []
+
+    for doc_id in [primary_doc_id, *related_doc_ids]:
+        clean_doc_id = str(doc_id or '').strip().strip('#')
+        if clean_doc_id and clean_doc_id not in ordered_doc_ids:
+            ordered_doc_ids.append(clean_doc_id)
+
+    if ordered_doc_ids:
+        summary_ids = [f'#{doc_id}' for doc_id in ordered_doc_ids[:2]]
+        summary = ', '.join(summary_ids)
+        if len(ordered_doc_ids) > 2:
+            summary = f'{summary} +{len(ordered_doc_ids) - 2} more'
+
+        meta = f'{len(ordered_doc_ids)} documents' if len(ordered_doc_ids) > 1 else ''
+        return summary, meta
+
+    fallback_name = str(ticket.document_name or '').strip()
+    if fallback_name:
+        return fallback_name, ''
+
+    return '—', ''
+
+
+def _attach_dashboard_ticket_display(ticket):
+    ticket.customer_id_display = _format_dashboard_customer_id(ticket.customer_id)
+    ticket.primary_doc_id = _get_ticket_primary_doc_id(ticket)
+    ticket.document_ids_display, ticket.document_meta_display = _get_dashboard_document_display(ticket)
+    return ticket
+
+
+def _local_day_bounds(target_date=None):
+    target_date = target_date or timezone.localdate()
+    current_tz = timezone.get_current_timezone()
+    day_start = timezone.make_aware(datetime.combine(target_date, datetime_time.min), current_tz)
+    next_day_start = day_start + timedelta(days=1)
+    return day_start, next_day_start
+
+
+def _month_start_bounds(target_date=None):
+    target_date = target_date or timezone.localdate()
+    month_start_date = target_date.replace(day=1)
+    current_tz = timezone.get_current_timezone()
+    month_start = timezone.make_aware(datetime.combine(month_start_date, datetime_time.min), current_tz)
+    if month_start_date.month == 12:
+        next_month_date = month_start_date.replace(year=month_start_date.year + 1, month=1, day=1)
+    else:
+        next_month_date = month_start_date.replace(month=month_start_date.month + 1, day=1)
+    next_month_start = timezone.make_aware(datetime.combine(next_month_date, datetime_time.min), current_tz)
+    return month_start, next_month_start
+
+
+def _get_payment_customer_id(payment):
+    return str(payment.audit_customer_id or '').strip()
+
+
+def _get_payment_doc_id(payment):
+    return str(payment.audit_doc_id or '').strip()
+
+
+def _format_threshold_percent(value):
+    if value in (None, ''):
+        return ''
+    decimal_value = Decimal(str(value))
+    normalized = decimal_value.normalize()
+    return format(normalized, 'f').rstrip('0').rstrip('.') if '.' in format(normalized, 'f') else format(normalized, 'f')
+
+
+def _build_sales_records(payments):
+    grouped_records = {}
+
+    for payment in payments:
+        customer_id = _get_payment_customer_id(payment)
+        approved_at = payment.approved_at
+        payment_method = payment.payment_method or 'manual'
+        approved_by = payment.approved_by or '—'
+        group_key = (
+            customer_id,
+            approved_at.isoformat() if approved_at else '',
+            payment_method,
+            approved_by,
+        )
+
+        record = grouped_records.get(group_key)
+        if record is None:
+            record = {
+                'row_id': f'{customer_id}-{payment.id}',
+                'approved_at': approved_at,
+                'customer_id': customer_id,
+                'payment_method': payment_method,
+                'approved_by': approved_by,
+                'amount': Decimal('0.00'),
+                'doc_ids': [],
+                'pricing_thresholds': [],
+            }
+            grouped_records[group_key] = record
+
+        record['amount'] += Decimal(payment.price or 0)
+
+        doc_id = _get_payment_doc_id(payment)
+        if doc_id and doc_id not in record['doc_ids']:
+            record['doc_ids'].append(doc_id)
+
+        threshold_display = _format_threshold_percent(payment.pricing_threshold_snapshot)
+        if threshold_display and threshold_display not in record['pricing_thresholds']:
+            record['pricing_thresholds'].append(threshold_display)
+
+    sales_records = list(grouped_records.values())
+    for record in sales_records:
+        record['document_ids_display'] = ', '.join(record['doc_ids']) if record['doc_ids'] else '—'
+        if record['pricing_thresholds']:
+            record['pricing_threshold_display'] = ', '.join(record['pricing_thresholds'])
+        else:
+            record['pricing_threshold_display'] = '—'
+
+    sales_records.sort(
+        key=lambda item: (item['approved_at'] is not None, item['approved_at'] or timezone.make_aware(datetime.min, timezone.get_current_timezone())),
+        reverse=True,
+    )
+    return sales_records
+
+
+def _admin_log_sources():
+    base_dir = settings.BASE_DIR
+    return {
+        'gunicorn_error': {
+            'label': 'Gunicorn Error',
+            'path': '/var/log/gunicorn/safeprint-error.log',
+        },
+        'gunicorn_access': {
+            'label': 'Gunicorn Access',
+            'path': '/var/log/gunicorn/safeprint-access.log',
+        },
+        'django_runtime': {
+            'label': 'Django Runtime',
+            'path': '/var/log/gunicorn/safeprint-django.log',
+        },
+        'django_app': {
+            'label': 'Django App',
+            'path': os.path.join(base_dir, 'logs', 'django.log'),
+        },
+        'printer_polling': {
+            'label': 'Printer Polling',
+            'path': os.path.join(base_dir, 'logs', 'printer_polling.log'),
+        },
+        'cron_purge': {
+            'label': 'Cron Purge',
+            'path': os.path.join(base_dir, 'logs', 'cron_purge_tickets.log'),
+        },
+    }
+
+
+def _normalize_sales_voucher_filter(raw_value):
+    voucher_filter = (raw_value or 'exclude').strip().lower()
+    if voucher_filter not in {'exclude', 'all', 'only'}:
+        return 'exclude'
+    return voucher_filter
+
+
+def _apply_sales_voucher_filter(queryset, voucher_filter):
+    voucher_filter = _normalize_sales_voucher_filter(voucher_filter)
+    if voucher_filter == 'exclude':
+        return queryset.exclude(payment_method='voucher_credit')
+    if voucher_filter == 'only':
+        return queryset.filter(payment_method='voucher_credit')
+    return queryset
+
+
+def _get_sales_voucher_filter(request):
+    raw_value = request.GET.get('voucher_filter')
+    if raw_value is None:
+        return _normalize_sales_voucher_filter(request.session.get('sales_voucher_filter', 'exclude'))
+
+    voucher_filter = _normalize_sales_voucher_filter(raw_value)
+    request.session['sales_voucher_filter'] = voucher_filter
+    return voucher_filter
+
+
+def _tail_log_lines(file_path, line_count):
+    recent_lines = deque(maxlen=line_count)
+
+    with open(file_path, 'r', encoding='utf-8', errors='replace') as handle:
+        for line in handle:
+            recent_lines.append(line.rstrip('\n'))
+
+    return '\n'.join(recent_lines)
 
 def dashboard(request):
     user_id = request.session.get('admin_user_id')
@@ -35,7 +472,7 @@ def dashboard(request):
         raise Http404("User not found")
     
     # Dashboard Stats
-    printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
+    printer_errors_count = _active_printer_error_count()
     
     # Ticket queries
     active_tickets = list(SupportTicket.objects.filter(
@@ -46,23 +483,25 @@ def dashboard(request):
         status__in=['resolved', 'closed', 'voided', 'refunded']
     ).select_related('document').prefetch_related('proof_images').order_by('-resolved_at', '-updated_at'))
     
-    # Attach payment amount to each ticket via its document
+    # Attach payment amount to each ticket via its preserved payment snapshot
     for ticket in active_tickets:
-        ticket.payment_amount = None
-        if ticket.document:
-            payment = Payment.objects.filter(doc=ticket.document).first()
-            if payment:
-                ticket.payment_amount = payment.price
+        ticket.payment_amount = _get_ticket_payment_amount(ticket)
+        _attach_dashboard_ticket_display(ticket)
     
     for ticket in resolved_tickets:
-        ticket.payment_amount = None
-        if ticket.document:
-            payment = Payment.objects.filter(doc=ticket.document).first()
-            if payment:
-                ticket.payment_amount = payment.price
+        ticket.payment_amount = _get_ticket_payment_amount(ticket)
+        _attach_dashboard_ticket_display(ticket)
     
+    today = timezone.localdate()
+    today_start, tomorrow_start = _local_day_bounds(today)
+    sales_voucher_filter = _normalize_sales_voucher_filter(request.session.get('sales_voucher_filter', 'exclude'))
     active_tickets_count = len(active_tickets)
     resolved_tickets_count = len(resolved_tickets)
+    sales_today_amount = _apply_sales_voucher_filter(Payment.objects.filter(
+        payment_status='Paid',
+        approved_at__gte=today_start,
+        approved_at__lt=tomorrow_start,
+    ), sales_voucher_filter).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
     
     # Get recent completed documents with payment info and printed_at timestamp
     completed_documents = Document.objects.filter(
@@ -81,6 +520,7 @@ def dashboard(request):
         'resolved_tickets': resolved_tickets,
         'active_tickets_count': active_tickets_count,
         'resolved_tickets_count': resolved_tickets_count,
+        'sales_today_amount': sales_today_amount,
         'completed_documents': completed_documents,
         'searched_documents': searched_documents,
         'customer_id_display': customer_id_display,
@@ -150,8 +590,473 @@ def search_customer(request):
 # ─────────────────────────────────────────────
 # Minimum payment and credit constants
 # ─────────────────────────────────────────────
-XENDIT_MIN_AMOUNT = 5  # ₱5 minimum for Xendit transactions
 VOUCHER_CREDIT_EXPIRY_DAYS = 120  # Credits expire after 120 days
+
+
+def _refund_reserved_voucher(intent):
+    if not intent.voucher_credit_code or Decimal(intent.credit_applied) <= Decimal('0'):
+        return
+
+    voucher = VoucherCredit.objects.filter(code=intent.voucher_credit_code).first()
+    if not voucher:
+        return
+
+    voucher.remaining_balance = Decimal(voucher.remaining_balance) + Decimal(intent.credit_applied)
+    voucher.is_active = True
+    voucher.save(update_fields=['remaining_balance', 'is_active'])
+    _log_voucher_audit(
+        voucher,
+        action='restored',
+        amount=Decimal(intent.credit_applied),
+        customer_id=intent.customer_id,
+        reference=str(intent.intent_id),
+        details='Voucher credit restored after payment intent cancellation or expiry.',
+    )
+
+
+def _generate_unique_voucher_code():
+    import secrets
+    import string
+
+    for _ in range(10):
+        code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+        if not VoucherCredit.objects.filter(code=code).exists():
+            return code
+    raise ValueError('Failed to generate unique voucher code')
+
+
+def _get_document_payment_record(document):
+    return Payment.objects.filter(
+        Q(doc=document) | Q(doc_id_snapshot=document.doc_id)
+    ).order_by('-approved_at', '-id').first()
+
+
+def _calculate_unprinted_refund_amount(document):
+    payment = _get_document_payment_record(document)
+    if not payment:
+        return Decimal('0.00')
+
+    total_sides = max(1, document.get_total_sides() or 0)
+    remaining_sides = len(document.get_remaining_print_jobs())
+    if remaining_sides <= 0:
+        return Decimal('0.00')
+
+    total_paid = Decimal(payment.price or 0)
+    if remaining_sides >= total_sides:
+        return total_paid.quantize(Decimal('0.01'))
+
+    refund_amount = (total_paid * Decimal(remaining_sides) / Decimal(total_sides)).quantize(Decimal('0.01'))
+    return max(Decimal('0.00'), refund_amount)
+
+
+def _issue_auto_refund_voucher(document, amount, *, details):
+    normalized_amount = Decimal(amount).quantize(Decimal('0.01'))
+    if normalized_amount <= Decimal('0.00'):
+        return None
+
+    existing_audit = VoucherCreditAuditLog.objects.filter(
+        action='created',
+        reference=document.doc_id,
+        performed_by='SYSTEM',
+        details__icontains='Automatic voucher issued after unrecoverable print failure.',
+    ).select_related('voucher').order_by('-created_at').first()
+    if existing_audit:
+        existing_voucher = existing_audit.voucher
+        if not existing_voucher and existing_audit.voucher_code_snapshot:
+            existing_voucher = VoucherCredit.objects.filter(code=existing_audit.voucher_code_snapshot).first()
+        if existing_voucher:
+            update_fields = []
+            if not existing_voucher.last_customer_id:
+                existing_voucher.last_customer_id = document.customer_id
+                update_fields.append('last_customer_id')
+            if update_fields:
+                existing_voucher.save(update_fields=update_fields)
+            return existing_voucher
+
+    voucher = VoucherCredit.objects.create(
+        code=_generate_unique_voucher_code(),
+        original_amount=normalized_amount,
+        remaining_balance=normalized_amount,
+        is_active=True,
+        last_customer_id=document.customer_id,
+        expires_at=timezone.now() + timedelta(days=VOUCHER_CREDIT_EXPIRY_DAYS),
+    )
+    _log_voucher_audit(
+        voucher,
+        action='created',
+        amount=normalized_amount,
+        customer_id=document.customer_id,
+        performed_by='SYSTEM',
+        reference=document.doc_id,
+        details=details,
+    )
+    return voucher
+
+
+def _cancel_document_with_auto_voucher(document, *, reason):
+    document.refresh_from_db()
+    assigned_printer = document.printer_assigned
+    refund_amount = _calculate_unprinted_refund_amount(document)
+    voucher = _issue_auto_refund_voucher(
+        document,
+        refund_amount,
+        details=f'Automatic voucher issued after unrecoverable print failure. {reason}',
+    )
+
+    message = reason
+    if voucher:
+        message = f'{reason} Auto voucher {voucher.code} generated for ₱{refund_amount:.2f}.'
+
+    paper_size = str(getattr(document, 'paper_size', '') or '').strip()
+    if voucher:
+        compact_history_status = (
+            f"Error: {paper_size or 'Print'} Auto voucher {voucher.code} ₱{refund_amount:.2f}"
+        )
+    else:
+        compact_history_status = f"Error: {paper_size or 'Print'} no printer"
+    compact_history_status = compact_history_status[:50]
+
+    # Create the auto-voucher RerouteHistory entry BEFORE flipping the doc to
+    # Cancelled. The customer SSE stream picks the latest 'Error: ...' entry as
+    # `cancel_reason` the moment it sees doc_status='Cancelled' — if we save the
+    # doc first, there's a race window where SSE emits a stale prior cancel
+    # reason (e.g. "Error: Sleep") and the frontend voucher alert never matches
+    # because it looks for the substring "auto voucher".
+    _voucher_history = RerouteHistory.objects.create(
+        document=document,
+        printer=None,
+        status=compact_history_status,
+        timestamp=timezone.now(),
+    )
+
+    document.doc_status = 'Cancelled'
+    document.printer_assigned = None
+    document.status_updated_at = timezone.now()
+    document.save(update_fields=['doc_status', 'printer_assigned', 'status_updated_at'])
+    _sync_printer_scheduler_state(assigned_printer)
+    Feedback.objects.create(
+        category='Report a Problem',
+        name='[SYSTEM GENERATED]',
+        message=f'Automatic voucher flow triggered for {document.doc_id}. {message}',
+    )
+    print(f"[AUTO-VOUCHER] Document {document.doc_id} cancelled. {message}")
+    return voucher
+
+
+def _expire_stale_payment_intents(customer_id=None):
+    stale_intents = PaymentIntent.objects.filter(
+        status=PaymentIntent.STATUS_PENDING,
+        expires_at__lt=timezone.now(),
+    ).order_by('created_at')
+
+    if customer_id:
+        stale_intents = stale_intents.filter(customer_id=customer_id)
+
+    for intent in stale_intents:
+        with transaction.atomic():
+            locked_intent = PaymentIntent.objects.select_for_update().get(pk=intent.pk)
+            if locked_intent.status != PaymentIntent.STATUS_PENDING:
+                continue
+            _refund_reserved_voucher(locked_intent)
+            locked_intent.status = PaymentIntent.STATUS_EXPIRED
+            locked_intent.save(update_fields=['status', 'updated_at'])
+
+
+def _queue_document_for_dispatch(document, *, priority, queued_at=None, clear_printer=True):
+    queued_at = queued_at or timezone.now()
+    document.doc_status = 'Queued'
+    document.queue_priority = priority
+    document.queued_at = queued_at
+    document.status_updated_at = queued_at
+
+    update_fields = ['doc_status', 'queue_priority', 'queued_at', 'status_updated_at']
+    if clear_printer and document.printer_assigned_id is not None:
+        document.printer_assigned = None
+        update_fields.append('printer_assigned')
+
+    document.save(update_fields=update_fields)
+    return document
+
+
+def _mark_customer_documents_paid(payments, *, approved_by, payment_method):
+    approved_at = timezone.now()
+    queued_any = False
+    for payment_obj in payments:
+        payment_obj.payment_status = 'Paid'
+        payment_obj.payment_method = payment_method
+        payment_obj.approved_at = approved_at
+        payment_obj.approved_by = approved_by
+        payment_obj.save(update_fields=['payment_status', 'payment_method', 'approved_at', 'approved_by'])
+
+        document = payment_obj.doc
+        _queue_document_for_dispatch(
+            document,
+            priority=Document.QueuePriority.NORMAL,
+            queued_at=approved_at,
+        )
+        queued_any = True
+
+    if queued_any:
+        _schedule_queue_check(1.0)
+
+
+def _payment_gateway_context(site):
+    return {
+        'recipient_name': site.gcash_recipient_name or 'GCash Recipient',
+        'recipient_number': site.gcash_recipient_number or '09XX XXX XXXX',
+        'recipient_qr_url': site.gcash_qr_image.url if site.gcash_qr_image else '',
+        'payment_expiry_minutes': site.payment_expiry_minutes or 10,
+        'block_payment_when_printers_unavailable': site.block_payment_when_printers_unavailable,
+    }
+
+
+def _pricing_settings_context(site):
+    return {
+        'letter_bw_price': str(site.letter_bw_price),
+        'letter_partial_price': str(site.letter_partial_price),
+        'letter_full_price': str(site.letter_full_price),
+        'a4_bw_price': str(site.a4_bw_price),
+        'a4_partial_price': str(site.a4_partial_price),
+        'a4_full_price': str(site.a4_full_price),
+        'long_bw_price': str(site.long_bw_price),
+        'long_partial_price': str(site.long_partial_price),
+        'long_full_price': str(site.long_full_price),
+        'color_full_threshold_percent': str(site.color_full_threshold_percent),
+    }
+
+
+def _document_required_sheets(document):
+    try:
+        copies = max(1, int(getattr(document, 'num_copies', 1) or 1))
+    except (TypeError, ValueError):
+        copies = 1
+
+    remaining_pages = document.get_remaining_pages() if hasattr(document, 'get_remaining_pages') else []
+    total_pages = len(remaining_pages) if remaining_pages else (document.get_total_pages() or 0)
+    return max(0, total_pages * copies)
+
+
+def _printer_has_required_stock(printer, document):
+    tray_level = (getattr(printer, 'tray_level', '') or '').strip()
+    tray_current_count = getattr(printer, 'tray_current_count', None)
+
+    if tray_level == 'Needs Refill':
+        return False
+
+    if tray_current_count is not None and tray_current_count < _document_required_sheets(document):
+        return False
+
+    return True
+
+
+def _get_matching_printers(document, *, allowed_statuses):
+    candidate_printers = Printer.objects.filter(
+        paper_assigned=document.paper_size,
+        is_temporarily_disabled=False,
+        printer_status__in=allowed_statuses,
+    )
+    return [printer for printer in candidate_printers if _printer_has_required_stock(printer, document)]
+
+
+def _available_printers_for_document(
+    document,
+    *,
+    allowed_statuses,
+    exclude_printer_id=None,
+    exclude_printer_ids=None,
+    lock_rows=False,
+    sync_scheduler_state=False,
+    require_idle=True,
+):
+    excluded_ids = set()
+    if exclude_printer_id is not None:
+        excluded_ids.add(exclude_printer_id)
+    if exclude_printer_ids:
+        excluded_ids.update(pid for pid in exclude_printer_ids if pid is not None)
+
+    candidate_printers = Printer.objects.filter(
+        paper_assigned=document.paper_size,
+        is_temporarily_disabled=False,
+        printer_status__in=allowed_statuses,
+    ).exclude(id__in=excluded_ids).order_by('id')
+
+    if lock_rows:
+        candidate_printers = candidate_printers.select_for_update()
+
+    destinations = _get_cups_destinations()
+    available_printers = []
+    for printer in candidate_printers:
+        if sync_scheduler_state:
+            _sync_printer_scheduler_state(printer)
+        if require_idle and (getattr(printer, 'active_job_count', 0) or 0) > 0:
+            continue
+        try:
+            _resolve_cups_queue_name(printer, destinations=destinations)
+        except QueueResolutionError as exc:
+            print(f"[CUPS] Skipping printer {printer.printer_name}: {exc}")
+            continue
+        if not _printer_has_required_stock(printer, document):
+            continue
+        available_printers.append(printer)
+
+    available_printers.sort(key=_printer_scheduler_sort_key)
+    return available_printers
+
+
+def _printer_scheduler_sort_key(printer):
+    last_assigned_at = getattr(printer, 'last_assigned_at', None)
+    scheduling_weight = max(1, int(getattr(printer, 'scheduling_weight', 1) or 1))
+    return (
+        getattr(printer, 'active_job_count', 0) or 0,
+        0 if last_assigned_at is None else 1,
+        0 if last_assigned_at is None else int(last_assigned_at.timestamp() * 1000000),
+        -scheduling_weight,
+        printer.id,
+    )
+
+
+def _sync_printer_scheduler_state(printer, *, assigned_at=None):
+    if not printer or not getattr(printer, 'id', None):
+        return printer
+
+    active_job_count = Document.objects.filter(
+        doc_status='Printing',
+        printer_assigned_id=printer.id,
+    ).count()
+
+    update_fields = []
+    if (getattr(printer, 'active_job_count', 0) or 0) != active_job_count:
+        printer.active_job_count = active_job_count
+        update_fields.append('active_job_count')
+
+    if assigned_at is not None:
+        printer.last_assigned_at = assigned_at
+        update_fields.append('last_assigned_at')
+
+    if update_fields:
+        printer.save(update_fields=update_fields)
+
+    return printer
+
+
+def select_printer_for_document(
+    document,
+    *,
+    allowed_statuses,
+    exclude_printer_id=None,
+    exclude_printer_ids=None,
+    lock_rows=False,
+):
+    available_printers = _available_printers_for_document(
+        document,
+        allowed_statuses=allowed_statuses,
+        exclude_printer_id=exclude_printer_id,
+        exclude_printer_ids=exclude_printer_ids,
+        lock_rows=lock_rows,
+        sync_scheduler_state=True,
+    )
+    return available_printers[0] if available_printers else None
+
+
+def _failed_printer_ids_for_document(document):
+    """Return the set of printer IDs that have already failed for this document.
+
+    A printer is considered failed if there is at least one RerouteHistory entry
+    for this document whose status starts with 'Error', 'Stalled', 'Failed', or
+    'Timeout'. This is used to prevent the rerouter from ping-ponging between
+    the same handful of unhealthy printers forever.
+    """
+    failure_prefixes = ('Error', 'Stalled', 'Failed', 'Timeout')
+    failure_filter = Q()
+    for prefix in failure_prefixes:
+        failure_filter |= Q(status__istartswith=prefix)
+
+    failed_ids = set(
+        RerouteHistory.objects
+        .filter(document=document)
+        .filter(failure_filter)
+        .exclude(printer__isnull=True)
+        .values_list('printer_id', flat=True)
+    )
+    return failed_ids
+
+
+def _active_printer_error_count():
+    return Printer.objects.filter(is_temporarily_disabled=False).exclude(
+        printer_status__in=['Sleep', 'Ready', 'Printing']
+    ).count()
+
+
+PRINTER_OPERATIONAL_STATUSES = {
+    'ready',
+    'sleep',
+    'printing',
+    'please wait.',
+}
+
+
+def _normalized_printer_status(printer):
+    status_value = (getattr(printer, 'printer_status', '') or '').strip().lower()
+    return status_value
+
+
+def _printer_is_operational(printer):
+    return _normalized_printer_status(printer) in PRINTER_OPERATIONAL_STATUSES
+
+
+def _printer_has_hard_fault(printer):
+    return not _printer_is_operational(printer)
+
+
+def _terminal_no_printer_reason(document, *, exclude_printer_ids=None):
+    candidate_printers = list(
+        Printer.objects.filter(
+            paper_assigned=document.paper_size,
+            is_temporarily_disabled=False,
+        )
+    )
+
+    excluded_ids = {pid for pid in (exclude_printer_ids or set()) if pid is not None}
+
+    if not candidate_printers:
+        return f'No active printer supports {document.paper_size} paper.'
+
+    eligible_candidates = [printer for printer in candidate_printers if printer.id not in excluded_ids]
+    if excluded_ids and not eligible_candidates:
+        exhausted_printers = [printer.printer_name for printer in candidate_printers if printer.id in excluded_ids]
+        return (
+            f'No eligible printer remains for {document.paper_size} after failures on '
+            + ', '.join(exhausted_printers)
+            + '.'
+        )
+
+    healthy_and_stocked = [
+        printer for printer in eligible_candidates
+        if not _printer_has_hard_fault(printer) and _printer_has_required_stock(printer, document)
+    ]
+    if healthy_and_stocked:
+        return None
+
+    faulted_printers = [printer.printer_name for printer in eligible_candidates if _printer_has_hard_fault(printer)]
+    stock_blocked_printers = [
+        printer.printer_name for printer in eligible_candidates
+        if not _printer_has_required_stock(printer, document)
+    ]
+
+    reason_parts = []
+    if faulted_printers:
+        reason_parts.append(f'hard faults on {", ".join(faulted_printers)}')
+    if stock_blocked_printers:
+        reason_parts.append(f'insufficient paper stock on {", ".join(stock_blocked_printers)}')
+
+    if reason_parts:
+        return (
+            f'No eligible printer can currently print {document.paper_size} because '
+            + '; '.join(reason_parts)
+            + '.'
+        )
+
+    return None
 
 
 def voucher_management(request):
@@ -165,6 +1070,69 @@ def voucher_management(request):
     
     return render(request, 'vouchers.html', {
         'vouchers': vouchers,
+    })
+
+
+def sales_dashboard(request):
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        raise Http404("User not found in session")
+
+    try:
+        user = AdminUser.objects.get(id=user_id)
+    except AdminUser.DoesNotExist:
+        raise Http404("User not found")
+
+    active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
+    site = SiteSetting.load()
+    paid_payments = Payment.objects.select_related('doc').filter(payment_status='Paid')
+
+    search_query = (request.GET.get('q') or '').strip()
+    date_from = (request.GET.get('date_from') or '').strip()
+    date_to = (request.GET.get('date_to') or '').strip()
+    voucher_filter = _get_sales_voucher_filter(request)
+    paid_payments = _apply_sales_voucher_filter(paid_payments, voucher_filter)
+    filtered_payments = paid_payments
+
+    if search_query:
+        normalized_search = search_query.strip().lstrip('#')
+        filtered_payments = filtered_payments.filter(
+            Q(customer_id_snapshot__icontains=normalized_search)
+            | Q(doc_id_snapshot__icontains=normalized_search)
+            | Q(doc__customer_id__icontains=normalized_search)
+            | Q(doc__doc_id__icontains=normalized_search)
+        )
+
+    if date_from:
+        filtered_payments = filtered_payments.filter(approved_at__gte=f'{date_from}T00:00:00')
+    if date_to:
+        filtered_payments = filtered_payments.filter(approved_at__lt=f'{date_to}T23:59:59.999999')
+
+    today = timezone.localdate()
+    today_start, tomorrow_start = _local_day_bounds(today)
+    month_start, next_month_start = _month_start_bounds(today)
+
+    today_sales = paid_payments.filter(approved_at__gte=today_start, approved_at__lt=tomorrow_start).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+    month_sales = paid_payments.filter(approved_at__gte=month_start, approved_at__lt=next_month_start).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+    lifetime_sales = paid_payments.aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+    recent_sales = _build_sales_records(filtered_payments.order_by('-approved_at', '-id')[:250])[:100]
+    paid_transactions_count = len(recent_sales)
+
+    return render(request, 'sales.html', {
+        'user': user,
+        'active_tickets_count': active_tickets_count,
+        'today_sales': today_sales,
+        'month_sales': month_sales,
+        'lifetime_sales': lifetime_sales,
+        'paid_transactions_count': paid_transactions_count,
+        'recent_sales': recent_sales,
+        'today_label': today.strftime('%b %d, %Y'),
+        'month_label': today.strftime('%B %Y'),
+        'sales_search_query': search_query,
+        'sales_date_from': date_from,
+        'sales_date_to': date_to,
+        'sales_voucher_filter': voucher_filter,
+        'pricing_config': _pricing_settings_context(site),
     })
 
 
@@ -229,6 +1197,11 @@ def generate_voucher_api(request):
     try:
         data = json.loads(request.body)
         amount = data.get('amount')
+        admin_name = ''
+        try:
+            admin_name = AdminUser.objects.get(id=user_id).name
+        except AdminUser.DoesNotExist:
+            pass
         
         if amount is None:
             return JsonResponse({'success': False, 'error': 'Amount is required'})
@@ -252,6 +1225,13 @@ def generate_voucher_api(request):
             remaining_balance=amount,
             is_active=True,
             expires_at=timezone.now() + timedelta(days=VOUCHER_CREDIT_EXPIRY_DAYS),
+        )
+        _log_voucher_audit(
+            voucher,
+            action='created',
+            amount=Decimal(str(amount)),
+            performed_by=admin_name,
+            details='Voucher created by admin.',
         )
         
         return JsonResponse({
@@ -291,8 +1271,20 @@ def toggle_voucher_api(request):
         data = json.loads(request.body)
         voucher_id = data.get('id')
         voucher = VoucherCredit.objects.get(id=voucher_id)
+        admin_name = ''
+        try:
+            admin_name = AdminUser.objects.get(id=user_id).name
+        except AdminUser.DoesNotExist:
+            pass
         voucher.is_active = not voucher.is_active
         voucher.save(update_fields=['is_active'])
+        _log_voucher_audit(
+            voucher,
+            action='deactivated' if not voucher.is_active else 'reactivated',
+            amount=Decimal('0.00'),
+            performed_by=admin_name,
+            details=f'Voucher manually {"deactivated" if not voucher.is_active else "reactivated"} by admin.',
+        )
         
         return JsonResponse({
             'success': True,
@@ -317,6 +1309,18 @@ def delete_voucher_api(request):
         data = json.loads(request.body)
         voucher_id = data.get('id')
         voucher = VoucherCredit.objects.get(id=voucher_id)
+        admin_name = ''
+        try:
+            admin_name = AdminUser.objects.get(id=user_id).name
+        except AdminUser.DoesNotExist:
+            pass
+        _log_voucher_audit(
+            voucher,
+            action='deleted',
+            amount=Decimal('0.00'),
+            performed_by=admin_name,
+            details='Voucher deleted by admin.',
+        )
         voucher.delete()
         return JsonResponse({'success': True})
     except VoucherCredit.DoesNotExist:
@@ -395,26 +1399,28 @@ def get_active_tickets_api(request):
         # Attach payment amounts and format data
         active_tickets_data = []
         for ticket in active_tickets:
-            payment_amount = None
-            if ticket.document:
-                payment = Payment.objects.filter(doc=ticket.document).first()
-                if payment:
-                    payment_amount = float(payment.price)
+            payment_amount = _get_ticket_payment_amount(ticket)
+
+            customer_id_display = _format_dashboard_customer_id(ticket.customer_id)
+            document_ids_display, document_meta_display = _get_dashboard_document_display(ticket)
             
             active_tickets_data.append({
                 'id': ticket.id,
                 'ticket_number': ticket.ticket_number,
                 'customer_id': ticket.customer_id,
+                'customer_id_display': customer_id_display,
                 'customer_name': ticket.customer_name,
                 'email': ticket.email,
                 'phone_number': ticket.phone_number,
                 'document_name': ticket.document_name,
+                'document_ids_display': document_ids_display,
+                'document_meta_display': document_meta_display,
                 'problem_type': ticket.get_problem_type_display(),
                 'description': ticket.description,
                 'created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                'payment_amount': payment_amount,
+                'payment_amount': float(payment_amount) if payment_amount is not None else None,
                 'was_reprinted': ticket.was_reprinted,
-                'doc_id': ticket.document.doc_id if ticket.document else '',
+                'doc_id': _get_ticket_primary_doc_id(ticket),
                 'gcash_number': ticket.gcash_number,
                 'receipt_code': ticket.receipt_code,
                 'receipt_screenshot_url': ticket.receipt_screenshot.url if ticket.receipt_screenshot else '',
@@ -422,26 +1428,28 @@ def get_active_tickets_api(request):
         
         resolved_tickets_data = []
         for ticket in resolved_tickets:
-            payment_amount = None
-            if ticket.document:
-                payment = Payment.objects.filter(doc=ticket.document).first()
-                if payment:
-                    payment_amount = float(payment.price)
+            payment_amount = _get_ticket_payment_amount(ticket)
+
+            customer_id_display = _format_dashboard_customer_id(ticket.customer_id)
+            document_ids_display, document_meta_display = _get_dashboard_document_display(ticket)
             
             resolved_tickets_data.append({
                 'id': ticket.id,
                 'ticket_number': ticket.ticket_number,
                 'customer_id': ticket.customer_id,
+                'customer_id_display': customer_id_display,
                 'customer_name': ticket.customer_name,
                 'email': ticket.email,
                 'phone_number': ticket.phone_number,
                 'document_name': ticket.document_name,
+                'document_ids_display': document_ids_display,
+                'document_meta_display': document_meta_display,
                 'problem_type': ticket.get_problem_type_display(),
                 'description': ticket.description,
                 'created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                'payment_amount': payment_amount,
+                'payment_amount': float(payment_amount) if payment_amount is not None else None,
                 'was_reprinted': ticket.was_reprinted,
-                'doc_id': ticket.document.doc_id if ticket.document else '',
+                'doc_id': _get_ticket_primary_doc_id(ticket),
                 'status': ticket.get_status_display(),
                 'resolved_by': ticket.resolved_by,
                 'gcash_number': ticket.gcash_number,
@@ -453,12 +1461,19 @@ def get_active_tickets_api(request):
                 'receipt_screenshot_url': ticket.receipt_screenshot.url if ticket.receipt_screenshot else '',
             })
         
+        today_start, tomorrow_start = _local_day_bounds()
+        sales_voucher_filter = _normalize_sales_voucher_filter(request.session.get('sales_voucher_filter', 'exclude'))
         return JsonResponse({
             'success': True,
             'active_tickets': active_tickets_data,
             'resolved_tickets': resolved_tickets_data,
             'active_count': len(active_tickets_data),
             'resolved_count': len(resolved_tickets_data),
+            'sales_today_amount': float(_apply_sales_voucher_filter(Payment.objects.filter(
+                payment_status='Paid',
+                approved_at__gte=today_start,
+                approved_at__lt=tomorrow_start,
+            ), sales_voucher_filter).aggregate(total=Sum('price'))['total'] or Decimal('0.00')),
         })
     except Exception as e:
         logger.error(f"Error fetching active tickets: {str(e)}")
@@ -467,14 +1482,11 @@ def get_active_tickets_api(request):
 
 def payment(request):
     """
-    Handle payment gateway for documents via KLCiS integration.
-    
-    Flow:
-    1. GET: Display payment form with documents and total price
-    2. POST (action=initiate): Generate voucher code, upload to KLCiS, return payment URL
-    3. POST (action=verify): Verify voucher code entered by customer, approve documents
+    Handle the SafePrint-managed GCash payment flow backed by Firebase.
     """
-    # Default context to prevent auto-close
+    site = SiteSetting.load()
+    gateway_context = _payment_gateway_context(site)
+
     default_context = {
         'customer_id': '',
         'documents': [],
@@ -482,7 +1494,7 @@ def payment(request):
         'stars': range(1, 6),
         'debug': False,
         'error': None,
-        'klcis_base_url': settings.KLCIS_BASE_URL,
+        'payment_config': gateway_context,
     }
     
     if request.method == 'GET':
@@ -566,6 +1578,7 @@ def payment(request):
                 'total_price': round(total_price, 2),
                 'doc_ids_json': json.dumps(doc_ids_list),
                 'stars': stars,
+                'payment_config': gateway_context,
             })
             
             return render(request, 'payment.html', context)
@@ -589,10 +1602,12 @@ def payment(request):
                 })
 
             # ─────────────────────────────────────────────
-            # ACTION: INITIATE — Calculate charges, apply credit, create payment
+            # ACTION: INITIATE — Create local payment intent and show GCash instructions
             # ─────────────────────────────────────────────
             if action == 'initiate':
-                phone_number = data.get('phone_number', '').strip()
+                _expire_stale_payment_intents(customer_id=customer_id)
+
+                phone_number = normalize_phone_number(data.get('phone_number', '').strip())
                 voucher_credit_code = data.get('voucher_credit_code', '').strip().upper()
 
                 if not documents_ids:
@@ -602,25 +1617,25 @@ def payment(request):
                     })
 
                 # ─── Check printer availability before proceeding ───
-                pending_docs = Document.objects.filter(doc_id__in=documents_ids, doc_status='Pending')
-                for doc in pending_docs:
-                    matching_printers = Printer.objects.filter(
-                        paper_assigned=doc.paper_size,
-                        paper_quality=doc.paper_quality,
-                        printer_status__in=['Ready', 'Printing', 'Sleep']
-                    )
-                    if not matching_printers.exists():
-                        return JsonResponse({
-                            'success': False,
-                            'error': f'No available printer for {doc.paper_size} {doc.paper_quality} GSM. All matching printers are currently offline or unavailable. Please try again later.'
-                        })
+                if site.block_payment_when_printers_unavailable:
+                    pending_docs = Document.objects.filter(doc_id__in=documents_ids, doc_status='Pending')
+                    for doc in pending_docs:
+                        matching_printers = _get_matching_printers(
+                            doc,
+                            allowed_statuses=['Ready', 'Printing', 'Sleep'],
+                        )
+                        if not matching_printers:
+                            return JsonResponse({
+                                'success': False,
+                                'error': f'No available printer for {doc.paper_size} with enough paper loaded. Please try again later.'
+                            })
 
                 # Calculate total price from Payment records
-                total_price = 0.0
+                total_price = Decimal('0.00')
                 for doc_id in documents_ids:
                     try:
                         payment_obj = Payment.objects.get(doc__doc_id=doc_id)
-                        total_price += float(payment_obj.price)
+                        total_price += Decimal(payment_obj.price)
                     except Payment.DoesNotExist:
                         pass
                 
@@ -631,11 +1646,10 @@ def payment(request):
                     })
                 
                 # ─── Apply voucher credit if provided ───
-                credit_applied = 0.0
+                credit_applied = Decimal('0.00')
                 credit_voucher = None
                 
                 if voucher_credit_code:
-                    from portal.models import VoucherCredit
                     try:
                         credit_voucher = VoucherCredit.objects.get(code=voucher_credit_code)
                     except VoucherCredit.DoesNotExist:
@@ -652,7 +1666,7 @@ def payment(request):
                     
                     # Apply up to the voucher balance
                     credit_applied = min(
-                        float(credit_voucher.remaining_balance),
+                        Decimal(credit_voucher.remaining_balance),
                         total_price
                     )
                 
@@ -660,39 +1674,39 @@ def payment(request):
                 
                 # ─── Case 1: Fully covered by credit (₱0 charge) ───
                 if balance_due <= 0:
-                    # Skip KLCiS entirely — approve documents directly
                     with transaction.atomic():
-                        # Deduct credit from voucher
-                        credit_voucher.remaining_balance = float(credit_voucher.remaining_balance) - credit_applied
+                        credit_voucher.remaining_balance = Decimal(credit_voucher.remaining_balance) - credit_applied
                         if credit_voucher.remaining_balance <= 0:
-                            credit_voucher.remaining_balance = 0
+                            credit_voucher.remaining_balance = Decimal('0.00')
                             credit_voucher.is_active = False
+                        credit_voucher.last_customer_id = customer_id
                         credit_voucher.last_used_at = timezone.now()
                         credit_voucher.save()
+                        _log_voucher_audit(
+                            credit_voucher,
+                            action='redeemed',
+                            amount=credit_applied,
+                            customer_id=customer_id,
+                            reference=voucher_credit_code,
+                            details='Voucher fully redeemed for a credit-only payment.',
+                        )
                         
-                        # Update all Payment records — mark as Paid
-                        for doc_id in documents_ids:
-                            try:
-                                payment_obj = Payment.objects.get(doc__doc_id=doc_id)
-                                payment_obj.payment_status = 'Paid'
-                                payment_obj.payment_method = 'voucher_credit'
-                                payment_obj.approved_at = timezone.now()
-                                payment_obj.approved_by = f'Credit:{voucher_credit_code}'
-                                payment_obj.save()
-                                
-                                # Queue document for printing
-                                doc = payment_obj.doc
-                                doc.doc_status = 'Queued'
-                                doc.save()
-                            except Payment.DoesNotExist:
-                                pass
+                        payments = list(
+                            Payment.objects.select_related('doc').filter(
+                                doc__doc_id__in=documents_ids,
+                                doc__customer_id=customer_id,
+                            )
+                        )
+                        _mark_customer_documents_paid(
+                            payments,
+                            approved_by=f'Credit:{voucher_credit_code}',
+                            payment_method='voucher_credit',
+                        )
                     
                     remaining = float(credit_voucher.remaining_balance)
                     
                     # Store remaining credit info in session + DB for confirmation page coupon
                     if remaining > 0:
-                        credit_voucher.last_customer_id = customer_id
-                        credit_voucher.save()
                         request.session['credit_info'] = {
                             'code': voucher_credit_code,
                             'balance': remaining,
@@ -708,319 +1722,304 @@ def payment(request):
                         'credit_code': voucher_credit_code if remaining > 0 else None,
                     })
                 
-                # ─── Phone number is required from here (KLCiS payment needed) ───
+                # ─── Phone number is required from here ───
                 if not phone_number:
                     return JsonResponse({
                         'success': False,
                         'error': 'Phone number is required for payment.'
                     })
-                
-                # ─── Case 2: Balance < ₱5 minimum — bump to ₱5 ───
-                charge_amount = balance_due
-                excess_credit = 0.0
-                
-                if charge_amount < XENDIT_MIN_AMOUNT:
-                    excess_credit = XENDIT_MIN_AMOUNT - charge_amount
-                    charge_amount = XENDIT_MIN_AMOUNT
-                
-                # Generate a unique voucher code for KLCiS
-                import random, string
-                klcis_voucher_code = ''.join(random.choices(
-                    string.ascii_lowercase + string.digits, k=8
-                ))
-                
-                # Upload voucher to KLCiS dashboard
-                from portal.services.klcis import create_and_upload_voucher, get_checkout_url, snapshot_existing_transactions
-                result = create_and_upload_voucher(klcis_voucher_code, charge_amount)
-                
-                if not result['success']:
+
+                if not re.match(r'^0?9\d{9}$', phone_number):
                     return JsonResponse({
                         'success': False,
-                        'error': f'Payment setup failed: {result["message"]}'
+                        'error': 'A valid GCash number is required for payment.'
                     })
                 
-                # Snapshot existing PAID transactions for dedup
-                baseline_txn_ids = snapshot_existing_transactions(phone_number, charge_amount)
-                request.session['baseline_txn_ids'] = baseline_txn_ids
-                
-                # Deduct credit from voucher NOW (optimistic — refund if cancelled)
-                if credit_voucher and credit_applied > 0:
-                    credit_voucher.remaining_balance = float(credit_voucher.remaining_balance) - credit_applied
-                    if credit_voucher.remaining_balance <= 0:
-                        credit_voucher.remaining_balance = 0
-                        credit_voucher.is_active = False
-                    credit_voucher.last_used_at = timezone.now()
-                    credit_voucher.save()
-                
-                # Store metadata in all Payment records
-                for doc_id in documents_ids:
-                    try:
-                        payment_obj = Payment.objects.get(doc__doc_id=doc_id)
-                        payment_obj.voucher_code = klcis_voucher_code
-                        payment_obj.payment_method = 'klcis'
+                with transaction.atomic():
+                    existing_intents = list(
+                        PaymentIntent.objects.select_for_update().filter(
+                            customer_id=customer_id,
+                            status=PaymentIntent.STATUS_PENDING,
+                        )
+                    )
+                    for pending_intent in existing_intents:
+                        _refund_reserved_voucher(pending_intent)
+                        pending_intent.status = PaymentIntent.STATUS_CANCELLED
+                        pending_intent.save(update_fields=['status', 'updated_at'])
+
+                    if credit_voucher and credit_applied > 0:
+                        credit_voucher = VoucherCredit.objects.select_for_update().get(pk=credit_voucher.pk)
+                        if not credit_voucher.is_usable or Decimal(credit_voucher.remaining_balance) < credit_applied:
+                            return JsonResponse({
+                                'success': False,
+                                'error': 'Voucher balance is no longer available. Please re-apply the voucher.',
+                            })
+                        credit_voucher.remaining_balance = Decimal(credit_voucher.remaining_balance) - credit_applied
+                        if credit_voucher.remaining_balance <= 0:
+                            credit_voucher.remaining_balance = Decimal('0.00')
+                            credit_voucher.is_active = False
+                        credit_voucher.last_used_at = timezone.now()
+                        credit_voucher.save(update_fields=['remaining_balance', 'is_active', 'last_used_at'])
+
+                    expires_at = timezone.now() + timedelta(minutes=site.payment_expiry_minutes or 10)
+                    payment_intent = PaymentIntent.objects.create(
+                        customer_id=customer_id,
+                        doc_ids=list(documents_ids),
+                        payer_number=phone_number,
+                        expected_amount=balance_due,
+                        voucher_credit_code=voucher_credit_code,
+                        credit_applied=credit_applied,
+                        recipient_name=gateway_context['recipient_name'],
+                        recipient_number=gateway_context['recipient_number'],
+                        expires_at=expires_at,
+                    )
+
+                    if credit_voucher and credit_applied > 0:
+                        _log_voucher_audit(
+                            credit_voucher,
+                            action='reserved',
+                            amount=credit_applied,
+                            customer_id=customer_id,
+                            reference=str(payment_intent.intent_id),
+                            details='Voucher credit reserved for a pending GCash listener payment intent.',
+                        )
+
+                    for payment_obj in Payment.objects.filter(doc__doc_id__in=documents_ids):
+                        payment_obj.payment_method = 'gcash_listener'
                         payment_obj.phone_number = phone_number
-                        payment_obj.save()
-                    except Payment.DoesNotExist:
-                        pass
-                
-                # Build direct checkout URL
-                checkout_url = get_checkout_url(charge_amount, phone_number)
-                
-                # Store session metadata for redirect handling & credit tracking
+                        payment_obj.save(update_fields=['payment_method', 'phone_number'])
+
                 request.session['pending_payment_cid'] = customer_id
                 request.session['pending_payment_doc_ids'] = documents_ids
-                request.session['pending_excess_credit'] = excess_credit
-                request.session['pending_credit_code'] = voucher_credit_code if voucher_credit_code else None
-                request.session['pending_credit_applied'] = credit_applied
-                request.session['pending_charge_amount'] = float(charge_amount)
-                
+
                 return JsonResponse({
                     'success': True,
                     'mode': 'payment',
-                    'message': 'Payment link created',
-                    'checkout_url': checkout_url,
-                    'voucher_code': klcis_voucher_code,
-                    'amount': int(round(charge_amount)),
-                    'original_total': round(total_price, 2),
-                    'credit_applied': round(credit_applied, 2),
-                    'excess_credit': round(excess_credit, 2),
+                    'message': 'Payment instructions ready.',
+                    'payment_intent_id': str(payment_intent.intent_id),
+                    'amount': float(balance_due),
+                    'original_total': float(total_price),
+                    'credit_applied': float(credit_applied),
+                    'recipient_name': gateway_context['recipient_name'],
+                    'recipient_number': gateway_context['recipient_number'],
+                    'recipient_qr_url': gateway_context['recipient_qr_url'],
+                    'payment_expiry_minutes': gateway_context['payment_expiry_minutes'],
+                    'expires_at': expires_at.isoformat(),
+                    'open_url': 'gcash://',
                 })
 
             # ─────────────────────────────────────────────
-            # ACTION: VERIFY — Poll KLCiS to check if payment is complete
+            # ACTION: VERIFY — Match pending payment intent against Firestore notification
             # ─────────────────────────────────────────────
             elif action == 'verify':
-                # Find pending payments for this customer that have a voucher code
-                payments = Payment.objects.filter(
-                    doc__customer_id=customer_id,
-                    payment_status='Unpaid',
-                    voucher_code__isnull=False,
-                ).exclude(voucher_code='')
-                
-                if not payments.exists():
-                    # Check if payments are already Paid (user re-visiting page)
+                _expire_stale_payment_intents(customer_id=customer_id)
+
+                payment_intent = PaymentIntent.objects.filter(
+                    customer_id=customer_id,
+                    status=PaymentIntent.STATUS_PENDING,
+                ).order_by('created_at').first()
+
+                if not payment_intent:
                     already_paid = Payment.objects.filter(
                         doc__customer_id=customer_id,
                         payment_status='Paid',
                     ).exists()
-                    
+
                     if already_paid:
                         return JsonResponse({
                             'success': True,
                             'message': 'Payment already verified! Your documents are queued for printing.',
                             'redirect_url': f'/confirmation/{customer_id}/'
                         })
-                    
+
                     return JsonResponse({
                         'success': False,
                         'error': 'No pending payment found for this customer.'
                     })
-                
-                # Get phone number and total amount for transaction verification
-                first_payment = payments.first()
-                phone_number = first_payment.phone_number
-                voucher_code = first_payment.voucher_code
-                total_amount = sum(float(p.price) for p in payments)
-                
-                # Use the actual charge amount sent to KLCiS (may differ from
-                # total_amount due to Xendit minimum bump or credit deductions)
-                charge_amount = request.session.get('pending_charge_amount')
-                if charge_amount is None:
-                    # Fallback: apply Xendit minimum bump (same logic as initiate)
-                    credit_applied = request.session.get('pending_credit_applied', 0)
-                    balance_due = total_amount - credit_applied
-                    charge_amount = max(balance_due, XENDIT_MIN_AMOUNT)
-                
-                if not phone_number:
+
+                if payment_intent.is_expired:
+                    with transaction.atomic():
+                        locked_intent = PaymentIntent.objects.select_for_update().get(pk=payment_intent.pk)
+                        if locked_intent.status == PaymentIntent.STATUS_PENDING:
+                            _refund_reserved_voucher(locked_intent)
+                            locked_intent.status = PaymentIntent.STATUS_EXPIRED
+                            locked_intent.save(update_fields=['status', 'updated_at'])
                     return JsonResponse({
                         'success': False,
-                        'error': 'No phone number on record for this payment.'
+                        'status': 'expired',
+                        'error': 'This payment attempt expired. Please start a new payment attempt.',
                     })
-                
-                # Collect Transaction IDs already used by previous payments (dedup)
-                # From active Payment records
-                used_txn_ids = set(
-                    Payment.objects.filter(
-                        klcis_transaction_id__isnull=False,
-                    ).exclude(
-                        klcis_transaction_id=''
-                    ).values_list('klcis_transaction_id', flat=True)
-                )
-                # From persistent used-transaction table (survives Payment deletion)
-                from portal.models import UsedKLCiSTransaction
-                used_txn_ids |= set(
-                    UsedKLCiSTransaction.objects.values_list('transaction_id', flat=True)
-                )
-                
-                # Merge baseline snapshot IDs (transactions that existed BEFORE
-                # this payment was initiated — prevents matching old transactions)
-                baseline_ids = set(request.session.get('baseline_txn_ids', []))
-                exclude_ids = used_txn_ids | baseline_ids
-                
-                # Check the KLCiS Transaction Logs page for a PAID entry
-                # matching this phone number + charge amount, excluding old + used txn IDs
-                from portal.services.klcis import verify_transaction_payment
-                result = verify_transaction_payment(phone_number, charge_amount, exclude_ids)
-                
-                if result['success']:
-                    txn_id = result.get('transaction_id')
-                    
-                    # Persist the transaction ID so it survives Payment deletion
-                    if txn_id:
-                        from portal.models import UsedKLCiSTransaction
-                        UsedKLCiSTransaction.objects.get_or_create(
-                            transaction_id=txn_id,
-                            defaults={
-                                'phone_number': phone_number or '',
-                                'amount': charge_amount,
-                            }
+
+                older_pending_intent_exists = PaymentIntent.objects.filter(
+                    status=PaymentIntent.STATUS_PENDING,
+                    payer_number=payment_intent.payer_number,
+                    expected_amount=payment_intent.expected_amount,
+                    created_at__lt=payment_intent.created_at,
+                    expires_at__gte=timezone.now(),
+                ).exclude(pk=payment_intent.pk).exists()
+
+                if older_pending_intent_exists:
+                    return JsonResponse({
+                        'success': False,
+                        'status': 'pending',
+                        'error': 'A previous payment attempt with the same number and amount is still waiting for confirmation.',
+                    })
+
+                try:
+                    candidates = list_matching_notifications(
+                        payer_number=payment_intent.payer_number,
+                        expected_amount=Decimal(payment_intent.expected_amount),
+                        earliest_at=payment_intent.created_at,
+                        latest_at=payment_intent.expires_at,
+                    )
+                except FirebasePaymentError:
+                    return JsonResponse({
+                        'success': False,
+                        'status': 'pending',
+                        'error': 'Automatic payment checking is temporarily unavailable. Please try again in a moment, and keep your receipt for manual review if needed.',
+                    })
+
+                for candidate in candidates:
+                    try:
+                        claimed_payload = claim_notification(
+                            notification_ref=candidate['reference'],
+                            customer_id=customer_id,
+                            intent_id=payment_intent.intent_id,
                         )
-                    
-                    # Payment confirmed! Mark all documents as Queued
+                    except FirebasePaymentError:
+                        return JsonResponse({
+                            'success': False,
+                            'status': 'pending',
+                            'error': 'Automatic payment checking is temporarily unavailable. Please try again in a moment, and keep your receipt for manual review if needed.',
+                        })
+                    if claimed_payload is None:
+                        continue
+
+                    payments = list(
+                        Payment.objects.select_related('doc').filter(
+                            doc__customer_id=customer_id,
+                            doc__doc_id__in=payment_intent.doc_ids,
+                            payment_status='Unpaid',
+                        )
+                    )
+
+                    if not payments:
+                        return JsonResponse({
+                            'success': False,
+                            'error': 'No unpaid documents were found for this payment attempt.',
+                        })
+
                     with transaction.atomic():
-                        for i, payment_obj in enumerate(payments):
-                            payment_obj.payment_status = 'Paid'
-                            payment_obj.approved_at = timezone.now()
-                            payment_obj.approved_by = 'KLCiS-Auto'
-                            # Store txn_id on first payment only (unique constraint)
-                            if i == 0 and txn_id:
-                                payment_obj.klcis_transaction_id = txn_id
-                            payment_obj.save()
-                            
-                            # Update document status to Queued (triggers WRR print)
-                            doc = payment_obj.doc
-                            doc.doc_status = 'Queued'
-                            doc.save()
-                    
-                    # ── Voucher cleanup: Delete voucher from KLCiS ──
-                    if voucher_code:
-                        from portal.services.klcis import cleanup_voucher
-                        cleanup_voucher(voucher_code)
-                    
-                    # ── Handle excess credit from ₱5 minimum ──
-                    excess_credit = request.session.get('pending_excess_credit', 0)
-                    pending_credit_code = request.session.get('pending_credit_code', None)
-                    credit_info = None
-                    
-                    if excess_credit > 0:
-                        from portal.models import VoucherCredit
-                        from datetime import timedelta
-                        import random, string as str_mod
-                        
-                        # Always use the KLCiS voucher code as the new credit code
-                        # (uppercased to match VoucherCredit format).
-                        # If student redeemed an old credit code, the old voucher
-                        # was already depleted — the new KLCiS voucher code becomes
-                        # the new credit code with the excess balance.
-                        new_code = voucher_code.upper() if voucher_code else ''.join(
-                            random.choices(str_mod.ascii_uppercase + str_mod.digits, k=8)
+                        locked_intent = PaymentIntent.objects.select_for_update().get(pk=payment_intent.pk)
+                        if locked_intent.status != PaymentIntent.STATUS_PENDING:
+                            break
+
+                        locked_intent.status = PaymentIntent.STATUS_MATCHED
+                        locked_intent.matched_notification_id = candidate['doc_id']
+                        locked_intent.matched_raw_text = claimed_payload.get('rawText', '')
+                        locked_intent.matched_at = timezone.now()
+                        locked_intent.verification_source = 'firestore'
+                        locked_intent.save(update_fields=['status', 'matched_notification_id', 'matched_raw_text', 'matched_at', 'verification_source', 'updated_at'])
+
+                        if locked_intent.voucher_credit_code and Decimal(locked_intent.credit_applied) > Decimal('0'):
+                            voucher = VoucherCredit.objects.filter(code=locked_intent.voucher_credit_code).first()
+                            if voucher:
+                                _log_voucher_audit(
+                                    voucher,
+                                    action='redeemed',
+                                    amount=Decimal(locked_intent.credit_applied),
+                                    customer_id=locked_intent.customer_id,
+                                    reference=str(locked_intent.intent_id),
+                                    details='Reserved voucher credit finalized after successful GCash listener payment verification.',
+                                )
+
+                        _mark_customer_documents_paid(
+                            payments,
+                            approved_by='GCash-Listener-Auto',
+                            payment_method='gcash_listener',
                         )
-                        vc = VoucherCredit.objects.create(
-                            code=new_code,
-                            original_amount=excess_credit,
-                            remaining_balance=excess_credit,
-                            last_customer_id=customer_id,
-                            expires_at=timezone.now() + timedelta(days=VOUCHER_CREDIT_EXPIRY_DAYS),
-                        )
-                        credit_info = {
-                            'code': vc.code,
-                            'balance': float(vc.remaining_balance),
-                            'expires_at': vc.expires_at.strftime('%B %d, %Y'),
-                        }
-                    
-                    # Store credit info in session for confirmation page display
-                    if credit_info:
-                        request.session['credit_info'] = credit_info
-                    
-                    # Clear pending payment session flags
+
                     request.session.pop('pending_payment_cid', None)
                     request.session.pop('pending_payment_doc_ids', None)
-                    request.session.pop('baseline_txn_ids', None)
-                    request.session.pop('pending_excess_credit', None)
-                    request.session.pop('pending_credit_code', None)
-                    request.session.pop('pending_credit_applied', None)
-                    
+
                     return JsonResponse({
                         'success': True,
                         'message': 'Payment verified! Your documents are now queued for printing.',
                         'redirect_url': f'/confirmation/{customer_id}/',
-                        'credit_info': credit_info,
-                    })
-                else:
-                    return JsonResponse({
-                        'success': False,
-                        'error': 'Payment not yet confirmed. Please complete the payment and try again.',
-                        'status': 'pending'
                     })
 
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Payment not yet confirmed. If auto-detection still fails, keep your receipt for manual review.',
+                    'status': 'pending'
+                })
+
             elif action == 'cancel':
-                # Cancel payment - delete unpaid payments and associated documents
+                # Cancel payment - delete the current unpaid print job and associated documents
                 customer_id = data.get('customer_id')
+                requested_doc_ids = data.get('doc_ids') or []
                 if not customer_id:
                     return JsonResponse({'success': False, 'error': 'Missing customer_id'})
-                
-                # Delete unpaid payments and their documents
-                unpaid_payments = Payment.objects.filter(
-                    doc__customer_id=customer_id,
-                    payment_status='Unpaid'
+
+                if not isinstance(requested_doc_ids, list):
+                    requested_doc_ids = []
+
+                target_doc_ids = [str(doc_id).strip() for doc_id in requested_doc_ids if str(doc_id).strip()]
+                if not target_doc_ids:
+                    session_doc_ids = request.session.get('pending_payment_doc_ids') or []
+                    target_doc_ids = [str(doc_id).strip() for doc_id in session_doc_ids if str(doc_id).strip()]
+
+                pending_intents = list(
+                    PaymentIntent.objects.filter(
+                        customer_id=customer_id,
+                        status=PaymentIntent.STATUS_PENDING,
+                    )
                 )
-                
-                # ── Voucher cleanup: Delete voucher from KLCiS on cancel ──
-                # Don't leave orphaned vouchers sitting on the KLCiS dashboard
-                voucher_codes_to_delete = set(
-                    unpaid_payments.exclude(
-                        voucher_code__isnull=True
-                    ).exclude(
-                        voucher_code=''
-                    ).values_list('voucher_code', flat=True)
+
+                for intent in pending_intents:
+                    with transaction.atomic():
+                        locked_intent = PaymentIntent.objects.select_for_update().get(pk=intent.pk)
+                        if locked_intent.status != PaymentIntent.STATUS_PENDING:
+                            continue
+                        _refund_reserved_voucher(locked_intent)
+                        locked_intent.status = PaymentIntent.STATUS_CANCELLED
+                        locked_intent.save(update_fields=['status', 'updated_at'])
+
+                document_filters = Q(customer_id=customer_id)
+                payment_filters = Q(payment_status='Unpaid') & (
+                    Q(doc__customer_id=customer_id) |
+                    Q(customer_id_snapshot=customer_id)
                 )
-                if voucher_codes_to_delete:
-                    from portal.services.klcis import cleanup_voucher
-                    for vc in voucher_codes_to_delete:
-                        cleanup_voucher(vc)
-                
-                for payment_obj in unpaid_payments:
-                    doc = payment_obj.doc
-                    # Delete the uploaded file
-                    if doc and doc.stored_name:
+
+                if target_doc_ids:
+                    document_filters &= Q(doc_id__in=target_doc_ids)
+                    payment_filters &= (
+                        Q(doc__doc_id__in=target_doc_ids) |
+                        Q(doc_id_snapshot__in=target_doc_ids)
+                    )
+
+                documents_to_delete = list(Document.objects.filter(document_filters))
+                for payment_obj in Payment.objects.filter(payment_filters):
+                    payment_obj.delete()
+
+                for doc in documents_to_delete:
+                    if doc.stored_name:
                         file_path = os.path.join(settings.MEDIA_ROOT, 'uploads', customer_id, doc.stored_name)
                         if os.path.exists(file_path):
                             os.remove(file_path)
-                    # Delete payment and document
-                    payment_obj.delete()
-                    if doc:
-                        doc.delete()
-                
-                # Clean up empty customer upload folder
-                customer_folder = os.path.join(settings.MEDIA_ROOT, 'uploads', customer_id)
-                if os.path.exists(customer_folder) and not os.listdir(customer_folder):
-                    os.rmdir(customer_folder)
-                
-                # ── Refund optimistically deducted credit ──
-                pending_credit_code = request.session.get('pending_credit_code')
-                pending_credit_applied = request.session.get('pending_credit_applied', 0)
-                if pending_credit_code and pending_credit_applied > 0:
-                    from portal.models import VoucherCredit
-                    try:
-                        vc = VoucherCredit.objects.get(code=pending_credit_code)
-                        vc.remaining_balance = float(vc.remaining_balance) + pending_credit_applied
-                        vc.is_active = True
-                        vc.save()
-                        logger.info(
-                            f'Refunded ₱{pending_credit_applied} credit to '
-                            f'voucher {pending_credit_code} on cancel'
-                        )
-                    except VoucherCredit.DoesNotExist:
-                        pass
+                    doc.delete()
+
+                _trigger_upload_folder_cleanup()
                 
                 # Clear session flags
                 request.session.pop('pending_payment_cid', None)
                 request.session.pop('pending_payment_doc_ids', None)
-                request.session.pop('pending_excess_credit', None)
-                request.session.pop('pending_credit_code', None)
-                request.session.pop('pending_credit_applied', None)
-                
-                return JsonResponse({'success': True, 'message': 'Payment cancelled successfully.'})
+
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Payment cancelled successfully.',
+                    'deleted_doc_ids': [doc.doc_id for doc in documents_to_delete],
+                })
 
             else:
                 return JsonResponse({
@@ -1058,7 +2057,50 @@ def printing_queue(request):
     # Reroute histories for on-queue documents
     reroute_histories = {}
     for doc in on_queue_documents:
-        reroute_histories[doc.doc_id] = list(doc.reroute_history.select_related('printer').all())
+        history_entries = list(doc.reroute_history.select_related('printer').all())
+        reroute_histories[doc.doc_id] = history_entries
+
+        printed_pages = sorted({int(page) for page in (doc.pages_printed or [])})
+        printed_sides = doc.get_printed_sides_count()
+        total_sides = doc.get_total_sides()
+        remaining_sides = len(doc.get_remaining_print_jobs())
+        total_pages = doc.get_total_pages()
+        remaining_pages = doc.get_remaining_pages()
+        # Match print_document_async: pages are sent highest-first (reverse order).
+        # The next page to print is the largest remaining page number, not the smallest.
+        next_page = remaining_pages[-1] if remaining_pages else None
+
+        latest_reroute = ''
+        for entry in history_entries:
+            if entry.status == 'Rerouted' and entry.printer:
+                latest_reroute = entry.printer.printer_name
+
+        doc.queue_status_meta = []
+        if latest_reroute:
+            doc.queue_status_meta.append(f'Rerouted to {latest_reroute}')
+        if total_sides:
+            doc.queue_status_meta.append(f'{printed_sides}/{total_sides} side(s) confirmed')
+
+        if printed_pages:
+            ranges = []
+            range_start = printed_pages[0]
+            range_end = printed_pages[0]
+            for page in printed_pages[1:]:
+                if page == range_end + 1:
+                    range_end = page
+                    continue
+                ranges.append(str(range_start) if range_start == range_end else f'{range_start}-{range_end}')
+                range_start = page
+                range_end = page
+            ranges.append(str(range_start) if range_start == range_end else f'{range_start}-{range_end}')
+            page_label = 'Pages' if len(printed_pages) > 1 else 'Page'
+            doc.queue_status_meta.append(f'{page_label} printed: {", ".join(ranges)}')
+
+        if doc.doc_status == 'Printing' and next_page is not None:
+            if total_pages > 0:
+                doc.queue_status_meta.append(f'Printing page {next_page} of {total_pages}')
+            else:
+                doc.queue_status_meta.append(f'Printing page {next_page}')
 
     return render(request, 'queue.html', {
         'on_queue_documents': on_queue_documents,
@@ -1126,11 +2168,9 @@ def printer_status(request):
             printer.ink_status = "N/A"
     
     paper_size_choices = Printer.PAPER_SIZE_CHOICES
-    gsm_choices = Printer.GSM_CHOICES
     return render(request, 'status.html', {
         'printers': printers,
         'paper_size_choices': paper_size_choices,
-        'gsm_choices': gsm_choices,
     })
 
 
@@ -1148,6 +2188,8 @@ def update_printer_field(request):
                 # When setting tray capacity, also initialize tray_current_count if not tracked yet
                 if value is not None and printer.tray_current_count is None:
                     printer.tray_current_count = value
+            elif field == 'is_temporarily_disabled':
+                value = str(value).lower() in ('1', 'true', 'yes', 'on')
             setattr(printer, field, value)
             printer.save()
             return JsonResponse({'success': True})
@@ -1496,7 +2538,7 @@ def deny_all_documents(request):
                             break
         deleted, _ = qs.delete()
         # Trigger folder cleanup after deleting all documents
-        subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+        _trigger_upload_folder_cleanup()
         return JsonResponse({'success': True, 'deleted_count': deleted})
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
@@ -1516,13 +2558,16 @@ def approve_all_documents(request):
         docs = list(qs)  # <-- EVALUATE the queryset BEFORE update!
         if not docs:
             return JsonResponse({'success': False, 'error': 'No pending documents found for this customer'})
+
+        now = timezone.now()
         
         # Update doc_status and status_updated_at for all docs
         for doc in docs:
-            doc.doc_status = 'Queued'
-            doc.printer_assigned = None
-            doc.status_updated_at = now
-            doc.save()
+            _queue_document_for_dispatch(
+                doc,
+                priority=Document.QueuePriority.NORMAL,
+                queued_at=now,
+            )
         updated = len(docs)
 
         # Get admin name from session
@@ -1548,29 +2593,7 @@ def approve_all_documents(request):
                 except Payment.DoesNotExist:
                     pass
         
-        # Start printer assignment for all docs in background
         doc_printer_info = []
-        def assign_printer_async(doc_id):
-            try:
-                doc = Document.objects.get(doc_id=doc_id)
-                if doc.doc_status == 'Queued':
-                    printer = assign_document_to_printer(doc)
-                    if printer:
-                        def print_document_async(doc):
-                            # Always reload doc from DB before printing each page
-                            page_list = doc.get_page_list()
-                            page_list.reverse()
-                            for page_num in page_list:
-                                try:
-                                    fresh_doc = Document.objects.get(doc_id=doc.doc_id)
-                                except Document.DoesNotExist:
-                                    print(f"[CANCELLED] Document {doc.doc_id} was deleted before printing page {page_num}.")
-                                    break
-                                print_page(fresh_doc, page_num)
-                        threading.Thread(target=print_document_async, args=(doc,)).start()
-            except Document.DoesNotExist:
-                print(f"[CANCELLED] Document {doc_id} was deleted or cancelled before printer assignment.")
-
         for doc in docs:
             # Get reroute history for the document
             history_entries = RerouteHistory.objects.filter(document_id=doc.doc_id).select_related('printer').order_by('timestamp')
@@ -1579,8 +2602,9 @@ def approve_all_documents(request):
                 'doc_id': doc.doc_id,
                 'reroute_history': reroute_history
             }
-            threading.Thread(target=assign_printer_async, args=(doc.doc_id,)).start()
             doc_printer_info.append(doc_info)
+
+        _schedule_queue_check(1.0)
 
         return JsonResponse({
             'success': True, 
@@ -1599,7 +2623,17 @@ def deny_document(request):
         if not doc_id:
             return JsonResponse({'success': False, 'error': 'Document ID is required'})
         try:
-            doc = Document.objects.get(doc_id=doc_id)
+            doc = Document.objects.select_related('printer_assigned').get(doc_id=doc_id)
+
+            cancelled_jobs = []
+            if doc.doc_status in ['Queued', 'Printing'] and doc.printer_assigned:
+                cancelled_jobs = _cancel_jobs_for_printer(doc.printer_assigned)
+                RerouteHistory.objects.create(
+                    document=doc,
+                    printer=doc.printer_assigned,
+                    status='Cancelled by admin'
+                )
+
             # Try to delete the file from disk using stored_name
             if doc.stored_name:
                 uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
@@ -1609,10 +2643,11 @@ def deny_document(request):
                         if os.path.isfile(file_path):
                             os.remove(file_path)
                             break
+            _preserve_or_delete_document_payment(doc)
             doc.delete()
             # Trigger folder cleanup after deleting a document
-            subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
-            return JsonResponse({'success': True, 'deleted_count': 1})
+            _trigger_upload_folder_cleanup()
+            return JsonResponse({'success': True, 'deleted_count': 1, 'cancelled_jobs': cancelled_jobs})
         except Document.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Document not found'})
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
@@ -1628,10 +2663,11 @@ def approve_document(request):
         now = timezone.now()
         try:
             doc = Document.objects.get(doc_id=doc_id, doc_status='Pending')
-            doc.doc_status = 'Queued'
-            doc.printer_assigned = None
-            doc.status_updated_at = now
-            doc.save()
+            _queue_document_for_dispatch(
+                doc,
+                priority=Document.QueuePriority.NORMAL,
+                queued_at=now,
+            )
             updated = 1
         except Document.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Document not found'})
@@ -1660,27 +2696,7 @@ def approve_document(request):
         if history_entries.exists():
             reroute_history = [entry.printer.printer_name for entry in history_entries if entry.printer]
 
-        # Start printer assignment in background (don't block UI)
-        def assign_printer_async(doc_id):
-            try:
-                doc = Document.objects.get(doc_id=doc_id)
-                if doc.doc_status == 'Queued':
-                    printer = assign_document_to_printer(doc)
-                    if printer:
-                        def print_document_async(doc):
-                            page_list = doc.get_page_list()
-                            for page_num in page_list:
-                                try:
-                                    fresh_doc = Document.objects.get(doc_id=doc.doc_id)
-                                except Document.DoesNotExist:
-                                    print(f"[CANCELLED] Document {doc.doc_id} was deleted before printing page {page_num}.")
-                                    break
-                                print_page(fresh_doc, page_num)
-                        threading.Thread(target=print_document_async, args=(doc,)).start()
-            except Document.DoesNotExist:
-                print(f"[CANCELLED] Document {doc_id} was deleted or cancelled before printer assignment.")
-
-        threading.Thread(target=assign_printer_async, args=(doc_id,)).start()
+        _schedule_queue_check(1.0)
 
         response_data = {
             'success': True, 
@@ -1807,10 +2823,187 @@ def update_customer_sound_prefs(request):
     return JsonResponse({'success': True})
 
 
+@csrf_exempt
+def update_payment_gateway_settings(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Not authenticated'}, status=403)
+
+    site = SiteSetting.load()
+    recipient_name = request.POST.get('gcash_recipient_name', '').strip()
+    recipient_number = normalize_phone_number(request.POST.get('gcash_recipient_number', '').strip())
+    expiry_minutes = request.POST.get('payment_expiry_minutes', '').strip()
+    color_full_threshold_percent = request.POST.get('color_full_threshold_percent', '').strip()
+    block_when_unavailable = request.POST.get('block_payment_when_printers_unavailable')
+    qr_image = request.FILES.get('gcash_qr_image')
+
+    site.gcash_recipient_name = recipient_name
+    site.gcash_recipient_number = recipient_number
+    if block_when_unavailable is not None:
+        site.block_payment_when_printers_unavailable = str(block_when_unavailable).lower() in ('1', 'true', 'yes', 'on')
+
+    if expiry_minutes:
+        try:
+            site.payment_expiry_minutes = max(1, int(expiry_minutes))
+        except ValueError:
+            return JsonResponse({'success': False, 'error': 'Payment expiry must be a valid number of minutes.'})
+
+    if color_full_threshold_percent:
+        try:
+            threshold_value = Decimal(color_full_threshold_percent)
+        except Exception:
+            return JsonResponse({'success': False, 'error': 'Full color cutoff must be a valid percentage.'})
+
+        if threshold_value < 0 or threshold_value > 100:
+            return JsonResponse({'success': False, 'error': 'Full color cutoff must be between 0 and 100.'})
+        site.color_full_threshold_percent = threshold_value
+
+    if qr_image:
+        if site.gcash_qr_image:
+            site.gcash_qr_image.delete(save=False)
+        site.gcash_qr_image = qr_image
+
+    site.save()
+
+    return JsonResponse({
+        'success': True,
+        'payment_config': _payment_gateway_context(site),
+        'color_full_threshold_percent': str(site.color_full_threshold_percent),
+    })
+
+
+def update_pricing_settings(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Not authenticated'}, status=403)
+
+    site = SiteSetting.load()
+
+    try:
+        letter_bw_price = Decimal(request.POST.get('letter_bw_price', '').strip())
+        letter_partial_price = Decimal(request.POST.get('letter_partial_price', '').strip())
+        letter_full_price = Decimal(request.POST.get('letter_full_price', '').strip())
+        a4_bw_price = Decimal(request.POST.get('a4_bw_price', '').strip())
+        a4_partial_price = Decimal(request.POST.get('a4_partial_price', '').strip())
+        a4_full_price = Decimal(request.POST.get('a4_full_price', '').strip())
+        long_bw_price = Decimal(request.POST.get('long_bw_price', '').strip())
+        long_partial_price = Decimal(request.POST.get('long_partial_price', '').strip())
+        long_full_price = Decimal(request.POST.get('long_full_price', '').strip())
+        color_full_threshold_percent = Decimal(request.POST.get('color_full_threshold_percent', '').strip())
+    except Exception:
+        return JsonResponse({'success': False, 'error': 'Pricing values must be valid numbers.'})
+
+    if any(value < 0 for value in [
+        letter_bw_price,
+        letter_partial_price,
+        letter_full_price,
+        a4_bw_price,
+        a4_partial_price,
+        a4_full_price,
+        long_bw_price,
+        long_partial_price,
+        long_full_price,
+    ]):
+        return JsonResponse({'success': False, 'error': 'Prices cannot be negative.'})
+
+    if color_full_threshold_percent < 0 or color_full_threshold_percent > 100:
+        return JsonResponse({'success': False, 'error': 'Full color cutoff must be between 0 and 100.'})
+
+    site.letter_bw_price = letter_bw_price
+    site.letter_partial_price = letter_partial_price
+    site.letter_full_price = letter_full_price
+    site.a4_bw_price = a4_bw_price
+    site.a4_partial_price = a4_partial_price
+    site.a4_full_price = a4_full_price
+    site.long_bw_price = long_bw_price
+    site.long_partial_price = long_partial_price
+    site.long_full_price = long_full_price
+    site.color_full_threshold_percent = color_full_threshold_percent
+    site.save(update_fields=[
+        'letter_bw_price',
+        'letter_partial_price',
+        'letter_full_price',
+        'a4_bw_price',
+        'a4_partial_price',
+        'a4_full_price',
+        'long_bw_price',
+        'long_partial_price',
+        'long_full_price',
+        'color_full_threshold_percent',
+    ])
+
+    return JsonResponse({
+        'success': True,
+        'pricing_config': _pricing_settings_context(site),
+    })
+
+
+def get_admin_live_logs(request):
+    user_id = request.session.get('admin_user_id')
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=403)
+
+    try:
+        AdminUser.objects.only('id').get(id=user_id)
+    except AdminUser.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=403)
+
+    sources = _admin_log_sources()
+    requested_source = str(request.GET.get('source') or 'gunicorn_error').strip()
+    if requested_source not in sources:
+        requested_source = 'gunicorn_error'
+
+    try:
+        line_count = int(request.GET.get('lines', 120))
+    except (TypeError, ValueError):
+        line_count = 120
+    line_count = max(20, min(line_count, 400))
+
+    selected_source = sources[requested_source]
+    file_path = selected_source['path']
+    content = ''
+    unavailable_reason = ''
+    updated_at = None
+
+    try:
+        if not os.path.exists(file_path):
+            unavailable_reason = 'Log file not found.'
+        else:
+            content = _tail_log_lines(file_path, line_count)
+            updated_at = os.path.getmtime(file_path)
+    except PermissionError:
+        unavailable_reason = 'Log file is not readable by the web app.'
+    except OSError as error:
+        unavailable_reason = f'Failed to read log file: {error}'
+
+    return JsonResponse({
+        'success': True,
+        'sources': [
+            {
+                'id': source_id,
+                'label': source_meta['label'],
+            }
+            for source_id, source_meta in sources.items()
+        ],
+        'selected_source': requested_source,
+        'line_count': line_count,
+        'content': content,
+        'unavailable_reason': unavailable_reason,
+        'updated_at': updated_at,
+    })
+
+
 def printer_status_stream(request):
     # SSE headers
     response = StreamingHttpResponse(printer_status_event_stream(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'
     return response
 
 
@@ -1866,16 +3059,28 @@ def printer_status_event_stream():
                         pass
                 last_printer_states[printer.id] = current_state
 
+                # SNMP often lags behind physical activity; CUPS sees the queue
+                # as "now printing" while the DB still says Sleep/Ready. Overlay
+                # CUPS so the status page matches what users hear/see on the device.
+                display_status = printer.printer_status
+                try:
+                    qname = _resolve_cups_queue_name(printer)
+                    if qname and display_status in ('Sleep', 'Ready'):
+                        if _get_cups_printer_state(qname) == 'printing':
+                            display_status = 'Printing'
+                except Exception:
+                    pass
+
                 data.append({
                     'id': printer.id,
                     'printer_name': printer.printer_name,
                     'model_name': getattr(printer, 'model_name', ''),
                     'ip_address': printer.ip_address,
                     'node_name': getattr(printer, 'node_name', ''),
-                    'printer_status': printer.printer_status,
+                    'printer_status': display_status,
                     'ink_status': ink_status,
                     'paper_assigned': getattr(printer, 'paper_assigned', ''),
-                    'paper_quality': getattr(printer, 'paper_quality', ''),
+                    'is_temporarily_disabled': bool(getattr(printer, 'is_temporarily_disabled', False)),
                 })
             json_data = json.dumps({'printers': data})
             if json_data != last_data:
@@ -1889,12 +3094,13 @@ def printer_status_event_stream():
 
 
 def dashboard_status_stream(request):
-    response = StreamingHttpResponse(dashboard_status_event_stream(), content_type='text/event-stream')
+    sales_voucher_filter = _normalize_sales_voucher_filter(request.session.get('sales_voucher_filter', 'exclude'))
+    response = StreamingHttpResponse(dashboard_status_event_stream(sales_voucher_filter), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
     return response
 
 
-def dashboard_status_event_stream():
+def dashboard_status_event_stream(sales_voucher_filter='exclude'):
     from django.db import close_old_connections
     last_data = None
     try:
@@ -1902,10 +3108,16 @@ def dashboard_status_event_stream():
             close_old_connections()
             # Gather dashboard stats
             completed_jobs_count = Document.objects.filter(doc_status='Finished').count()
-            printer_errors_count = Printer.objects.exclude(printer_status__in=['Sleep', 'Ready', 'Printing']).count()
+            printer_errors_count = _active_printer_error_count()
             pending_customers_count = Document.objects.filter(doc_status='Pending').values('customer_id').distinct().count()
             active_tickets_count = SupportTicket.objects.filter(status__in=['open', 'in-progress']).count()
             resolved_tickets_count = SupportTicket.objects.filter(status__in=['resolved', 'closed', 'voided', 'refunded']).count()
+            today_start, tomorrow_start = _local_day_bounds()
+            sales_today_amount = _apply_sales_voucher_filter(Payment.objects.filter(
+                payment_status='Paid',
+                approved_at__gte=today_start,
+                approved_at__lt=tomorrow_start,
+            ), sales_voucher_filter).aggregate(total=Sum('price'))['total'] or Decimal('0.00')
             # Get recent completed documents (limit 5, order by -printed_at)
             completed_documents = list(
                 Document.objects.filter(doc_status='Finished')
@@ -1925,6 +3137,7 @@ def dashboard_status_event_stream():
                 'pending_customers_count': pending_customers_count,
                 'active_tickets_count': active_tickets_count,
                 'resolved_tickets_count': resolved_tickets_count,
+                'sales_today_amount': float(sales_today_amount),
                 'completed_documents': completed_docs_data,
             }
             json_data = json.dumps(data)
@@ -2005,93 +3218,354 @@ def delete_printer(request):
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 
-@transaction.atomic
-def assign_document_to_printer(document):
+def assign_document_to_printer(document, *, wait_for_availability=True):
     import time as _time
     TIMEOUT_SECONDS = 1800  # 30 minutes
     start_time = _time.monotonic()
     while True:
-        # Check if document still exists and is queued
-        try:
-            doc = Document.objects.get(doc_id=document.doc_id)
-        except Document.DoesNotExist:
-            print(f"[CANCELLED] Document {document.doc_id} was deleted or cancelled before printer assignment.")
-            return None
-        if doc.doc_status != 'Queued':
-            print(f"[CANCELLED] Document {document.doc_id} is no longer queued (status: {doc.doc_status}). Aborting printer assignment.")
-            return None
+        cancel_reason = None
+        wait_message = None
 
-        # Check for 30-minute timeout
-        elapsed = _time.monotonic() - start_time
-        if elapsed >= TIMEOUT_SECONDS:
-            print(f"[TIMEOUT] Document {doc.doc_id} waited {elapsed:.0f}s with no printer available. Auto-cancelling.")
-            doc.doc_status = 'Cancelled'
-            doc.save()
-            # Log timeout in reroute history so cancel_reason propagates via SSE
-            RerouteHistory.objects.create(
-                document=doc,
-                printer=None,
-                status='Error: No printer available for 30 minutes'
-            )
-            print(f"[TIMEOUT] Document {doc.doc_id} cancelled. Customer will be prompted to file a ticket.")
-            return None
+        with transaction.atomic():
+            try:
+                doc = Document.objects.select_for_update().get(doc_id=document.doc_id)
+            except Document.DoesNotExist:
+                print(f"[CANCELLED] Document {document.doc_id} was deleted or cancelled before printer assignment.")
+                return None
+            if doc.doc_status != 'Queued':
+                print(f"[CANCELLED] Document {document.doc_id} is no longer queued (status: {doc.doc_status}). Aborting printer assignment.")
+                return None
 
-        printers = Printer.objects.all()
-        
-        # Check if this is a rerouted document (has reroute history)
-        is_rerouted = RerouteHistory.objects.filter(document=doc).exists()
-        
-        # Skip printers in error state or with non-operational status
-        available = [
-            p for p in printers
-            if p.printer_status in ['Ready', 'Sleep']  # Only use printers in operational status
-            and getattr(p, 'paper_assigned', None) == getattr(document, 'paper_size', None)
-            and getattr(p, 'paper_quality', None) == getattr(document, 'paper_quality', None)
-            # Skip the previous failed printer if rerouting due to error
-            and (not hasattr(document, 'previous_failed_printer') or p.id != document.previous_failed_printer)
-        ]
-        if available:
-            # Sort by idle time (longer idle time first)
-            # For rerouted documents, prioritize by idle time (WRR nonpreemptive approach)
-            # The printer with the longest idle time gets selected
-            available.sort(key=lambda p: p.last_checked or timezone.now())
-            
-            # For debugging
-            if len(available) > 1:
-                print(f"[WRR] Available printers for document {doc.doc_id}:")
-                for p in available:
-                    last_check = p.last_checked or timezone.now()
-                    idle_time = (timezone.now() - last_check).total_seconds()
-                    print(f"  - {p.printer_name}: Status={p.printer_status}, Idle time={idle_time:.1f}s")
-            
-            # Select the printer with longest idle time
-            printer = available[0]
-            
-            # Log WRR selection
-            if is_rerouted:
-                print(f"[WRR] Selected printer {printer.printer_name} for rerouted document {doc.doc_id} based on longest idle time")
+            elapsed = _time.monotonic() - start_time
+            if elapsed >= TIMEOUT_SECONDS:
+                cancel_reason = (
+                    f'No eligible printer became available within {elapsed:.0f} seconds '
+                    f'for {doc.paper_size} paper.'
+                )
             else:
-                print(f"[WRR] Selected printer {printer.printer_name} for document {doc.doc_id} based on longest idle time")
-                
-            doc.printer_assigned = printer
-            doc.doc_status = 'Printing'
-            doc.save()
-            # Log assignment in reroute history
-            RerouteHistory.objects.create(document=doc, printer=printer, status='Assigned')
-            print(f"[ASSIGNED] Document {doc.doc_id} assigned to {printer.printer_name}.")
-            return printer
-        else:
-            print(f"No available printer for {doc.paper_size} ({getattr(doc, 'paper_quality', None)}). Document {doc.doc_id} paused. Retrying in 5 seconds...")
-            _time.sleep(5)
+                is_rerouted = RerouteHistory.objects.filter(document=doc).exists()
+                cumulative_excludes = _failed_printer_ids_for_document(doc)
+                previous_failed_printer = getattr(document, 'previous_failed_printer', None)
+                if previous_failed_printer is not None:
+                    cumulative_excludes.add(previous_failed_printer)
+
+                available = _available_printers_for_document(
+                    doc,
+                    allowed_statuses=['Ready', 'Sleep'],
+                    exclude_printer_ids=cumulative_excludes,
+                    lock_rows=True,
+                    sync_scheduler_state=True,
+                )
+                if available:
+                    if len(available) > 1:
+                        print(f"[SCHED] Available printers for document {doc.doc_id}:")
+                        for printer_option in available:
+                            print(
+                                f"  - {printer_option.printer_name}: status={printer_option.printer_status}, "
+                                f"active_jobs={printer_option.active_job_count}, "
+                                f"last_assigned_at={printer_option.last_assigned_at}, "
+                                f"weight={printer_option.scheduling_weight}"
+                            )
+
+                    printer = available[0]
+                    assigned_at = timezone.now()
+                    print(
+                        f"[SCHED] Selected printer {printer.printer_name} for {doc.doc_id} "
+                        f"(rerouted={is_rerouted}, active_jobs={printer.active_job_count}, "
+                        f"last_assigned_at={printer.last_assigned_at}, weight={printer.scheduling_weight})"
+                    )
+
+                    doc.printer_assigned = printer
+                    doc.doc_status = 'Printing'
+                    doc.save(update_fields=['printer_assigned', 'doc_status', 'status_updated_at'])
+                    _sync_printer_scheduler_state(printer, assigned_at=assigned_at)
+                    RerouteHistory.objects.create(document=doc, printer=printer, status='Assigned')
+                    print(f"[ASSIGNED] Document {doc.doc_id} assigned to {printer.printer_name}.")
+                    return printer
+
+                terminal_reason = _terminal_no_printer_reason(doc, exclude_printer_ids=cumulative_excludes)
+                if terminal_reason:
+                    cancel_reason = terminal_reason
+                elif not wait_for_availability:
+                    print(
+                        f"[ASSIGN] No printer currently available for {doc.doc_id} ({doc.paper_size}). "
+                        "Leaving document queued for a later retry."
+                    )
+                    return None
+                else:
+                    wait_message = (
+                        f"No available printer for {doc.paper_size}. "
+                        f"Document {doc.doc_id} paused and will retry in 5 seconds."
+                    )
+
+        if cancel_reason:
+            print(f"[ASSIGN] {cancel_reason} Cancelling {document.doc_id} with auto voucher.")
+            _cancel_document_with_auto_voucher(document, reason=cancel_reason)
+            return None
+
+        if wait_message:
+            print(wait_message)
+        _time.sleep(5)
 
 
-def print_page(document, page_num):
+def _sanitize_cups_queue_name(value):
+    return str(value or '').replace('-', '_').replace(' ', '_')
+
+
+class QueueResolutionError(RuntimeError):
+    pass
+
+
+def _get_cups_destinations():
+    result = subprocess.run(
+        ['lpstat', '-v'],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    destinations = set()
+    for line in result.stdout.splitlines():
+        match = re.match(r'^device for\s+(\S+):', line.strip())
+        if match:
+            destinations.add(match.group(1))
+    return destinations
+
+
+def _resolve_cups_queue_name(printer, *, destinations=None):
+    if not printer:
+        raise QueueResolutionError('Printer is required for CUPS queue resolution.')
+
+    base_queue = _sanitize_cups_queue_name(printer.model_name or printer.printer_name)
+    fallback_queue = _sanitize_cups_queue_name(printer.printer_name)
+    destinations = _get_cups_destinations() if destinations is None else set(destinations)
+
+    if printer.node_name:
+        node_suffix = printer.node_name.lower()
+        if node_suffix.startswith('brw'):
+            node_suffix = node_suffix[3:]
+        specific_queue = f"{base_queue}_{node_suffix}"
+        if specific_queue in destinations:
+            return specific_queue
+
+        raise QueueResolutionError(
+            f"No CUPS queue matches printer {printer.printer_name} node {printer.node_name}."
+        )
+
+    if fallback_queue in destinations:
+        return fallback_queue
+
+    if base_queue in destinations and base_queue == fallback_queue:
+        return base_queue
+
+    raise QueueResolutionError(
+        f"No unique CUPS queue found for printer {printer.printer_name}."
+    )
+
+
+def _parse_cups_job_id(lp_output):
+    match = re.search(r'request id is\s+(\S+)', lp_output or '')
+    return match.group(1) if match else None
+
+
+def _cups_job_list_contains(lpstat_output, job_id):
+    prefix = f'{job_id} '
+    return any(line.startswith(prefix) for line in (lpstat_output or '').splitlines())
+
+
+def _get_cups_job_state(job_id):
+    if not job_id:
+        return None
+
+    pending = subprocess.run(
+        ['lpstat', '-W', 'not-completed', '-o'],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    completed = subprocess.run(
+        ['lpstat', '-W', 'completed', '-o'],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    pending_has = _cups_job_list_contains(pending.stdout, job_id)
+    completed_has = _cups_job_list_contains(completed.stdout, job_id)
+    if pending_has:
+        return 'pending'
+    if completed_has:
+        return 'completed'
+
+    return 'unknown'
+
+
+def _get_cups_printer_state(queue_name):
+    """Return the queue's current activity from CUPS.
+
+    Possible return values:
+      - 'printing': CUPS reports the printer is actively working a job right now.
+      - 'idle':     CUPS reports the printer is free / not working on anything.
+      - 'stopped':  CUPS reports the queue is disabled or stopped.
+      - 'unknown':  Could not determine state.
+
+    This lets us distinguish a slow-but-busy printer from one that is sitting
+    idle while our job stays 'pending' (a real, fast-recoverable stall).
+    """
+    if not queue_name:
+        return 'unknown'
+    try:
+        result = subprocess.run(
+            ['lpstat', '-p', queue_name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        return 'unknown'
+    if result.returncode != 0:
+        return 'unknown'
+    output = (result.stdout or '').lower()
+    if 'now printing' in output:
+        return 'printing'
+    if 'is idle' in output:
+        return 'idle'
+    if 'disabled' in output or 'stopped' in output:
+        return 'stopped'
+    return 'unknown'
+
+
+def _cancel_cups_job(job_id):
+    if not job_id:
+        return False
+
+    attempts = [
+        ('cancel', ['cancel', job_id]),
+        ('cancel -x', ['cancel', '-x', job_id]),
+    ]
+
+    for label, command in attempts:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        state_after_attempt = _get_cups_job_state(job_id)
+        if result.returncode == 0 and state_after_attempt in (None, 'unknown', 'completed'):
+            print(f"[CUPS] Cancelled job {job_id} with {label} before reroute.")
+            return True
+        if state_after_attempt in (None, 'unknown', 'completed'):
+            print(f"[CUPS] Job {job_id} no longer appears in CUPS after {label}; treating as cancelled.")
+            return True
+
+        stderr = (result.stderr or '').strip()
+        stdout = (result.stdout or '').strip()
+        print(
+            f"[CUPS] {label} did not clear job {job_id}. "
+            f"state={state_after_attempt!r} stdout={stdout!r} stderr={stderr!r}"
+        )
+
+    print(f"[CUPS] Failed to fully cancel job {job_id} before reroute.")
+    return False
+
+
+def _get_cups_jobs_for_queue(queue_name):
+    if not queue_name:
+        return []
+
+    result = subprocess.run(
+        ['lpstat', '-W', 'not-completed', '-o', queue_name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    jobs = []
+    for line in (result.stdout or '').splitlines():
+        token = line.strip().split(' ', 1)[0]
+        if token:
+            jobs.append(token)
+    return jobs
+
+
+def _cancel_jobs_for_printer(printer):
+    if not printer:
+        return []
+
+    try:
+        queue_name = _resolve_cups_queue_name(printer)
+    except QueueResolutionError as exc:
+        print(f"[CUPS] Cannot cancel jobs for printer {printer.printer_name}: {exc}")
+        return []
+
+    job_ids = _get_cups_jobs_for_queue(queue_name)
+    cancelled = [job_id for job_id in job_ids if _cancel_cups_job(job_id)]
+    if cancelled:
+        print(f"[CUPS] Cancelled jobs for printer {printer.printer_name}: {', '.join(cancelled)}")
+    else:
+        print(f"[CUPS] No active jobs found to cancel for printer {printer.printer_name} ({queue_name}).")
+    return cancelled
+
+
+def _recent_matching_reroute_history(document, printer, status, *, within_seconds=5):
+    if not document or not status:
+        return False
+
+    last_entry = RerouteHistory.objects.filter(document=document).order_by('-timestamp').first()
+    if not last_entry:
+        return False
+
+    if last_entry.status != status:
+        return False
+
+    last_printer_id = last_entry.printer_id
+    printer_id = getattr(printer, 'id', None)
+    if last_printer_id != printer_id:
+        return False
+
+    if not last_entry.timestamp:
+        return False
+
+    return (timezone.now() - last_entry.timestamp).total_seconds() <= within_seconds
+
+
+def _finish_document_if_complete(document, *, printer=None):
+    document.refresh_from_db()
+    if document.doc_status in ['Finished', 'Picked Up', 'Cancelled']:
+        return False
+
+    if document.get_remaining_print_jobs():
+        return False
+
+    completion_printer = printer or document.printed_at or document.printer_assigned
+    update_fields = ['doc_status', 'status_updated_at']
+
+    document.doc_status = 'Finished'
+    document.status_updated_at = timezone.now()
+    if completion_printer and document.printed_at_id != completion_printer.id:
+        document.printed_at = completion_printer
+        update_fields.append('printed_at')
+
+    document.save(update_fields=update_fields)
+    printers_to_sync = []
+    if document.printer_assigned_id:
+        printers_to_sync.append(document.printer_assigned)
+    if completion_printer and completion_printer.id not in {printer_obj.id for printer_obj in printers_to_sync if printer_obj}:
+        printers_to_sync.append(completion_printer)
+    for printer_obj in printers_to_sync:
+        _sync_printer_scheduler_state(printer_obj)
+    print(f"[COMPLETE] Document {document.doc_id} printing complete. Printed at: {document.printed_at}")
+    return True
+
+
+def _iter_document_print_jobs(document):
+    for page_num, copy_index, copies in document.get_remaining_print_jobs():
+        yield page_num, copy_index, copies
+
+
+def print_page(document, page_num, *, copy_index=1, total_copies=1):
     # Extract print preferences from document
-    copies = getattr(document, 'copies', 1)
     orientation = getattr(document, 'orientation', 'portrait')
     color_mode = getattr(document, 'color_mode', 'color')
     paper_size = getattr(document, 'paper_size', 'A4')
-    paper_quality = getattr(document, 'paper_quality', 'Standard')
     stored_name = getattr(document, 'stored_name', None)
     session_key = getattr(document, 'session_key', None)
     # Find the file path
@@ -2128,12 +3602,68 @@ def print_page(document, page_num):
         print(f"[REROUTED] Document {document.doc_id} was rerouted from {printer.printer_name} to {document.printer_assigned.printer_name}. Skipping wait for original printer.")
         # Use the new printer for printing
         printer = document.printer_assigned
-    
-    # Only wait for Ready/Sleep if this is the current assigned printer
+
+    try:
+        queue_name = _resolve_cups_queue_name(printer)
+    except QueueResolutionError as exc:
+        error_status = 'Error: Queue map unresolved'
+        print(f"[CUPS] {exc} Rerouting document {document.doc_id} away from printer {printer.printer_name}.")
+        if not _recent_matching_reroute_history(document, printer, error_status):
+            RerouteHistory.objects.create(
+                document=document,
+                printer=printer,
+                status=error_status,
+                timestamp=timezone.now(),
+            )
+        reroute_document_on_error(document, failed_printer=printer, failure_status=error_status)
+        return
+
+    # Use live CUPS queue state as the primary readiness signal before submit.
+    # DB/SNMP status remains only as a hardware-fault fallback for cases like
+    # paper jams, empty trays, or offline devices that CUPS does not describe well.
     if document.printer_assigned and document.printer_assigned.id == printer.id:
-        while printer.printer_status not in ['Ready', 'Sleep']:
-            print(f"[WAIT] Printer {printer.printer_name} is {printer.printer_status}. Waiting for Ready/Sleep...")
-            time.sleep(2)
+        while True:
+            printer.refresh_from_db()
+            cups_printer_state = _get_cups_printer_state(queue_name)
+
+            if cups_printer_state == 'idle':
+                break
+
+            if _printer_has_hard_fault(printer) or not _printer_has_required_stock(printer, document):
+                print(
+                    f"[ERROR] Printer {printer.printer_name} reports a hardware fault "
+                    f"before submit (status={printer.printer_status}, tray={printer.tray_level}). Rerouting document."
+                )
+                RerouteHistory.objects.create(
+                    document=document,
+                    printer=printer,
+                    status=f"Error: {printer.printer_status or printer.tray_level or 'Unavailable'}"
+                )
+                reroute_document_on_error(document, failed_printer=printer)
+                return
+
+            if cups_printer_state == 'stopped':
+                print(f"[ERROR] CUPS queue {queue_name} is stopped for printer {printer.printer_name}. Rerouting document.")
+                RerouteHistory.objects.create(
+                    document=document,
+                    printer=printer,
+                    status=f"Error: CUPS queue stopped ({queue_name})"
+                )
+                reroute_document_on_error(document, failed_printer=printer)
+                return
+
+            if cups_printer_state == 'unknown' and printer.printer_status in ['Ready', 'Sleep']:
+                print(
+                    f"[WAIT] CUPS state is unknown for {printer.printer_name}, but DB status is "
+                    f"{printer.printer_status}. Proceeding with submit."
+                )
+                break
+
+            print(
+                f"[WAIT] Printer {printer.printer_name} not ready for submit yet "
+                f"(cups={cups_printer_state}, db={printer.printer_status}). Waiting..."
+            )
+            time.sleep(1)
             printer.refresh_from_db()
             
             # Check again if document has been rerouted to a different printer
@@ -2145,32 +3675,32 @@ def print_page(document, page_num):
             # Increment retry counter
             retries += 1
             
-            # If printer is stuck in error state or other non-operational state for too long
+            # If the queue stays busy/unknown for too long, stop waiting on this printer
+            # and let the rerouter try another candidate.
             if retries >= max_retries:
-                print(f"[ERROR] Printer {printer.printer_name} is not becoming Ready or Sleep (status: {printer.printer_status}). Rerouting document.")
+                print(
+                    f"[ERROR] Printer {printer.printer_name} is not becoming available for submit "
+                    f"(cups={cups_printer_state}, db={printer.printer_status}). Rerouting document."
+                )
                 
                 # Log the failed printer in reroute history
                 RerouteHistory.objects.create(
                     document=document, 
                     printer=printer,
-                    status=f"Error: {printer.printer_status}"
+                    status=f"Error: submit wait cups={cups_printer_state}, printer={printer.printer_status}"
                 )
-            
-            # Implement preemptive approach - immediately reroute the document
-            print(f"[PREEMPTIVE] Initiating preemptive rerouting for document {document.doc_id} from printer {printer.printer_name}")
-            reroute_document_on_error(document)
-            return
+
+                # Implement preemptive approach only after repeated non-operational checks.
+                print(f"[PREEMPTIVE] Initiating preemptive rerouting for document {document.doc_id} from printer {printer.printer_name}")
+                reroute_document_on_error(document, failed_printer=printer)
+                return
     # Send print job
-    print(f"[PRINT] Sending page {page_num} of document {document.doc_id} to printer {printer.printer_name} ({printer.printer_status})")
-    
-    if getattr(printer, 'model_name', None):
-        model_name = printer.model_name
-        # Convert spaces and dashes to underscores, preserving the Brother prefix
-        model_name = model_name.replace('-', '_').replace(' ', '_')
-    else:
-        model_name = printer.printer_name.replace(' ', '_')
-        
-    print(f"[PRINT] Using CUPS queue name: {model_name}")
+    print(
+        f"[PRINT] Sending page {page_num} copy {copy_index}/{total_copies} of document "
+        f"{document.doc_id} to printer {printer.printer_name} ({printer.printer_status})"
+    )
+
+    print(f"[PRINT] Using CUPS queue name: {queue_name}")
     # Map paper_size to printer-compatible media
     if paper_size == 'Long':
         media_size = 'Folio'  
@@ -2178,8 +3708,8 @@ def print_page(document, page_num):
         media_size = paper_size
     lp_cmd = [
         'lp',
-        '-d', model_name,
-        '-n', str(copies),
+        '-d', queue_name,
+        '-n', '1',
         '-o', f'page-ranges={page_num}',
         '-o', f'orientation-requested={"4" if orientation=="Landscape" else "3"}',
         '-o', f'{"print-color-mode=monochrome" if color_mode=="Black and White" else "print-color-mode=color"}',
@@ -2187,94 +3717,40 @@ def print_page(document, page_num):
         file_path
     ]
     try:
-        subprocess.run(lp_cmd, check=True)
+        lp_result = subprocess.run(lp_cmd, check=True, capture_output=True, text=True)
+        lp_output = (lp_result.stdout or '') + (lp_result.stderr or '')
+        job_id = _parse_cups_job_id(lp_output)
+        if job_id:
+            print(f"[PRINT] Submitted CUPS job {job_id} for document {document.doc_id} page {page_num}")
     except Exception as e:
         print(f"[ERROR] Failed to print page {page_num} of document {document.doc_id} on printer {printer.printer_name}: {e}")
         printer.printer_status = 'Error'
         printer.save()
         print(f"[REROUTE] Rerouting remaining pages of document {document.doc_id}")
-        reroute_document_on_error(document)
+        reroute_document_on_error(document, failed_printer=printer)
         return
-    # Wait for printer status to become 'Printing', abort if document is canceled/deleted
     wait_cycles = 0
-    max_wait_cycles = 30  # Maximum time to wait for printer to start printing (30 seconds)
+    max_wait_cycles = 90
     error_cycles = 0
-    max_error_cycles = 3  # Maximum consecutive error cycles before rerouting (3 seconds)
-    
+    max_error_cycles = 5
+    job_started = False
+    ready_fallback_cycles = 0
+    pending_stall_cycles = 0
+    missing_job_cycles = 0
+    # Fast-stall counter: CUPS reports the queue idle (not working on anything)
+    # while our job is still pending. That means the printer never picked up
+    # our job, so there is no point waiting the full ~60s long-stall threshold.
+    idle_pending_cycles = 0
+
     while True:
         printer.refresh_from_db()
-        # Check if document still exists and is not canceled/deleted
-        try:
-            doc_check = Document.objects.get(doc_id=document.doc_id)
-            # Check if document has been rerouted to a different printer
-            if doc_check.printer_assigned and doc_check.printer_assigned.id != printer.id:
-                print(f"[REROUTED] Document {document.doc_id} was rerouted from {printer.printer_name} to {doc_check.printer_assigned.printer_name} during waiting phase. Stopping original print job.")
-                return
-        except Document.DoesNotExist:
-            print(f"[CANCELLED] Document {document.doc_id} was deleted during printing. Aborting print job for page {page_num}.")
-            return
-        if doc_check.doc_status not in ['Queued', 'Printing']:
-            print(f"[CANCELLED] Document {document.doc_id} status is {doc_check.doc_status}. Aborting print job for page {page_num}.")
-            return
-            
-        # If the printer starts printing, proceed
-        if printer.printer_status == 'Printing':
-            print(f"[SUCCESS] Printed page {page_num} of document {document.doc_id} on printer {printer.printer_name}")
-            break
-            
-        # Detect if printer is in error state or has issues (like no paper)
-        if printer.printer_status not in ['Ready', 'Sleep', 'Printing']:
-            wait_cycles += 1
-            error_cycles += 1
-            print(f"[WARNING] Printer {printer.printer_name} is in '{printer.printer_status}' state. Error cycle {error_cycles}/{max_error_cycles}, Wait cycle {wait_cycles}/{max_wait_cycles}")
-            
-            # If the printer remains in error state for several consecutive cycles, reroute the document
-            if error_cycles >= max_error_cycles:
-                print(f"[ERROR] Printer {printer.printer_name} failed to start printing and is in '{printer.printer_status}' state for {error_cycles} consecutive cycles. Rerouting document.")
-                # Log the error in reroute history
-                RerouteHistory.objects.create(
-                    document=document,
-                    printer=printer,
-                    status=f"Failed to start: {printer.printer_status}",
-                    timestamp=timezone.now()
-                )
-                # Reroute the document
-                reroute_document_on_error(document)
-                return
-        else:
-            # Reset error cycles if printer returns to a normal state
-            error_cycles = 0
-            wait_cycles += 1
-            
-        # If we've waited too long regardless of status, consider rerouting
-        if wait_cycles >= max_wait_cycles:
-            print(f"[TIMEOUT] Printer {printer.printer_name} has been waiting to start printing for too long ({max_wait_cycles} seconds). Rerouting document.")
-            RerouteHistory.objects.create(
-                document=document,
-                printer=printer,
-                status=f"Timeout waiting to start printing: {printer.printer_status}",
-                timestamp=timezone.now()
-            )
-            reroute_document_on_error(document)
-            return
-        else:
-            # Reset wait cycles if printer is in a normal state
-            wait_cycles = 0
-            
-        print(f"[WAIT] Waiting for printer {printer.printer_name} to start printing page {page_num}... (cycle {wait_cycles})")
-        time.sleep(1)
-    # Wait for printer status to become 'Ready' after printing
-    wait_cycles = 0
-    max_wait_cycles = 60  # Maximum time to wait for printer to finish (60 seconds)
-    error_cycles = 0
-    max_error_cycles = 5  # Maximum consecutive error cycles before rerouting (5 seconds)
-    
-    while True:
-        printer.refresh_from_db()
-        
+        cups_job_state = _get_cups_job_state(job_id)
+
         # Also check if the document still exists and hasn't been canceled
         try:
             doc_check = Document.objects.get(doc_id=document.doc_id)
+            if _finish_document_if_complete(doc_check, printer=printer):
+                return
             # Check if document has been rerouted to a different printer
             if doc_check.printer_assigned and doc_check.printer_assigned.id != printer.id:
                 print(f"[REROUTED] Document {document.doc_id} was rerouted from {printer.printer_name} to {doc_check.printer_assigned.printer_name} during printing. Stopping monitoring of original printer.")
@@ -2286,16 +3762,107 @@ def print_page(document, page_num):
         except Document.DoesNotExist:
             print(f"[CANCELLED] Document {document.doc_id} was deleted while waiting for printer to finish. Aborting.")
             return
-            
-        # If printer returned to Ready state, printing is successful
-        if printer.printer_status == 'Ready':
-            print(f"[READY] Printer {printer.printer_name} is ready after printing page {page_num}.")
+
+        if cups_job_state == 'completed':
+            print(f"[CUPS] Job {job_id} completed for document {document.doc_id} page {page_num}.")
             break
+
+        if printer.printer_status == 'Printing' or cups_job_state == 'pending':
+            job_started = True
+            ready_fallback_cycles = 0
+
+        # Some printers keep reporting "Printing" briefly after CUPS has already dropped the job.
+        # Once the job was observed as started, treat a sustained missing CUPS job as completion
+        # instead of waiting forever for SNMP to flip back to Ready/Sleep.
+        if job_id and cups_job_state == 'unknown' and job_started and printer.printer_status in ['Printing', 'Ready', 'Sleep']:
+            missing_job_cycles += 1
+            if missing_job_cycles >= 3:
+                print(
+                    f"[FALLBACK] CUPS no longer reports job {job_id} for document {document.doc_id} "
+                    f"page {page_num} while printer {printer.printer_name} remains {printer.printer_status}. "
+                    "Assuming page completed."
+                )
+                break
+        else:
+            missing_job_cycles = 0
+
+        # Fast-stall path: if CUPS reports the queue is idle but our job is
+        # still 'pending', the printer never picked the job up. Don't make the
+        # customer wait the full 60s long-stall threshold for those — reroute
+        # quickly. A busy "now printing" queue resets this counter immediately.
+        if job_started and cups_job_state == 'pending':
+            cups_printer_activity = _get_cups_printer_state(queue_name)
+            if cups_printer_activity == 'idle':
+                idle_pending_cycles += 1
+            elif cups_printer_activity == 'printing':
+                # Printer is actively working our job — clear both stall counters
+                # and let the normal completion path handle it.
+                idle_pending_cycles = 0
+                pending_stall_cycles = 0
+            else:
+                # Unknown / stopped: don't fast-stall on this cycle but don't
+                # reset either, so a sustained 'unknown' eventually falls through
+                # to the long-stall safety net.
+                pass
+            if idle_pending_cycles >= 8:
+                print(
+                    f"[FAST-STALL] CUPS queue {queue_name} is idle while job {job_id} is pending "
+                    f"for document {document.doc_id} page {page_num}. Initiating reroute."
+                )
+                RerouteHistory.objects.create(
+                    document=document,
+                    printer=printer,
+                    status=f"Stalled: queue idle, cups={cups_job_state}",
+                    timestamp=timezone.now(),
+                )
+                reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
+                return
+        else:
+            idle_pending_cycles = 0
+
+        if job_started and cups_job_state == 'pending' and printer.printer_status in ['Ready', 'Sleep']:
+            pending_stall_cycles += 1
+            # Real printers (e.g. Brother DCP-T430W) can take 30-50s to physically
+            # print a single page; CUPS keeps the job in 'pending' the entire time.
+            # Use a generous 60-cycle (~60s) threshold so we don't reroute a job
+            # that is actually being printed right now.
+            if pending_stall_cycles >= 60:
+                # Final completion check: a previous reproduction proved that the
+                # job often moves to 'completed' within ~0.5s of when the stall
+                # would have fired. Poll once more before declaring a stall so we
+                # don't kill an already-finished print and trigger a duplicate.
+                final_state = _get_cups_job_state(job_id)
+                if final_state == 'completed':
+                    break
+                print(
+                    f"[STALL] Job {job_id or 'unknown'} for document {document.doc_id} stayed pending "
+                    f"while printer {printer.printer_name} remained {printer.printer_status}. Initiating reroute."
+                )
+                RerouteHistory.objects.create(
+                    document=document,
+                    printer=printer,
+                    status=f"Stalled: printer={printer.printer_status}, cups={cups_job_state}",
+                    timestamp=timezone.now()
+                )
+                reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
+                return
+        else:
+            pending_stall_cycles = 0
             
-        # If printer is in Sleep state (some printers go to sleep after printing)
-        if printer.printer_status == 'Sleep':
-            print(f"[SLEEP] Printer {printer.printer_name} went to sleep after printing page {page_num}.")
+        # Only fall back to Ready/Sleep-based completion when CUPS no longer reports the job.
+        if job_id and cups_job_state == 'unknown' and printer.printer_status in ['Ready', 'Sleep']:
+            ready_fallback_cycles += 1
+            if ready_fallback_cycles >= 3:
+                print(
+                    f"[FALLBACK] Printer {printer.printer_name} returned to {printer.printer_status} "
+                    f"and CUPS no longer reports job {job_id} for document {document.doc_id} page {page_num}."
+                )
+                break
+        elif not job_id and job_started and printer.printer_status in ['Ready', 'Sleep']:
+            print(f"[FALLBACK] Printer {printer.printer_name} returned to {printer.printer_status} after printing page {page_num}.")
             break
+        else:
+            ready_fallback_cycles = 0
         
         # If printer is in error state or stuck in a non-operational state
         if printer.printer_status not in ['Printing', 'Sleep', 'Ready']:
@@ -2315,36 +3882,56 @@ def print_page(document, page_num):
                     timestamp=timezone.now()
                 )
                 # Reroute remaining pages (preemptive approach)
-                reroute_document_on_error(document)
+                reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
                 return
         else:
             # Reset error cycles if printer returns to a normal state
             error_cycles = 0
             wait_cycles += 1
             
-            # If the printer is still printing, log status periodically
-            if printer.printer_status == 'Printing' and wait_cycles % 10 == 0:
-                print(f"[PRINTING] Printer {printer.printer_name} is still printing page {page_num}... (wait cycle {wait_cycles}/{max_wait_cycles})")
+            if wait_cycles % 10 == 0:
+                print(
+                    f"[WAIT] Document {document.doc_id} page {page_num}: "
+                    f"printer={printer.printer_status}, cups_job={cups_job_state}, cycle={wait_cycles}/{max_wait_cycles}"
+                )
         
         # If we've waited too long regardless of status, consider rerouting
         if wait_cycles >= max_wait_cycles:
-            print(f"[TIMEOUT] Printer {printer.printer_name} has been printing for too long ({max_wait_cycles} seconds). Initiating reroute.")
+            print(
+                f"[TIMEOUT] Printer {printer.printer_name} did not confirm completion for page {page_num} "
+                f"within {max_wait_cycles} seconds (status={printer.printer_status}, cups_job={cups_job_state}). Initiating reroute."
+            )
             # Log the timeout in reroute history
             RerouteHistory.objects.create(
                 document=document, 
                 printer=printer,
-                status=f"Timeout: Stuck in {printer.printer_status}",
+                status=f"Timeout: printer={printer.printer_status}, cups={cups_job_state}",
                 timestamp=timezone.now()
             )
             # Reroute remaining pages
-            reroute_document_on_error(document)
+            reroute_document_on_error(document, failed_printer=printer, failed_job_id=job_id)
             return
             
-        print(f"[WAIT] Waiting for printer {printer.printer_name} to finish printing page {page_num}... (cycle {wait_cycles})")
         time.sleep(1)
     # Mark page as printed in DB only after successful print and status transitions
-    document.mark_page_printed(page_num)
-    print(f"[MARKED] Page {page_num} of document {document.doc_id} marked as printed.")
+    page_was_already_recorded = page_num in (document.pages_printed or [])
+    side_recorded = document.mark_print_job_completed(page_num, copy_index)
+    if side_recorded and not page_was_already_recorded and page_num in (document.pages_printed or []):
+        RerouteHistory.objects.create(
+            document=document,
+            printer=printer,
+            status=f'Printed page {page_num}'
+        )
+    if side_recorded:
+        print(
+            f"[MARKED] Page {page_num} copy {copy_index}/{total_copies} of document "
+            f"{document.doc_id} marked as complete."
+        )
+    else:
+        print(
+            f"[MARKED] Page {page_num} copy {copy_index}/{total_copies} of document "
+            f"{document.doc_id} was already recorded as complete."
+        )
 
     # Subtract 1 sheet from the printer's tray and update tray level
     printer.refresh_from_db()
@@ -2363,83 +3950,268 @@ def print_page(document, page_num):
         printer.save(update_fields=['tray_current_count', 'tray_level'])
         print(f"[PAPER] Printer {printer.printer_name}: {printer.tray_current_count} sheets remaining ({printer.tray_level})")
 
-    # If all pages printed, set status to Finished and update printed_at to last printer
-    if len(document.get_remaining_pages()) == 0:
-        document.doc_status = 'Finished'
-        document.status_updated_at = timezone.now()
-        # Set printed_at to the last printer used
-        document.printed_at = document.printer_assigned
-        document.save()
-        print(f"[COMPLETE] Document {document.doc_id} printing complete. Printed at: {document.printed_at}")
+    _finish_document_if_complete(document, printer=printer)
 
 
-def reroute_document_on_error(document):
+def reroute_document_on_error(document, failed_printer=None, failed_job_id=None, failure_status=None):
     """
-    Implements the Weighted Round Robin (WRR) approach for rerouting:
+    Reroute a document using the shared printer scheduler:
     - Preemptive: Document with error is immediately stopped and rerouted (already handled by caller)
     - Nonpreemptive: Rerouted document gets priority in the queue but doesn't interrupt current printing
+
+    Safety guarantees:
+    - Never reroutes a document that is already in a terminal state (Finished/Picked Up/Cancelled).
+    - Always re-evaluates completion at the end so the document does not get stuck in 'Printing'
+      after the new printer has actually finished the remaining pages.
     """
+    document.refresh_from_db()
+
+    # Guard: do not reroute a document that is already done or terminated.
+    if document.doc_status in ('Finished', 'Picked Up', 'Cancelled'):
+        print(f"[REROUTE] Skipping reroute for {document.doc_id}; already in terminal state '{document.doc_status}'.")
+        # Cancel any leftover CUPS job from the caller so the queue is clean.
+        if failed_job_id:
+            _cancel_cups_job(failed_job_id)
+        return
+
     remaining_pages = document.get_remaining_pages()
-    
+
+    # Guard: if there is nothing left to print, the document is effectively complete.
+    if not remaining_pages:
+        print(f"[REROUTE] No remaining pages for {document.doc_id}; marking complete instead of rerouting.")
+        if failed_job_id:
+            _cancel_cups_job(failed_job_id)
+        _finish_document_if_complete(document, printer=failed_printer or document.printer_assigned)
+        return
+
     # Store current printer ID as previous failed printer to avoid choosing it again
     current_printer_name = "Unknown"
-    if document.printer_assigned:
+    if failed_printer is None:
+        failed_printer = document.printer_assigned
+
+    if failed_printer:
         # We'll use a temporary attribute to track the failed printer
         # This won't be persisted to database but will be used during this rerouting process
-        document.previous_failed_printer = document.printer_assigned.id
-        current_printer_name = document.printer_assigned.printer_name
+        document.previous_failed_printer = failed_printer.id
+        current_printer_name = failed_printer.printer_name
         print(f"[REROUTE] Marked printer {current_printer_name} as failed for document {document.doc_id}")
-        
+
+        _cancel_cups_job(failed_job_id)
+
         # Record the error printer in reroute history (if not already done by caller)
         # We can't use get_or_create here because timestamp makes entries unique
         # and we might have multiple error entries for the same printer/document
-        error_status = f"Error: {document.printer_assigned.printer_status}"
-        
-        # Create a new reroute history entry with current timestamp
-        RerouteHistory.objects.create(
-            document=document,
-            printer=document.printer_assigned,
-            status=error_status,
-            timestamp=timezone.now()
+        error_status = failure_status or f"Error: {failed_printer.printer_status}"
+
+        if not _recent_matching_reroute_history(document, failed_printer, error_status):
+            RerouteHistory.objects.create(
+                document=document,
+                printer=failed_printer,
+                status=error_status,
+                timestamp=timezone.now()
+            )
+
+    # Move the document back to the queue before attempting reassignment.
+    _queue_document_for_dispatch(
+        document,
+        priority=Document.QueuePriority.REROUTE,
+        queued_at=timezone.now(),
+    )
+    _sync_printer_scheduler_state(failed_printer)
+
+    # Build a CUMULATIVE set of printers that have failed for THIS document so
+    # far. Without this, reroute only excludes the most recent failed printer
+    # and we ping-pong between the same handful of unhealthy printers forever.
+    cumulative_failed_ids = _failed_printer_ids_for_document(document)
+    if failed_printer is not None and failed_printer.id is not None:
+        cumulative_failed_ids.add(failed_printer.id)
+    previous_failed_attr = getattr(document, 'previous_failed_printer', None)
+    if previous_failed_attr is not None:
+        cumulative_failed_ids.add(previous_failed_attr)
+
+    replacement_candidates = _available_printers_for_document(
+        document,
+        allowed_statuses=['Ready', 'Printing', 'Sleep'],
+        exclude_printer_ids=cumulative_failed_ids,
+        sync_scheduler_state=True,
+        require_idle=False,
+    )
+    if not replacement_candidates:
+        terminal_reason = _terminal_no_printer_reason(document, exclude_printer_ids=cumulative_failed_ids)
+        if terminal_reason:
+            _cancel_document_with_auto_voucher(document, reason=terminal_reason)
+            return
+
+        print(
+            f"[REROUTE] No alternative printer is immediately available for {document.doc_id}; "
+            "keeping the document queued with reroute priority."
         )
-    
-    # Try to find a new printer - the WRR nonpreemptive approach is implemented in assign_document_to_printer
-    # where we select printers with longest idle time and set the document to highest priority
-    next_printer = assign_document_to_printer(document)
+        _schedule_queue_check(1.0)
+        print(f"[QUEUE-MONITOR] Scheduled queue check in 1 seconds to find printer for document {document.doc_id}")
+        return
+
+    # Try an immediate reassignment once using the same candidate rules.
+    next_printer = assign_document_to_printer(document, wait_for_availability=False)
     if next_printer:
         # Continue printing remaining pages
         print(f"[REROUTE] Successfully rerouted document {document.doc_id} from {current_printer_name} to {next_printer.printer_name}")
-        
+
         # Log successful reroute
         RerouteHistory.objects.create(
-            document=document, 
+            document=document,
             printer=next_printer,
             status='Rerouted'
         )
-        
-        # Continue printing remaining pages on new printer
-        for page_num in remaining_pages:
-            print_page(document, page_num)
+
+        # Continue printing remaining pages on new printer.
+        # We re-fetch the remaining pages on each iteration so we don't redundantly
+        # send a page that a nested reroute (triggered inside print_page) has
+        # already printed. Iterate in reverse so the last page goes first and
+        # the output stack ends up in natural page order.
+        for page_num, copy_index, total_copies in _iter_document_print_jobs(document):
+            document.refresh_from_db()
+            if document.doc_status in ('Finished', 'Picked Up', 'Cancelled'):
+                print(f"[REROUTE] {document.doc_id} reached terminal state '{document.doc_status}' mid-reroute; stopping further prints.")
+                break
+            if document.is_print_job_completed(page_num, copy_index):
+                print(
+                    f"[REROUTE] Page {page_num} copy {copy_index}/{total_copies} of {document.doc_id} "
+                    "already marked printed; skipping duplicate submission."
+                )
+                continue
+            print_page(
+                document,
+                page_num,
+                copy_index=copy_index,
+                total_copies=total_copies,
+            )
+
+        # Final safety net: even if print_page returned through an early-exit path
+        # (e.g. detected another reroute, or doc state change) we still need to
+        # check whether the document is actually finished and flip the status so
+        # the UI does not show 'Printing' forever after reroute completes.
+        document.refresh_from_db()
+        _safety_result = _finish_document_if_complete(document, printer=next_printer)
+        if _safety_result:
+            print(f"[REROUTE] Completion confirmed for {document.doc_id} on {next_printer.printer_name} after reroute.")
     else:
-        # No available printer, notify admin
-        print(f"[REROUTE] Failed to find alternative printer for document {document.doc_id}")
-        Feedback.objects.create(
-            category='Report a Problem',
-            name='[SYSTEM GENERATED]',
-            message=f"Reroute failed: No available printer for {document.paper_size}. Document {document.doc_id} paused."
+        print(
+            f"[REROUTE] No free alternative printer is available yet for {document.doc_id}; "
+            "keeping the document queued with reroute priority."
         )
-        # If we can't find a suitable printer, reset the document status to Queued
-        # so it can be retried later when a printer becomes available
-        document.doc_status = 'Queued'
-        document.save()
-        
-        # Notify about reroute failure
-        print(f"[QUEUED] Document {document.doc_id} placed back in queue for later processing when printers become available.")
-        
-        # Start a background check for available printers in a few seconds
-        # This gives printers time to recover or become available
-        threading.Timer(1.0, check_queued_documents).start()
+        _schedule_queue_check(1.0)
         print(f"[QUEUE-MONITOR] Scheduled queue check in 1 seconds to find printer for document {document.doc_id}")
+
+
+def _claim_next_queued_document_for_printer(printer):
+    try:
+        with transaction.atomic():
+            locked_printer = Printer.objects.select_for_update().get(pk=printer.pk)
+            _sync_printer_scheduler_state(locked_printer)
+
+            if locked_printer.is_temporarily_disabled:
+                return None
+            if locked_printer.printer_status not in ['Ready', 'Sleep']:
+                return None
+            if (getattr(locked_printer, 'active_job_count', 0) or 0) > 0:
+                return None
+            try:
+                _resolve_cups_queue_name(locked_printer)
+            except QueueResolutionError as exc:
+                print(f"[CUPS] Skipping queued dispatch for printer {locked_printer.printer_name}: {exc}")
+                return None
+
+            queued_docs = Document.objects.select_for_update().filter(
+                doc_status='Queued',
+                printer_assigned__isnull=True,
+                paper_size=locked_printer.paper_assigned,
+            ).order_by('queue_priority', 'queued_at', 'time_submitted', 'doc_id')
+
+            for queued_doc in queued_docs:
+                failed_printer_ids = _failed_printer_ids_for_document(queued_doc)
+                if locked_printer.id in failed_printer_ids:
+                    continue
+                if not _printer_has_required_stock(locked_printer, queued_doc):
+                    continue
+
+                assigned_at = timezone.now()
+                queued_doc.printer_assigned = locked_printer
+                queued_doc.doc_status = 'Printing'
+                queued_doc.status_updated_at = assigned_at
+                queued_doc.save(update_fields=['printer_assigned', 'doc_status', 'status_updated_at'])
+                _sync_printer_scheduler_state(locked_printer, assigned_at=assigned_at)
+                RerouteHistory.objects.create(document=queued_doc, printer=locked_printer, status='Assigned')
+                print(f"[QUEUE-MONITOR] Assigned queued document {queued_doc.doc_id} to printer {locked_printer.printer_name}")
+                return queued_doc
+    except Printer.DoesNotExist:
+        return None
+
+    return None
+
+
+def _cancel_terminal_queued_documents():
+    cancelled_count = 0
+
+    queued_documents = Document.objects.filter(doc_status='Queued').order_by('queue_priority', 'queued_at', 'time_submitted', 'doc_id')
+    for queued_document in queued_documents:
+        terminal_reason = _terminal_no_printer_reason(
+            queued_document,
+            exclude_printer_ids=_failed_printer_ids_for_document(queued_document),
+        )
+        if not terminal_reason:
+            continue
+
+        print(f"[QUEUE-MONITOR] {terminal_reason} Cancelling queued document {queued_document.doc_id} with auto voucher.")
+        _cancel_document_with_auto_voucher(queued_document, reason=terminal_reason)
+        cancelled_count += 1
+
+    return cancelled_count
+
+
+def _start_document_print_thread(document, printer, *, source):
+    def _print_document_async(doc_id, printer_id):
+        try:
+            current_doc = Document.objects.get(doc_id=doc_id)
+        except Document.DoesNotExist:
+            print(f"[{source}] Document {doc_id} was deleted before printing started.")
+            return
+
+        for page_num, copy_index, total_copies in _iter_document_print_jobs(current_doc):
+            try:
+                fresh_doc = Document.objects.get(doc_id=doc_id)
+            except Document.DoesNotExist:
+                print(f"[{source}] Document {doc_id} was deleted before printing page {page_num}.")
+                break
+
+            if fresh_doc.doc_status in ('Finished', 'Picked Up', 'Cancelled'):
+                print(f"[{source}] {fresh_doc.doc_id} reached terminal state '{fresh_doc.doc_status}'; stopping further prints.")
+                break
+            if fresh_doc.is_print_job_completed(page_num, copy_index):
+                print(
+                    f"[{source}] Page {page_num} copy {copy_index}/{total_copies} of {fresh_doc.doc_id} "
+                    "already printed; skipping duplicate submission."
+                )
+                continue
+
+            print_page(
+                fresh_doc,
+                page_num,
+                copy_index=copy_index,
+                total_copies=total_copies,
+            )
+
+        try:
+            final_doc = Document.objects.get(doc_id=doc_id)
+        except Document.DoesNotExist:
+            return
+
+        final_printer = final_doc.printer_assigned if final_doc.printer_assigned_id else printer
+        if final_printer and _finish_document_if_complete(final_doc, printer=final_printer):
+            print(f"[{source}] Completion confirmed for {final_doc.doc_id} on {final_printer.printer_name}.")
+
+    worker = threading.Thread(target=_print_document_async, args=(document.doc_id, printer.id))
+    worker.daemon = True
+    worker.start()
 
 
 # Queue monitoring system for checking queued documents
@@ -2461,55 +4233,57 @@ def check_queued_documents():
     print(f"[QUEUE-MONITOR] Found {queued_count} queued documents. Attempting to assign printers...")
     
     # Get all available printers
-    available_printers = Printer.objects.filter(printer_status__in=['Ready', 'Sleep'])
+    available_printers = Printer.objects.filter(
+        printer_status__in=['Ready', 'Sleep'],
+        is_temporarily_disabled=False,
+    )
     available_count = available_printers.count()
     
     if available_count == 0:
         print("[QUEUE-MONITOR] No available printers found. Will retry later.")
+        cancelled_count = _cancel_terminal_queued_documents()
+        if cancelled_count:
+            print(f"[QUEUE-MONITOR] Cancelled {cancelled_count} terminal queued document(s) on this pass.")
         # Schedule another check in 1 seconds
-        threading.Timer(1.0, check_queued_documents).start()
+        if Document.objects.filter(doc_status='Queued').exists():
+            _schedule_queue_check(1.0)
         return
         
     print(f"[QUEUE-MONITOR] Found {available_count} available printers.")
-    
-    # Process each queued document
-    for doc in queued_docs:
-        print(f"[QUEUE-MONITOR] Processing queued document {doc.doc_id}")
-        
-        # Create a function to handle this document in a thread
-        def process_document(document):
-            try:
-                # Assign printer and start printing
-                printer = assign_document_to_printer(document)
-                if printer:
-                    print(f"[QUEUE-MONITOR] Successfully assigned document {document.doc_id} to printer {printer.printer_name}")
-                    # Print all document pages
-                    remaining_pages = document.get_remaining_pages()
-                    for page_num in remaining_pages:
-                        print_page(document, page_num)
-                else:
-                    print(f"[QUEUE-MONITOR] Failed to assign document {document.doc_id} to a printer")
-            except Exception as e:
-                print(f"[QUEUE-MONITOR] Error processing document {document.doc_id}: {e}")
-                
-        # Start processing this document in a background thread
-        threading.Thread(target=process_document, args=(doc,)).start()
-    
-    # Schedule another check in 60 seconds to catch any new queued documents
-    # or documents that failed to get a printer this time
-    threading.Timer(60.0, check_queued_documents).start()
-    print("[QUEUE-MONITOR] Scheduled next queue check in 60 seconds")
+
+    dispatched_count = 0
+    for printer in available_printers.order_by('id'):
+        next_document = _claim_next_queued_document_for_printer(printer)
+        if not next_document or not next_document.printer_assigned:
+            continue
+
+        dispatched_count += 1
+        _start_document_print_thread(next_document, next_document.printer_assigned, source='QUEUE-MONITOR')
+
+    if dispatched_count == 0:
+        print("[QUEUE-MONITOR] No eligible queued documents could be dispatched on this pass.")
+    else:
+        print(f"[QUEUE-MONITOR] Dispatched {dispatched_count} queued document(s) on this pass.")
+
+    cancelled_count = _cancel_terminal_queued_documents()
+    if cancelled_count:
+        print(f"[QUEUE-MONITOR] Cancelled {cancelled_count} terminal queued document(s) on this pass.")
+
+    if Document.objects.filter(doc_status='Queued').exists():
+        _schedule_queue_check(QUEUE_MONITOR_RETRY_SECONDS)
+        print(f"[QUEUE-MONITOR] Scheduled next queue check in {int(QUEUE_MONITOR_RETRY_SECONDS)} seconds")
 
 
 # Start the queue monitor when the module is loaded
 def start_queue_monitor():
     """Initialize the queue monitoring system with a delay to let the system start up."""
     print("[QUEUE-MONITOR] Initializing queue monitoring system...")
-    threading.Timer(1.0, check_queued_documents).start()
+    _schedule_queue_check(1.0)
     print("[QUEUE-MONITOR] Queue monitor scheduled to start in 1 seconds")
 
 # Start the queue monitor
-threading.Timer(1.0, start_queue_monitor).start()
+if getattr(settings, 'ENABLE_QUEUE_MONITOR', True):
+    threading.Timer(1.0, start_queue_monitor).start()
 
 
 # ============================================================
@@ -2554,6 +4328,32 @@ def customer_documents_event_stream(customer_id):
                     'timestamp': entry.timestamp.isoformat() if entry.timestamp else None,
                 })
 
+            # Self-healing safety net: if every page is actually printed but the
+            # document is still marked as Printing/Queued (e.g. a reroute path
+            # bypassed the completion check), flip it to Finished here so the
+            # UI never shows a stale "Printing..." badge after the physical
+            # print job is done.
+            if doc.doc_status in ('Printing', 'Queued'):
+                try:
+                    total_required = doc.get_total_sides()
+                    printed_sides = doc.get_printed_sides_count()
+                    if total_required > 0 and printed_sides >= total_required:
+                        previous_status = doc.doc_status
+                        completion_printer = doc.printed_at or doc.printer_assigned
+                        doc.doc_status = 'Finished'
+                        doc.status_updated_at = timezone.now()
+                        update_fields = ['doc_status', 'status_updated_at']
+                        if completion_printer and doc.printed_at_id != completion_printer.id:
+                            doc.printed_at = completion_printer
+                            update_fields.append('printed_at')
+                        doc.save(update_fields=update_fields)
+                        print(
+                            f"[SSE-HEAL] Document {doc.doc_id} had all {total_required} page(s) printed "
+                            f"but was still '{previous_status}'. Auto-marked Finished."
+                        )
+                except Exception as heal_exc:
+                    print(f"[SSE-HEAL] Failed to auto-finish {doc.doc_id}: {heal_exc}")
+
             # Determine badge info
             printer_name = None
             if doc.printer_assigned:
@@ -2566,6 +4366,9 @@ def customer_documents_event_stream(customer_id):
             # Calculate pages printed vs total
             pages_printed = doc.pages_printed if doc.pages_printed else []
             total_pages = doc.get_total_pages()
+            printed_sides = doc.get_printed_sides_count()
+            total_sides = doc.get_total_sides()
+            remaining_sides = len(doc.get_remaining_print_jobs())
 
             # Determine status type for badge styling
             status_type = 'info'  # default
@@ -2603,12 +4406,44 @@ def customer_documents_event_stream(customer_id):
 
             # Get cancel reason from reroute history if cancelled
             cancel_reason = ''
+            auto_voucher_code = None
+            auto_voucher_amount = None
             if doc.doc_status == 'Cancelled':
                 last_error = history_entries.filter(status__startswith='Error').last()
                 if last_error:
                     cancel_reason = last_error.status
                 else:
                     cancel_reason = 'No available Printer'
+                # #region agent log
+                try:
+                    _all_history = list(history_entries.values('status', 'timestamp', 'printer_id'))
+                    _all_error_history = [h for h in _all_history if (h.get('status') or '').startswith('Error')]
+                    _dbg('views.py:sse:cancel_reason_picked', 'cancel_reason chosen for SSE payload', {
+                        'doc_id': doc.doc_id,
+                        'doc_status': doc.doc_status,
+                        'cancel_reason': cancel_reason,
+                        'last_error_status': last_error.status if last_error else None,
+                        'last_error_ts': last_error.timestamp.isoformat() if last_error and last_error.timestamp else None,
+                        'all_error_entries': [
+                            {
+                                'status': h.get('status'),
+                                'ts': h.get('timestamp').isoformat() if h.get('timestamp') else None,
+                                'printer_id': h.get('printer_id'),
+                            }
+                            for h in _all_error_history
+                        ],
+                    }, hypothesisId='H1')
+                except Exception:
+                    pass
+                # #endregion
+
+                if cancel_reason:
+                    _vm = re.search(r'Auto voucher\s+(\S+)\s+generated', cancel_reason, re.IGNORECASE)
+                    if _vm:
+                        auto_voucher_code = _vm.group(1)
+                    if not auto_voucher_code:
+                        auto_voucher_code = _extract_voucher_code_from_reason(cancel_reason)
+                    auto_voucher_amount = _extract_voucher_amount_from_reason(cancel_reason)
 
             # Check for support tickets on this document
             ticket = SupportTicket.objects.filter(document=doc).order_by('-created_at').first()
@@ -2622,10 +4457,15 @@ def customer_documents_event_stream(customer_id):
                 'status_type': status_type,
                 'status_badge': status_badge,
                 'cancel_reason': cancel_reason,
+                'auto_voucher_code': auto_voucher_code,
+                'auto_voucher_amount': auto_voucher_amount,
                 'printer_name': printer_name,
                 'printed_at': printed_at_name,
                 'pages_printed': pages_printed,
                 'total_pages': total_pages,
+                'printed_sides': printed_sides,
+                'total_sides': total_sides,
+                'remaining_sides': remaining_sides,
                 'reroute_history': reroute_history,
                 'time_submitted': doc.time_submitted.isoformat() if doc.time_submitted else None,
                 'status_updated_at': doc.status_updated_at.isoformat() if doc.status_updated_at else None,
@@ -2663,7 +4503,7 @@ def customer_documents_event_stream(customer_id):
             yield f"data: {json_data}\n\n"
             last_data = json_data
 
-        time.sleep(1)
+        time.sleep(0.5)
 
 
 # ============================================================
@@ -2683,22 +4523,38 @@ def picked_up_document(request):
     try:
         data = json.loads(request.body)
         doc_id = data.get('doc_id')
+        force = bool(data.get('force', False))
 
         if not doc_id:
             return JsonResponse({'success': False, 'error': 'doc_id is required'})
 
         doc = Document.objects.get(doc_id=doc_id)
 
-        if doc.doc_status != 'Finished':
+        reroute_override = (
+            force and
+            doc.doc_status == 'Printing' and
+            RerouteHistory.objects.filter(document=doc).exists()
+        )
+
+        if doc.doc_status != 'Finished' and not reroute_override:
             return JsonResponse({
                 'success': False,
                 'error': f'Document is not finished (current status: {doc.doc_status})'
             })
 
+        if reroute_override:
+            if not doc.pages_printed:
+                doc.mark_all_print_jobs_completed(save=False)
+            if not doc.printed_at and doc.printer_assigned:
+                doc.printed_at = doc.printer_assigned
+
         # Mark as Picked Up
         doc.doc_status = 'Picked Up'
         doc.status_updated_at = timezone.now()
-        doc.save()
+        if reroute_override:
+            doc.save(update_fields=['doc_status', 'status_updated_at', 'pages_printed', 'page_copy_counts', 'printed_at'])
+        else:
+            doc.save()
 
         # Delete the file from storage — direct path lookup (fast)
         if doc.stored_name:
@@ -2712,7 +4568,7 @@ def picked_up_document(request):
 
         # Delete associated Payment records then the Document record
         cid = doc.customer_id
-        Payment.objects.filter(doc=doc).delete()
+        _preserve_or_delete_document_payment(doc)
         doc.delete()
 
         # If no documents remain for this CID, clear voucher association
@@ -2722,7 +4578,7 @@ def picked_up_document(request):
             VoucherCredit.objects.filter(last_customer_id=cid).update(last_customer_id=None)
 
         # Trigger folder cleanup
-        subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+        _trigger_upload_folder_cleanup()
 
         return JsonResponse({'success': True, 'doc_id': doc_id})
 
@@ -2735,7 +4591,7 @@ def picked_up_document(request):
 @csrf_exempt
 def finish_transaction(request):
     """
-    Mark all documents for a customer as 'Picked Up' and delete their files.
+    Mark completed documents for a customer as 'Picked Up' before deleting their files.
     This is the 'Picked Up All Printed Documents' action.
     
     If force=True (user confirmed disclaimer), ALL documents are processed
@@ -2768,38 +4624,91 @@ def finish_transaction(request):
         if not docs_to_process.exists():
             return JsonResponse({'success': False, 'error': 'No documents found to process'})
 
-        picked_up_count = 0
-        uploads_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
-
         for doc in docs_to_process:
-            # Delete the file from storage — direct path lookup (fast)
-            if doc.stored_name:
-                customer_dir = os.path.join(uploads_dir, customer_id)
-                file_path = os.path.join(customer_dir, doc.stored_name)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-                    print(f"[FINISH TXN] Deleted file {file_path} for document {doc.doc_id}")
+            reroute_override = (
+                force and
+                doc.doc_status == 'Printing' and
+                RerouteHistory.objects.filter(document=doc).exists()
+            )
 
-            # Delete associated Payment records
-            Payment.objects.filter(doc=doc).delete()
+            if doc.doc_status == 'Finished' or reroute_override:
+                if reroute_override:
+                    if not doc.pages_printed:
+                        doc.mark_all_print_jobs_completed(save=False)
+                    if not doc.printed_at and doc.printer_assigned:
+                        doc.printed_at = doc.printer_assigned
 
-            # Delete the Document record itself
-            doc.delete()
+                doc.doc_status = 'Picked Up'
+                doc.status_updated_at = timezone.now()
+                update_fields = ['doc_status', 'status_updated_at']
+                if reroute_override:
+                    update_fields.extend(['pages_printed', 'page_copy_counts', 'printed_at'])
+                doc.save(update_fields=update_fields)
 
-            picked_up_count += 1
-
-        # Clear voucher credit association with this customer
-        from portal.models import VoucherCredit
-        VoucherCredit.objects.filter(last_customer_id=customer_id).update(last_customer_id=None)
-
-        # Trigger folder cleanup
-        subprocess.Popen(['python3', '/home/safeprint/dev/SafePrint/scripts/clean_empty_upload_folders.py'])
+        picked_up_count = _delete_customer_documents(customer_id, list(docs_to_process), log_prefix='FINISH TXN')
 
         return JsonResponse({
             'success': True,
             'picked_up_count': picked_up_count
         })
 
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+def acknowledge_cancelled_voucher(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    try:
+        data = json.loads(request.body)
+        customer_id = str(data.get('customer_id') or '').strip()
+        requested_doc_ids = [
+            str(doc_id).strip()
+            for doc_id in (data.get('doc_ids') or [])
+            if str(doc_id).strip()
+        ]
+
+        if not customer_id:
+            return JsonResponse({'success': False, 'error': 'customer_id is required'})
+
+        customer_documents = list(
+            Document.objects.filter(customer_id=customer_id).order_by('time_submitted', 'doc_id')
+        )
+        if not customer_documents:
+            existing_ticket = SupportTicket.objects.filter(
+                customer_id=customer_id,
+                status__in=['open', 'in-progress']
+            ).order_by('-created_at').first()
+            if existing_ticket:
+                return JsonResponse({
+                    'success': True,
+                    'created': False,
+                    'ticket_number': existing_ticket.ticket_number,
+                    'deleted_count': 0,
+                })
+            return JsonResponse({'success': False, 'error': 'No documents found for this customer'})
+
+        customer_doc_ids = [doc.doc_id for doc in customer_documents]
+        if requested_doc_ids and set(requested_doc_ids) != set(customer_doc_ids):
+            return JsonResponse({'success': False, 'error': 'Document list no longer matches the current customer transaction'})
+
+        if any(doc.doc_status != 'Cancelled' for doc in customer_documents):
+            return JsonResponse({'success': False, 'error': 'All documents must be cancelled before acknowledging the voucher'})
+
+        with transaction.atomic():
+            ticket, created = _create_or_get_cancelled_voucher_ticket(customer_id, customer_documents)
+            deleted_count = _delete_customer_documents(customer_id, customer_documents, log_prefix='CANCELLED ACK')
+
+        return JsonResponse({
+            'success': True,
+            'created': created,
+            'ticket_number': ticket.ticket_number,
+            'deleted_count': deleted_count,
+        })
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid request data'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
@@ -2853,11 +4762,7 @@ def void_ticket(request):
             details=f"Ticket voided by {admin_name}."
         )
 
-        payment_amount = None
-        if ticket.document:
-            payment = Payment.objects.filter(doc=ticket.document).first()
-            if payment:
-                payment_amount = float(payment.price)
+        payment_amount = _get_ticket_payment_amount(ticket)
 
         return JsonResponse({
             'success': True,
@@ -2868,13 +4773,13 @@ def void_ticket(request):
             'customer_id': ticket.customer_id,
             'email': ticket.email,
             'phone': ticket.phone_number,
-            'doc_id': ticket.document.doc_id if ticket.document else '',
+            'doc_id': _get_ticket_primary_doc_id(ticket),
             'doc_name': ticket.document_name,
             'description': ticket.description,
             'problem_type': ticket.get_problem_type_display(),
             'was_reprinted': ticket.was_reprinted,
             'resolved_by': admin_name,
-            'payment_amount': payment_amount,
+            'payment_amount': float(payment_amount) if payment_amount is not None else None,
         })
 
     except SupportTicket.DoesNotExist:
@@ -2916,11 +4821,7 @@ def refund_ticket(request):
         from django.utils import timezone
 
         # Look up payment amount
-        payment_amount = None
-        if ticket.document:
-            payment = Payment.objects.filter(doc=ticket.document).first()
-            if payment:
-                payment_amount = float(payment.price)
+        payment_amount = _get_ticket_payment_amount(ticket)
 
         # Set refund amount (from request or from payment)
         refund_amount = data.get('refund_amount')
@@ -2963,13 +4864,13 @@ def refund_ticket(request):
             'email': ticket.email,
             'phone': ticket.phone_number,
             'gcash_number': ticket.gcash_number,
-            'doc_id': ticket.document.doc_id if ticket.document else '',
+            'doc_id': _get_ticket_primary_doc_id(ticket),
             'doc_name': ticket.document_name,
             'description': ticket.description,
             'problem_type': ticket.get_problem_type_display(),
             'was_reprinted': ticket.was_reprinted,
             'resolved_by': admin_name,
-            'payment_amount': payment_amount,
+            'payment_amount': float(payment_amount) if payment_amount is not None else None,
             'refund_amount': refund_amount,
             'refund_status': 'pending',
         })
@@ -3182,7 +5083,7 @@ def get_printer_status_history(request):
         for log in logs:
             logs_data.append({
                 'id': log.id,
-                'printer_name': log.printer.name if log.printer else 'Unknown',
+                'printer_name': log.printer.printer_name if log.printer else 'Unknown',
                 'printer_id': log.printer_id,
                 'status': log.status,
                 'ink_status': log.ink_status,
@@ -3191,7 +5092,7 @@ def get_printer_status_history(request):
             })
 
         # Get all printers for dropdown
-        printers_list = [{'id': p.id, 'name': p.name} for p in Printer.objects.all().order_by('name')]
+        printers_list = [{'id': p.id, 'name': p.printer_name} for p in Printer.objects.all().order_by('printer_name')]
 
         return JsonResponse({
             'success': True,
@@ -3247,7 +5148,7 @@ def get_ticket_verification_data(request):
         printer_data = []
         for log in printer_logs:
             printer_data.append({
-                'printer_name': log.printer.name if log.printer else 'Unknown',
+                'printer_name': log.printer.printer_name if log.printer else 'Unknown',
                 'status': log.status,
                 'ink_status': log.ink_status,
                 'paper_level': log.paper_level,
@@ -3255,9 +5156,10 @@ def get_ticket_verification_data(request):
             })
 
         # Get document lifecycle logs for this document
+        primary_doc_id = _get_ticket_primary_doc_id(ticket)
         doc_logs = DocumentLifecycleLog.objects.filter(
-            doc_id=ticket.document_id
-        ).order_by('-timestamp') if ticket.document_id else []
+            doc_id=primary_doc_id
+        ).order_by('-timestamp') if primary_doc_id else []
 
         doc_data = []
         for log in doc_logs:
@@ -3272,18 +5174,18 @@ def get_ticket_verification_data(request):
             })
 
         # Get reroute history for this document
-        if ticket.document_id:
+        if primary_doc_id:
             from .models import RerouteHistory
             reroutes = RerouteHistory.objects.select_related('printer').filter(
-                document_id=ticket.document_id
+                Q(document_id=primary_doc_id) | Q(doc_id_snapshot=primary_doc_id)
             ).order_by('-timestamp')
             for rr in reroutes:
                 doc_data.append({
-                    'doc_id': ticket.document_id,
+                    'doc_id': primary_doc_id,
                     'customer_id': ticket.customer_id,
                     'doc_name': ticket.document_name or '',
                     'event': 'Rerouted',
-                    'printer_name': rr.printer.name if rr.printer else '—',
+                    'printer_name': rr.printer.printer_name if rr.printer else rr.printer_name_snapshot or '—',
                     'details': f'Rerouted ({rr.status})',
                     'timestamp': rr.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
                 })
@@ -3314,6 +5216,10 @@ def check_printer_availability(request):
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
     try:
+        site = SiteSetting.load()
+        if not site.block_payment_when_printers_unavailable:
+            return JsonResponse({'available': True, 'all_offline': False, 'unavailable_docs': [], 'bypass_enabled': True})
+
         data = json.loads(request.body)
         doc_ids = data.get('doc_ids', [])
 
@@ -3325,20 +5231,19 @@ def check_printer_availability(request):
         if not docs.exists():
             return JsonResponse({'available': True, 'all_offline': False, 'unavailable_docs': []})
 
-        # Check each document's paper requirements against available printers
+        # Check each document's paper requirements against available printers.
         unavailable_docs = []
         for doc in docs:
-            matching_printers = Printer.objects.filter(
-                paper_assigned=doc.paper_size,
-                paper_quality=doc.paper_quality,
-                printer_status__in=['Ready', 'Printing', 'Sleep']
+            matching_printers = _get_matching_printers(
+                doc,
+                allowed_statuses=['Ready', 'Printing', 'Sleep'],
             )
-            if not matching_printers.exists():
+            if not matching_printers:
                 unavailable_docs.append({
                     'doc_id': doc.doc_id,
                     'filename': doc.filename,
                     'paper_size': doc.paper_size,
-                    'paper_quality': f'{doc.paper_quality} GSM' if doc.paper_quality else '',
+                    'required_sheets': _document_required_sheets(doc),
                 })
 
         all_printers_status = list(Printer.objects.values_list('printer_status', flat=True))

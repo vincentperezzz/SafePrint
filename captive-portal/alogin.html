@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafePrint - Connected</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #eef2f7;
+            color: #0f172a;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            box-sizing: border-box;
+        }
+
+        .card {
+            width: min(100%, 420px);
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 28px 24px;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+            text-align: center;
+        }
+
+        .logo {
+            width: 160px;
+            max-width: 100%;
+            height: auto;
+            margin-bottom: 18px;
+        }
+
+        h1 {
+            margin: 0 0 10px;
+            font-size: 26px;
+        }
+
+        p {
+            margin: 0 0 18px;
+            color: #475569;
+            line-height: 1.5;
+        }
+
+        .btn {
+            display: inline-block;
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 16px;
+            padding: 16px 18px;
+            background: #fbbc05;
+            color: #111827;
+            font-size: 18px;
+            font-weight: 700;
+            text-decoration: none;
+        }
+    </style>
+
+</head>
+<body>
+    <div class="card">
+        <img src="http://172.16.0.1/logo.png" alt="SafePrint Logo" class="logo">
+        <h1>Connected to SafePrint Wi-Fi</h1>
+        <p>Your session is active. Use the button below to open SafePrint in Safari or Chrome.</p>
+        <a class="btn" href="https://safeprint.duckdns.org/">Open SafePrint</a>
+        <p>If your phone stays in the captive popup, tap the button again or open safeprint.duckdns.org in your normal browser.</p>
+    </div>
+</body>
+</html>
