@@ -158,7 +158,7 @@ def _coerce_timestamp(value):
     return value
 
 
-def list_matching_notifications(*, payer_number, expected_amount, earliest_at, latest_at, limit=25):
+def list_matching_notifications(*, payer_number, expected_amount, earliest_at, latest_at, limit=None):
     normalized_number = normalize_phone_number(payer_number)
     if not normalized_number:
         return []
@@ -179,7 +179,6 @@ def list_matching_notifications(*, payer_number, expected_amount, earliest_at, l
                             'value': {'stringValue': normalized_number},
                         }
                     },
-                    'limit': max(limit, 25),
                 }
             },
         )
@@ -221,7 +220,9 @@ def list_matching_notifications(*, payer_number, expected_amount, earliest_at, l
         raise FirebasePaymentError('Firestore notification stream failed.') from exc
 
     matches.sort(key=lambda item: item['captured_at'])
-    return matches[:limit]
+    if limit and limit > 0:
+        return matches[:limit]
+    return matches
 
 
 def claim_notification(*, notification_ref, customer_id, intent_id):

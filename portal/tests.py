@@ -10,6 +10,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from portal.models import Document, Payment, Printer, RerouteHistory, SupportTicket, TicketAuditLog, VoucherCredit
+from portal.services import firebase_payment
 from portal.views import (
 	_calculate_unprinted_refund_amount,
 	_claim_next_queued_document_for_printer,
@@ -662,6 +663,37 @@ class CustomerDocumentsStreamTests(TestCase):
 
 		self.assertEqual(doc_payload['auto_voucher_code'], 'ABC12345')
 		self.assertEqual(doc_payload['auto_voucher_amount'], '1.00')
+
+
+class FirebasePaymentLookupTests(TestCase):
+	@patch('portal.services.firebase_payment._get_firestore_session', return_value=(object(), 'safeprint-test-project'))
+	@patch('portal.services.firebase_payment._firestore_request')
+	def test_list_matching_notifications_fetches_full_history_by_default(self, request_mock, _session_mock):
+		class FakeResponse:
+			status_code = 200
+
+			def raise_for_status(self):
+				return None
+
+			def json(self):
+				return []
+
+		request_mock.return_value = FakeResponse()
+
+		firebase_payment.list_matching_notifications(
+			payer_number='09068443919',
+			expected_amount=Decimal('9.00'),
+			earliest_at=timezone.now() - timedelta(minutes=10),
+			latest_at=timezone.now(),
+		)
+
+		structured_query = request_mock.call_args.kwargs['json']['structuredQuery']
+
+		self.assertNotIn('limit', structured_query)
+		self.assertEqual(
+			structured_query['where']['fieldFilter']['field']['fieldPath'],
+			'number',
+		)
 
 
 class MultiCopyRerouteAndRefundTests(TestCase):
