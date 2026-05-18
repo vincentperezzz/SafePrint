@@ -61,13 +61,13 @@ Printer Status
                 <div class="printer-name">{{ printer.printer_name }}</div>
                 <div class="printer-model">{{ printer.model_name}}</div>
             </div>
-            <div>{{ printer.ip_address }}</div>
-           <div>{{ printer.node_name }}</div>
-            <div>
+            <div data-label="IP Address">{{ printer.ip_address }}</div>
+           <div data-label="Node Name">{{ printer.node_name }}</div>
+            <div data-label="Status">
                 <span class="status-dot {% if printer.printer_status == 'Ready' %}ready{% elif printer.printer_status == 'Sleep' %}sleep{% elif printer.printer_status == 'Printing' %}printing{% else %}error{% endif %}"></span>
                 {{ printer.printer_status }}
             </div>
-            <div>
+            <div data-label="Ink Level">
                 <div class="ink-bars">
                     {% if printer.ink_status == 'OK' %}
                         <span class="ink b"></span>
@@ -92,7 +92,7 @@ Printer Status
                     <span class="ink-status low">LOW INK</span>
                 {% endif %}
             </div>
-            <div class="paper-assigned">
+            <div class="paper-assigned" data-label="Paper Assigned">
                 <div class="dropdown">
                     <select class="dropdown-select" data-printer-id="{{ printer.id }}" data-field="paper_assigned">
                         {% for size, label in paper_size_choices %}
@@ -106,7 +106,7 @@ Printer Status
                     </span>
                 </div>
             </div>
-            <div class="gsm">
+            <div class="gsm" data-label="Availability">
                 <div class="printer-availability-toggle" style="display:flex; align-items:center; gap:12px;">
                     <label class="switch" style="display:inline-flex; align-items:center;">
                         <input
@@ -128,7 +128,7 @@ Printer Status
                     <span class="printer-toggle-text">{% if printer.is_temporarily_disabled %}Disabled{% else %}Enabled{% endif %}</span>
                 </div>
             </div>
-            <div class="printer-edit-btn-container">
+            <div class="printer-edit-btn-container" data-label="Actions">
                 <div class="edit-btn" onclick="openPrinterEditPopup('{{ printer.printer_name|escapejs }}', '{{ printer.ip_address|escapejs }}', '{{ printer.id }}')">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
                       <path d="M2.49902 14.3761V17.5011H5.62402L14.8407 8.28444L11.7157 5.15944L2.49902 14.3761ZM17.2574 5.86777C17.5824 5.54277 17.5824 5.01777 17.2574 4.69277L15.3074 2.74277C14.9824 2.41777 14.4574 2.41777 14.1324 2.74277L12.6074 4.26777L15.7324 7.39277L17.2574 5.86777Z" fill="#5A5D6C"/>
@@ -186,33 +186,33 @@ Printer Status
                     <div class="printer-name">{{ printer.printer_name }}</div>
                     <div class="printer-model">{{ printer.model_name }}</div>
                 </div>
-                <div>{% if printer.paper_assigned %}{{ printer.paper_assigned }}{% else %}None{% endif %}</div>
-                <div class="tray-capacity-cell">
+                <div data-label="Paper Assigned">{% if printer.paper_assigned %}{{ printer.paper_assigned }}{% else %}None{% endif %}</div>
+                <div class="tray-capacity-cell" data-label="Tray Capacity">
                     <span class="tray-capacity-display" data-printer-id="{{ printer.id }}">{% if printer.tray_capacity %}{{ printer.tray_capacity }} sheets{% else %}Not set{% endif %}</span>
                     <button class="tray-edit-btn" data-printer-id="{{ printer.id }}" title="Edit paper amount">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>
                     <input type="number" class="tray-capacity-input" data-printer-id="{{ printer.id }}" value="{{ printer.tray_capacity|default:'' }}" style="display:none; width: 80px; text-align: center;">
                 </div>
-                <div class="tray-remaining-cell" data-printer-id="{{ printer.id }}">
+                <div class="tray-remaining-cell" data-printer-id="{{ printer.id }}" data-label="Remaining">
                     {% if printer.tray_current_count is not None %}
                         {{ printer.tray_current_count }} sheets
                     {% else %}
                         Not tracked
                     {% endif %}
                 </div>
-                <div>
+                <div data-label="Tray Level">
                     <span class="status-dot {% if printer.tray_level == 'Full' %}ok{% elif printer.tray_level == 'Low' %}low{% else %}danger{% endif %}"></span>
                     {{ printer.tray_level }}
                 </div>
-                <div class="refill-time" data-printer-id="{{ printer.id }}" data-timestamp="{{ printer.last_refill_time|date:'c' }}">
+                <div class="refill-time" data-printer-id="{{ printer.id }}" data-timestamp="{{ printer.last_refill_time|date:'c' }}" data-label="Last Refill Time">
                     {% if printer.last_refill_time %}
                         {{ printer.last_refill_time|timesince }} ago
                     {% else %}
                         Never
                     {% endif %}
                 </div>
-                <div><button class="refill-btn" data-printer-id="{{ printer.id }}">Mark as Refilled</button></div>
+                <div data-label="Refill Action"><button class="refill-btn" data-printer-id="{{ printer.id }}">Mark as Refilled</button></div>
             </div>
             {% empty %}
             <div class="printer-table-row">
