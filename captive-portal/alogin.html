@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="2; url=https://safeprint.duckdns.org/">
-    <title>SafePrint - Redirecting</title>
+    <title>SafePrint - Connected</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -59,22 +58,14 @@
             text-decoration: none;
         }
     </style>
-    <script>
-        if ("$(error)" === "customer $(username) has reached uptime limit") {
-            window.location.href = "./login.html";
-        } else {
-            window.setTimeout(function () {
-                window.location.href = "https://safeprint.duckdns.org/";
-            }, 1200);
-        }
-    </script>
 </head>
 <body>
     <div class="card">
         <img src="logo.png" alt="SafePrint Logo" class="logo">
-        <h1>Redirecting to SafePrint</h1>
-        <p>Your Wi-Fi session is active. If your phone does not continue automatically, use the button below.</p>
-        <a class="btn" href="https://safeprint.duckdns.org/">Continue to SafePrint</a>
+        <h1>Connected to SafePrint Wi-Fi</h1>
+        <p>Your session is active. Use the button below to open SafePrint in Safari or Chrome.</p>
+        <a class="btn" href="https://safeprint.duckdns.org/" target="_blank" rel="noopener noreferrer">Open SafePrint in Browser</a>
+        <p>If your phone stays in the captive popup, tap the button again or open safeprint.duckdns.org in your normal browser.</p>
     </div>
 </body>
 </html>
