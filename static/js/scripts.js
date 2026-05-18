@@ -1291,6 +1291,8 @@ window.addEventListener('DOMContentLoaded', function () {
 window.customerDocuments = [];
 window.customerDocumentArchive = [];
 let customerSSE = null;
+let lastCustomerDocumentsPayload = null;
+let confirmationRedrawEventsBound = false;
 
 function getCustomerDocumentArchiveKey() {
     const customerIdEl = document.getElementById('customer-id-data');
@@ -1392,17 +1394,18 @@ function checkForNewCompletions(documents) {
     let newlyRerouted = 0;
 
     documents.forEach(doc => {
+        const currentUiStatus = getDocumentUiStatus(doc);
         const prev = previousDocStatuses[doc.doc_id];
         const rerouteCount = (doc.reroute_history || []).filter((entry) => String((entry && entry.status) || '') === 'Rerouted').length;
         const hasSeenRerouteCount = Object.prototype.hasOwnProperty.call(previousDocRerouteCounts, doc.doc_id);
         const prevRerouteCount = previousDocRerouteCounts[doc.doc_id] || 0;
         if (prev) {
             // Detect newly finished
-            if (doc.doc_status === 'Finished' && prev !== 'Finished') {
+            if (currentUiStatus === 'Finished' && prev !== 'Finished') {
                 newlyFinished++;
             }
             // Detect reroute: was Printing, now Queued (rerouted to another printer)
-            if (prev === 'Printing' && doc.doc_status === 'Queued') {
+            if (prev === 'Printing' && currentUiStatus === 'Queued') {
                 newlyRerouted++;
             }
         }
@@ -1413,7 +1416,7 @@ function checkForNewCompletions(documents) {
 
     // Update previous statuses
     documents.forEach(doc => {
-        previousDocStatuses[doc.doc_id] = doc.doc_status;
+        previousDocStatuses[doc.doc_id] = getDocumentUiStatus(doc);
         previousDocRerouteCounts[doc.doc_id] = (doc.reroute_history || []).filter((entry) => String((entry && entry.status) || '') === 'Rerouted').length;
     });
 
@@ -1421,6 +1424,7 @@ function checkForNewCompletions(documents) {
     if (newlyFinished > 0) {
         playPrintCompleteSound();
         showPrintCompleteToast();
+        queueConfirmationDomRefresh();
         // Show browser notification (works even when tab is in background)
         if ("Notification" in window && Notification.permission === "granted") {
             new Notification("SafePrint — Print Complete!", {
@@ -1441,12 +1445,51 @@ function checkForNewCompletions(documents) {
     }
 
     // Count total finished (not picked up) for title flash
-    const finishedCount = documents.filter(d => d.doc_status === 'Finished').length;
+    const finishedCount = documents.filter((doc) => getDocumentUiStatus(doc) === 'Finished').length;
     if (finishedCount > 0) {
         startConfirmationTitleFlash(finishedCount);
     } else {
         stopConfirmationTitleFlash();
     }
+}
+
+function refreshConfirmationFromPayload(data) {
+    if (!data || !Array.isArray(data.documents)) {
+        return;
+    }
+
+    try {
+        renderDocumentRows(data.documents);
+    } catch (renderError) {
+        console.error('Error rendering confirmation document rows:', renderError, data.documents);
+    }
+
+    try {
+        updateConfirmationUI(data);
+    } catch (uiError) {
+        console.error('Error updating confirmation page state:', uiError, data);
+    }
+}
+
+function rerenderConfirmationFromCachedPayload() {
+    if (!document.querySelector('.confirmation') || !lastCustomerDocumentsPayload) {
+        return;
+    }
+
+    refreshConfirmationFromPayload(lastCustomerDocumentsPayload);
+}
+
+function queueConfirmationDomRefresh() {
+    if (!document.querySelector('.confirmation')) {
+        return;
+    }
+
+    requestAnimationFrame(() => {
+        rerenderConfirmationFromCachedPayload();
+    });
+    setTimeout(() => {
+        rerenderConfirmationFromCachedPayload();
+    }, 50);
 }
 
 // Track which docs have already triggered the timeout popup
@@ -1664,23 +1707,13 @@ function initConfirmationSSE() {
         try {
             const data = JSON.parse(event.data);
             window.customerDocuments = data.documents || [];
+            lastCustomerDocumentsPayload = data;
             storeCustomerDocumentArchive(window.customerDocuments);
             checkForNewCompletions(data.documents || []);
             checkForTimeoutCancellations(data.documents || []);
             checkForAutoVoucherCancellations(data.documents || []);
             checkForAutoTicketTrigger(data);
-
-            try {
-                renderDocumentRows(data.documents);
-            } catch (renderError) {
-                console.error('Error rendering confirmation document rows:', renderError, data.documents);
-            }
-
-            try {
-                updateConfirmationUI(data);
-            } catch (uiError) {
-                console.error('Error updating confirmation page state:', uiError, data);
-            }
+            refreshConfirmationFromPayload(data);
         } catch (e) {
             console.error('Error parsing SSE data:', e);
         }
@@ -1696,6 +1729,18 @@ function initConfirmationSSE() {
             initConfirmationSSE();
         }, 3000);
     };
+
+    if (!confirmationRedrawEventsBound) {
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') {
+                rerenderConfirmationFromCachedPayload();
+            }
+        }, { passive: true });
+
+        window.addEventListener('focus', rerenderConfirmationFromCachedPayload, { passive: true });
+        window.addEventListener('pageshow', rerenderConfirmationFromCachedPayload, { passive: true });
+        confirmationRedrawEventsBound = true;
+    }
 }
 
 function renderDocumentRows(documents) {
@@ -1740,8 +1785,51 @@ function renderDocumentRows(documents) {
     container.appendChild(fragment);
 }
 
-function renderFallbackDocumentBadges(doc) {
+function isDocumentEffectivelyFinished(doc) {
+    if (!doc) {
+        return false;
+    }
+
+    const status = String(doc.doc_status || '');
+    if (status === 'Finished' || status === 'Picked Up') {
+        return true;
+    }
+
+    if (status !== 'Printing' && status !== 'Queued') {
+        return false;
+    }
+
+    const totalSides = Number(doc.total_sides);
+    const printedSides = Number(doc.printed_sides);
+    const remainingSides = Number(doc.remaining_sides);
+
+    if (Number.isFinite(totalSides) && totalSides > 0) {
+        if (Number.isFinite(remainingSides) && remainingSides <= 0) {
+            return true;
+        }
+        if (Number.isFinite(printedSides) && printedSides >= totalSides) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function getDocumentUiStatus(doc) {
     const status = String((doc && doc.doc_status) || 'Queued');
+    if (status === 'Picked Up' || status === 'Cancelled' || status === 'Pending' || status === 'Finished') {
+        return status;
+    }
+
+    if (isDocumentEffectivelyFinished(doc)) {
+        return 'Finished';
+    }
+
+    return status;
+}
+
+function renderFallbackDocumentBadges(doc) {
+    const status = getDocumentUiStatus(doc);
     const printerName = (doc && (doc.printer_name || doc.printed_at)) ? ` (${escapeHtml(doc.printer_name || doc.printed_at)})` : '';
     let badgesHtml = '';
 
@@ -1776,6 +1864,7 @@ function renderFallbackDocumentBadges(doc) {
 
 function buildDocumentBadges(doc) {
     let badgesHtml = '';
+    const uiStatus = getDocumentUiStatus(doc);
     const history = doc.reroute_history || [];
     const routePrinters = getRoutePrinterNames(history);
     const splitActiveMultiCopyBadges = routePrinters.length > 1;
@@ -1785,23 +1874,23 @@ function buildDocumentBadges(doc) {
     const hasPageSegments = segments.some(segment => Array.isArray(segment.pages) && segment.pages.length > 0);
     const rerouteDestination = getLatestRerouteDestination(history);
     const pickupSummaryHtml = renderPickupHistorySummary(doc, segments, false);
-    const routeHistoryHtml = renderRouteHistoryBadge(history, doc.doc_status);
+    const routeHistoryHtml = renderRouteHistoryBadge(history, uiStatus);
 
-    if (doc.doc_status === 'Pending') {
+    if (uiStatus === 'Pending') {
         // Waiting for admin approval
         badgesHtml = `<div class="badge status-warning">Waiting for Approval...</div>`;
-    } else if (doc.doc_status === 'Queued') {
+    } else if (uiStatus === 'Queued') {
         // In queue, no printer assigned yet
         if (segments.length > 0) {
-            badgesHtml = renderCompletedSegments(segments, 'status-info', splitActiveMultiCopyBadges);
+            badgesHtml = renderCompletedSegments(segments, 'status-success', splitActiveMultiCopyBadges);
         }
         if (rerouteDestination) {
             badgesHtml += `<div class="badge status-primary">Rerouted to (${escapeHtml(rerouteDestination)})</div>`;
         }
         badgesHtml += `<div class="badge status-info">Waiting...</div>`;
-    } else if (doc.doc_status === 'Printing') {
+    } else if (uiStatus === 'Printing') {
         if (segments.length > 0) {
-            badgesHtml = renderCompletedSegments(hasPageSegments ? segments : segments.slice(0, -1), 'status-info', splitActiveMultiCopyBadges);
+            badgesHtml = renderCompletedSegments(hasPageSegments ? segments : segments.slice(0, -1), 'status-success', splitActiveMultiCopyBadges);
         }
         if (!hasPageSegments && routeHistoryHtml) {
             badgesHtml += routeHistoryHtml;
@@ -1813,7 +1902,7 @@ function buildDocumentBadges(doc) {
             badgesHtml += `<div class="badge status-primary">Rerouted to (${escapeHtml(rerouteDestination)})</div>`;
         }
         badgesHtml += renderCurrentPrintingSegment(doc, hasPageSegments, splitActiveMultiCopyBadges);
-    } else if (doc.doc_status === 'Finished') {
+    } else if (uiStatus === 'Finished') {
         if (pickupSummaryHtml) {
             badgesHtml = pickupSummaryHtml;
         } else if (routeHistoryHtml) {
@@ -1827,14 +1916,14 @@ function buildDocumentBadges(doc) {
                 <button class="picked-up-btn" onclick="pickedUpDocument('${escapeHtml(doc.doc_id)}')">Picked Up</button>
             </div>
         `;
-    } else if (doc.doc_status === 'Cancelled') {
+    } else if (uiStatus === 'Cancelled') {
         // Cancelled - show reason
         const reason = doc.cancel_reason ? ` (${escapeHtml(doc.cancel_reason)})` : ' (No available Printer)';
         if (segments.length > 0) {
             badgesHtml = renderCompletedSegments(segments, 'status-info', false);
         }
         badgesHtml += `<div class="badge status-danger">Cancelled${reason}</div>`;
-    } else if (doc.doc_status === 'Picked Up') {
+    } else if (uiStatus === 'Picked Up') {
         // Already picked up
         if (pickupSummaryHtml) {
             badgesHtml = pickupSummaryHtml;
@@ -2279,13 +2368,15 @@ function updateConfirmationUI(data) {
 
     if (!data.documents || data.documents.length === 0) return;
 
-    const allPickedUp = data.documents.every(d => d.doc_status === 'Picked Up');
-    const allFinished = data.documents.every(d => d.doc_status === 'Finished' || d.doc_status === 'Picked Up');
-    const allTerminal = data.documents.every(d => ['Finished', 'Picked Up', 'Cancelled'].includes(d.doc_status));
-    const allCancelled = data.documents.every(d => d.doc_status === 'Cancelled');
-    const anyPrinting = data.documents.some(d => d.doc_status === 'Printing');
-    const anyPending = data.documents.some(d => d.doc_status === 'Pending');
-    const hasFinished = data.documents.some(d => d.doc_status === 'Finished');
+    const uiStatuses = data.documents.map((doc) => getDocumentUiStatus(doc));
+
+    const allPickedUp = uiStatuses.every((status) => status === 'Picked Up');
+    const allFinished = uiStatuses.every((status) => status === 'Finished' || status === 'Picked Up');
+    const allTerminal = uiStatuses.every((status) => ['Finished', 'Picked Up', 'Cancelled'].includes(status));
+    const allCancelled = uiStatuses.every((status) => status === 'Cancelled');
+    const anyPrinting = uiStatuses.some((status) => status === 'Printing');
+    const anyPending = uiStatuses.some((status) => status === 'Pending');
+    const hasFinished = uiStatuses.some((status) => status === 'Finished');
 
     if (finishBtn) {
         finishBtn.dataset.mode = 'pickup';
