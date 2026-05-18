@@ -5796,6 +5796,24 @@ input:focus::placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.gsm {
+    min-width: 0;
+}
+
+.gsm .printer-availability-toggle {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    row-gap: 8px;
+    max-width: 100%;
+}
+
+.printer-toggle-text {
+    min-width: 0;
+    word-break: break-word;
 }
 
 .reload-btn {
@@ -8414,6 +8432,22 @@ body.admin-shell .admin-popup-submit-row .popup-done-btn {
         gap: 8px;
     }
 
+    .printer-table-row .gsm,
+    .printer-table-row .paper-assigned {
+        min-width: 0;
+    }
+
+    .printer-table-row .gsm .printer-availability-toggle {
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .printer-table-row .paper-assigned .dropdown,
+    .printer-table-row .paper-assigned .dropdown-select {
+        width: 100%;
+        max-width: 100%;
+    }
+
     .printer-table .dropdown {
         max-width: none;
     }
@@ -8496,6 +8530,10 @@ body.admin-shell .admin-popup-submit-row .popup-done-btn {
     .printer-table-row,
     .paper-refill-table .printer-table-row {
         grid-template-columns: 1fr;
+    }
+
+    .printer-table-row .gsm .printer-availability-toggle {
+        width: 100%;
     }
 
     .printer-table-row .printer-edit-btn-container {
