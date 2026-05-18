@@ -1271,6 +1271,7 @@ html {
     display:flex; 
     align-items:center; 
     gap:12px; 
+    min-width: 0;
 }
 
 .doc-left img { 
@@ -1279,10 +1280,18 @@ html {
     object-fit:contain; 
 }
 
+.doc-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 .doc-meta h6 { 
     margin:0; 
     font-size:15px; 
     color:#222; 
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .doc-id { 

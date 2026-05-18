@@ -243,6 +243,7 @@ SafePrint - Payment
             recipientQrUrl: '{{ payment_config.recipient_qr_url|escapejs }}',
             paymentExpiryMinutes: {{ payment_config.payment_expiry_minutes|default:10 }},
         },
+        pendingIntent: {{ pending_payment_json|safe|default:"null" }},
     };
 </script>
 

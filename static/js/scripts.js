@@ -1701,7 +1701,7 @@ function renderDocumentRows(documents) {
             <div class="doc-left">
                 <img src="/static/assets/pdf-icon.svg" alt="PDF Icon">
                 <div class="doc-meta">
-                    <h6>${escapeHtml(doc.filename)}</h6>
+                    <h6 title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</h6>
                     <span class="doc-id">#${escapeHtml(doc.doc_id)}</span>
                 </div>
             </div>
@@ -1894,15 +1894,50 @@ function renderPickupHistorySummary(doc, segments) {
     const printedPrinters = Array.from(
         new Set(pageSegments.map((segment) => segment.printer_name).filter(Boolean))
     );
+    const routePrinters = getRoutePrinterNames(doc.reroute_history || []);
 
     const coversAllExpectedPages = expectedPages.length > 0
         && expectedPages.every((page) => printedPages.includes(page));
 
-    if (coversAllExpectedPages && printedPrinters.length === 1) {
+    if (coversAllExpectedPages && printedPrinters.length === 1 && routePrinters.length <= 1) {
         return `<div class="badge status-primary">All pages printed to (${escapeHtml(printedPrinters[0])})</div>`;
     }
 
-    return renderCompletedSegments(pageSegments);
+    let html = renderCompletedSegments(pageSegments);
+
+    if (routePrinters.length > 1) {
+        const missingRoutePrinters = routePrinters.filter((printerName) => !printedPrinters.includes(printerName));
+        if (missingRoutePrinters.length > 0) {
+            html += `<div class="badge status-info">Route history: ${escapeHtml(routePrinters.join(' -> '))}</div>`;
+        }
+    }
+
+    return html;
+}
+
+function getRoutePrinterNames(history) {
+    const routePrinters = [];
+
+    (history || []).forEach((entry) => {
+        const printerName = (entry && entry.printer_name) ? String(entry.printer_name).trim() : '';
+        if (!printerName || printerName === 'Unknown') {
+            return;
+        }
+
+        const status = String((entry && entry.status) || '');
+        const isRouteStatus = status === 'Assigned'
+            || status === 'Rerouted'
+            || status.startsWith('Printed page')
+            || status.startsWith('Error')
+            || status.startsWith('Timeout')
+            || status.startsWith('Failed');
+
+        if (isRouteStatus && !routePrinters.includes(printerName)) {
+            routePrinters.push(printerName);
+        }
+    });
+
+    return routePrinters;
 }
 
 function formatPrintedPageRanges(pages) {
@@ -3303,12 +3338,125 @@ document.addEventListener('input', function(e) {
     const GCASH_APP_URL = 'gcash://';
     const GCASH_ANDROID_PACKAGE = 'com.globe.gcash.android';
     const GCASH_ANDROID_INTENT_URL = 'intent://open/#Intent;scheme=gcash;package=com.globe.gcash.android;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.globe.gcash.android;end';
+    const PAYMENT_CACHE_KEY_PREFIX = 'pending_payment:';
     let pollInterval = null;
     let pollAttempts = 0;
     let maxPollAttempts = Math.ceil(((PAYMENT.paymentConfig?.paymentExpiryMinutes || 10) * 60) / 5);
     let paymentOpenUrl = 'gcash://';
+    let currentPaymentIntentId = PAYMENT.pendingIntent?.intent_id || null;
     let appliedVoucherCode = null;
     let appliedCreditAmount = 0;
+    let cachedPendingPayment = null;
+
+    function showPaymentStep2() {
+        const step1 = document.getElementById('payment-step-1');
+        const voucherSection = document.getElementById('voucher-section');
+        const discountSummary = document.getElementById('discount-summary');
+        const step2 = document.getElementById('payment-step-2');
+
+        if (step1) step1.style.display = 'none';
+        if (voucherSection) voucherSection.style.display = 'none';
+        if (discountSummary) discountSummary.style.display = 'none';
+        if (step2) step2.style.display = 'flex';
+    }
+
+    function getNormalizedPaymentDocIds() {
+        return (PAYMENT.docIds || []).map(function (docId) {
+            return String(docId || '').trim();
+        }).filter(Boolean).sort();
+    }
+
+    function getPaymentCacheKey() {
+        return PAYMENT_CACHE_KEY_PREFIX + String(PAYMENT.customerId || '').trim() + ':' + getNormalizedPaymentDocIds().join(',');
+    }
+
+    function clearPaymentCache() {
+        try {
+            localStorage.removeItem(getPaymentCacheKey());
+            localStorage.removeItem('pending_payment');
+        } catch (error) {
+            // Ignore storage cleanup errors.
+        }
+        cachedPendingPayment = null;
+    }
+
+    function savePaymentCache(source) {
+        if (!source) {
+            return;
+        }
+
+        const expiresAt = source.expires_at || source.expiresAt || null;
+        const phoneValue = source.phone_number || document.getElementById('phone-number')?.value?.replace(/\s/g, '').trim() || '';
+        const intentId = source.intent_id || source.payment_intent_id || currentPaymentIntentId;
+
+        if (!intentId || !expiresAt) {
+            return;
+        }
+
+        const payload = {
+            customer_id: PAYMENT.customerId,
+            doc_ids: getNormalizedPaymentDocIds(),
+            intent_id: intentId,
+            phone_number: phoneValue,
+            amount: Number(source.amount || Math.max(0, PAYMENT.totalPrice - appliedCreditAmount)),
+            recipient_name: source.recipient_name || PAYMENT.paymentConfig?.recipientName || '',
+            recipient_number: source.recipient_number || PAYMENT.paymentConfig?.recipientNumber || '',
+            recipient_qr_url: source.recipient_qr_url || PAYMENT.paymentConfig?.recipientQrUrl || '',
+            payment_expiry_minutes: source.payment_expiry_minutes || PAYMENT.paymentConfig?.paymentExpiryMinutes || 10,
+            expires_at: expiresAt,
+            open_url: source.open_url || paymentOpenUrl || 'gcash://',
+        };
+
+        try {
+            localStorage.setItem(getPaymentCacheKey(), JSON.stringify(payload));
+            cachedPendingPayment = payload;
+        } catch (error) {
+            // Ignore storage quota or privacy mode failures.
+        }
+    }
+
+    function loadPaymentCache() {
+        try {
+            const raw = localStorage.getItem(getPaymentCacheKey());
+            if (!raw) {
+                return null;
+            }
+
+            const parsed = JSON.parse(raw);
+            const sameCustomer = String(parsed.customer_id || '').trim() === String(PAYMENT.customerId || '').trim();
+            const sameDocs = JSON.stringify((parsed.doc_ids || []).slice().sort()) === JSON.stringify(getNormalizedPaymentDocIds());
+            const expiresAtMs = Date.parse(parsed.expires_at || '');
+
+            if (!sameCustomer || !sameDocs || !expiresAtMs || expiresAtMs <= Date.now()) {
+                clearPaymentCache();
+                return null;
+            }
+
+            cachedPendingPayment = parsed;
+            return parsed;
+        } catch (error) {
+            clearPaymentCache();
+            return null;
+        }
+    }
+
+    function restorePendingPaymentAttempt(source) {
+        if (!source) {
+            return false;
+        }
+
+        const phoneInput = document.getElementById('phone-number');
+        if (phoneInput && source.phone_number) {
+            phoneInput.value = source.phone_number;
+        }
+
+        currentPaymentIntentId = source.intent_id || currentPaymentIntentId;
+        showPaymentStep2();
+        setPaymentInstructions(source);
+        savePaymentCache(source);
+        startAutoPolling();
+        return true;
+    }
 
     /** Show full-screen loading overlay */
     function showOverlay() {
@@ -3514,6 +3662,7 @@ document.addEventListener('input', function(e) {
         const qrUrl = data.recipient_qr_url || PAYMENT.paymentConfig?.recipientQrUrl || '';
         const expiryMinutes = data.payment_expiry_minutes || PAYMENT.paymentConfig?.paymentExpiryMinutes || 10;
         const amount = Number(data.amount || Math.max(0, PAYMENT.totalPrice - appliedCreditAmount));
+        currentPaymentIntentId = data.payment_intent_id || data.intent_id || currentPaymentIntentId;
 
         PAYMENT.paymentConfig = {
             recipientName: recipientName,
@@ -3546,6 +3695,18 @@ document.addEventListener('input', function(e) {
                 if (qrPlaceholder) qrPlaceholder.style.display = 'flex';
             }
         }
+
+        savePaymentCache({
+            intent_id: currentPaymentIntentId,
+            phone_number: document.getElementById('phone-number')?.value?.replace(/\s/g, '').trim() || data.phone_number || '',
+            amount: amount,
+            recipient_name: recipientName,
+            recipient_number: recipientNumber,
+            recipient_qr_url: qrUrl,
+            payment_expiry_minutes: expiryMinutes,
+            expires_at: data.expires_at || PAYMENT.pendingIntent?.expires_at || null,
+            open_url: paymentOpenUrl,
+        });
     }
 
     /**
@@ -3694,16 +3855,14 @@ document.addEventListener('input', function(e) {
                 if (data.mode === 'credit_only') {
                     // Fully covered by credit — skip payment, redirect to confirmation
                     // Remaining credit (if any) is shown as coupon banner on confirmation page
+                    clearPaymentCache();
                     sessionStorage.clear();
                     window.location.href = data.redirect_url;
                     return;
                 }
 
                 // Normal payment flow — switch to step 2
-                document.getElementById('payment-step-1').style.display = 'none';
-                document.getElementById('voucher-section').style.display = 'none';
-                document.getElementById('discount-summary').style.display = 'none';
-                document.getElementById('payment-step-2').style.display = 'flex';
+                showPaymentStep2();
                 setPaymentInstructions(data);
                 startAutoPolling();
             } else {
@@ -3741,6 +3900,7 @@ document.addEventListener('input', function(e) {
                 body: JSON.stringify({
                     action: 'verify',
                     customer_id: PAYMENT.customerId,
+                    payment_intent_id: currentPaymentIntentId,
                 }),
             });
 
@@ -3748,14 +3908,23 @@ document.addEventListener('input', function(e) {
 
             if (data.success) {
                 stopAutoPolling();
+                clearPaymentCache();
                 sessionStorage.clear();
                 alert(data.message || 'Payment verified! Redirecting to print queue...');
                 window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
             } else {
                 if (data.status === 'pending' || data.status === 'expired') {
+                    if (data.status === 'expired') {
+                        clearPaymentCache();
+                        currentPaymentIntentId = null;
+                    }
                     setPaymentHelpOpen(true);
                         alert('Payment not yet detected. If you sent a different amount, tap Payment Issue? below and keep your receipt for manual review.');
                 } else {
+                    if (currentPaymentIntentId && /No pending payment found/i.test(String(data.error || ''))) {
+                        clearPaymentCache();
+                        currentPaymentIntentId = null;
+                    }
                     alert(data.error || 'Verification failed.');
                 }
                 btn.disabled = false;
@@ -3791,14 +3960,23 @@ document.addEventListener('input', function(e) {
                     body: JSON.stringify({
                         action: 'verify',
                         customer_id: PAYMENT.customerId,
+                        payment_intent_id: currentPaymentIntentId,
                     }),
                 });
                 const data = await response.json();
                 if (data.success) {
                     stopAutoPolling();
+                    clearPaymentCache();
                     sessionStorage.clear();
                     alert(data.message || 'Payment verified! Redirecting to print queue...');
                     window.location.href = data.redirect_url || '/confirmation/' + PAYMENT.customerId + '/';
+                    return;
+                }
+
+                if (data.status === 'expired') {
+                    stopAutoPolling();
+                    clearPaymentCache();
+                    currentPaymentIntentId = null;
                 }
             } catch (e) {
                 // Silently continue polling on network errors
@@ -3892,8 +4070,8 @@ document.addEventListener('input', function(e) {
                     throw new Error(data.error || 'Could not cancel this payment attempt.');
                 }
 
+                clearPaymentCache();
                 sessionStorage.clear();
-                try { localStorage.removeItem('pending_payment'); } catch (e) { /* ignore */ }
                 window.location.href = '/';
             })
             .catch(function (error) {
@@ -3952,7 +4130,7 @@ document.addEventListener('input', function(e) {
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         try {
-            window.location.href = targetUrl;
+            openUrlViaAnchor(targetUrl, true);
         } catch (error) {
             cleanup();
             window.location.href = GCASH_WEBSITE_URL;
@@ -3969,15 +4147,19 @@ document.addEventListener('input', function(e) {
 
     function launchGcashDirect(targetUrl) {
         try {
-            window.location.href = targetUrl;
+            openUrlViaAnchor(targetUrl, true);
         } catch (error) {
             // Ignore here; Android should stay on the page if the app cannot be opened.
         }
     }
 
-    function openUrlViaAnchor(targetUrl) {
+    function openUrlViaAnchor(targetUrl, openInNewTab) {
         const anchor = document.createElement('a');
         anchor.href = targetUrl;
+        if (openInNewTab) {
+            anchor.target = '_blank';
+            anchor.rel = 'noopener noreferrer';
+        }
         anchor.style.display = 'none';
         document.body.appendChild(anchor);
         anchor.click();
@@ -4000,6 +4182,22 @@ document.addEventListener('input', function(e) {
             launchGcashWithFallback(paymentOpenUrl || GCASH_APP_URL);
         });
     };
+
+    cachedPendingPayment = loadPaymentCache();
+
+    if (PAYMENT.pendingIntent) {
+        restorePendingPaymentAttempt(PAYMENT.pendingIntent);
+    } else if (cachedPendingPayment) {
+        restorePendingPaymentAttempt(cachedPendingPayment);
+    }
+
+    window.addEventListener('pageshow', function () {
+        if (PAYMENT.pendingIntent && !document.getElementById('payment-step-2')?.offsetParent) {
+            restorePendingPaymentAttempt(PAYMENT.pendingIntent);
+        } else if (cachedPendingPayment && !document.getElementById('payment-step-2')?.offsetParent) {
+            restorePendingPaymentAttempt(cachedPendingPayment);
+        }
+    });
 
     window.submitPaymentIssueTicket = async function () {
         const nameEl = document.getElementById('payment-ticket-name');
