@@ -1722,6 +1722,7 @@ function buildDocumentBadges(doc) {
     const segments = buildPrintSegments(doc, history);
     const hasPageSegments = segments.some(segment => Array.isArray(segment.pages) && segment.pages.length > 0);
     const rerouteDestination = getLatestRerouteDestination(history);
+    const pickupSummaryHtml = renderPickupHistorySummary(doc, segments);
 
     if (doc.doc_status === 'Pending') {
         // Waiting for admin approval
@@ -1744,13 +1745,14 @@ function buildDocumentBadges(doc) {
         }
         badgesHtml += `<div class="badge status-info">${formatCurrentPrintingBadge(doc)}</div>`;
     } else if (doc.doc_status === 'Finished') {
-        if (segments.length > 0) {
+        if (pickupSummaryHtml) {
+            badgesHtml = pickupSummaryHtml;
+        } else if (segments.length > 0) {
             badgesHtml = renderCompletedSegments(segments);
         }
-        const printerText = doc.printed_at ? ` (${escapeHtml(doc.printed_at)})` : '';
         badgesHtml += `
             <div class="status-group">
-                <div class="badge status-success">Completed${printerText}</div>
+                <div class="badge status-success">Completed</div>
                 <button class="picked-up-btn" onclick="pickedUpDocument('${escapeHtml(doc.doc_id)}')">Picked Up</button>
             </div>
         `;
@@ -1763,7 +1765,9 @@ function buildDocumentBadges(doc) {
         badgesHtml += `<div class="badge status-danger">Cancelled${reason}</div>`;
     } else if (doc.doc_status === 'Picked Up') {
         // Already picked up
-        if (segments.length > 0) {
+        if (pickupSummaryHtml) {
+            badgesHtml = pickupSummaryHtml;
+        } else if (segments.length > 0) {
             badgesHtml = renderCompletedSegments(segments);
         }
         badgesHtml += `<div class="badge status-success">Picked Up</div>`;
@@ -1872,6 +1876,33 @@ function renderCompletedSegments(segments) {
         }
     });
     return html;
+}
+
+function renderPickupHistorySummary(doc, segments) {
+    const pageSegments = (segments || []).filter(
+        (segment) => Array.isArray(segment.pages) && segment.pages.length > 0
+    );
+
+    if (pageSegments.length === 0) {
+        return '';
+    }
+
+    const expectedPages = Array.from(new Set(getDocumentPageList(doc.pages_num))).sort((a, b) => a - b);
+    const printedPages = Array.from(
+        new Set(pageSegments.flatMap((segment) => segment.pages || []).map((page) => Number(page)).filter((page) => !Number.isNaN(page)))
+    ).sort((a, b) => a - b);
+    const printedPrinters = Array.from(
+        new Set(pageSegments.map((segment) => segment.printer_name).filter(Boolean))
+    );
+
+    const coversAllExpectedPages = expectedPages.length > 0
+        && expectedPages.every((page) => printedPages.includes(page));
+
+    if (coversAllExpectedPages && printedPrinters.length === 1) {
+        return `<div class="badge status-primary">All pages printed to (${escapeHtml(printedPrinters[0])})</div>`;
+    }
+
+    return renderCompletedSegments(pageSegments);
 }
 
 function formatPrintedPageRanges(pages) {
