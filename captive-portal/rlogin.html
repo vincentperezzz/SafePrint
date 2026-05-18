@@ -71,17 +71,63 @@
             font-weight: 700;
             text-decoration: none;
         }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
     </style>
 </head>
 <body>
     <div class="card">
-        <img src="logo.png" alt="SafePrint Logo" class="logo">
+            <img src="http://172.16.0.1/logo.png" alt="SafePrint Logo" class="logo">
         <h1>Welcome to SafePrint</h1>
-        <p>Login is required before opening SafePrint.</p>
-        <a class="btn" href="$(link-login)">Print using SAFEPRINT Printing Vendo</a>
+        <p>Tap below to connect to SafePrint Wi-Fi and continue to the SafePrint page.</p>
+        <iframe name="hotspot-login-frame" class="visually-hidden" tabindex="-1" aria-hidden="true" onload="handleHotspotLoginFrameLoad()"></iframe>
+        <form name="login" action="$(link-login-only)" method="post" target="hotspot-login-frame" onsubmit="return submitHotspotLogin()">
+            <input type="hidden" name="username" value="guest">
+            <input type="hidden" name="password" value="none">
+            <input type="hidden" name="dst" value="$(link-status)">
+            <button type="submit" class="btn">Print using SAFEPRINT Printing Vendo</button>
+        </form>
         <div class="manual-link">
             If Safari closes this page, reconnect to the SafePrint Wi-Fi and open the portal again.
         </div>
     </div>
+
+    <script>
+        const SAFEPRINT_URL = 'https://safeprint.duckdns.org/';
+        let hotspotLoginSubmitted = false;
+        let hotspotRedirectScheduled = false;
+
+        function submitHotspotLogin() {
+            hotspotLoginSubmitted = true;
+
+            window.setTimeout(function () {
+                if (!hotspotRedirectScheduled) {
+                    hotspotRedirectScheduled = true;
+                    window.location.replace(SAFEPRINT_URL);
+                }
+            }, 1800);
+
+            return true;
+        }
+
+        function handleHotspotLoginFrameLoad() {
+            if (!hotspotLoginSubmitted || hotspotRedirectScheduled) {
+                return;
+            }
+
+            hotspotRedirectScheduled = true;
+            window.location.replace(SAFEPRINT_URL);
+        }
+    </script>
 </body>
 </html>
