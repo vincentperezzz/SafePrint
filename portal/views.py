@@ -762,6 +762,35 @@ def _expire_stale_payment_intents(customer_id=None):
             locked_intent.save(update_fields=['status', 'updated_at'])
 
 
+def _normalized_doc_id_list(doc_ids):
+    return sorted(str(doc_id).strip() for doc_id in (doc_ids or []) if str(doc_id).strip())
+
+
+def _payment_intent_matches_doc_ids(intent, doc_ids):
+    if not intent:
+        return False
+    return _normalized_doc_id_list(getattr(intent, 'doc_ids', [])) == _normalized_doc_id_list(doc_ids)
+
+
+def _serialize_payment_intent(intent, *, gateway_context=None):
+    if not intent:
+        return None
+
+    gateway_context = gateway_context or {}
+    return {
+        'intent_id': str(intent.intent_id),
+        'phone_number': intent.payer_number,
+        'amount': float(intent.expected_amount),
+        'credit_applied': float(intent.credit_applied or Decimal('0.00')),
+        'recipient_name': intent.recipient_name or gateway_context.get('recipient_name', ''),
+        'recipient_number': intent.recipient_number or gateway_context.get('recipient_number', ''),
+        'recipient_qr_url': gateway_context.get('recipient_qr_url', ''),
+        'payment_expiry_minutes': gateway_context.get('payment_expiry_minutes', 10),
+        'expires_at': intent.expires_at.isoformat() if intent.expires_at else None,
+        'open_url': 'gcash://',
+    }
+
+
 def _queue_document_for_dispatch(document, *, priority, queued_at=None, clear_printer=True):
     queued_at = queued_at or timezone.now()
     document.doc_status = 'Queued'
@@ -1572,6 +1601,15 @@ def payment(request):
             stars = range(1, 6)  # 5 stars
             
             context = default_context.copy()
+            pending_payment = PaymentIntent.objects.filter(
+                customer_id=customer_id,
+                status=PaymentIntent.STATUS_PENDING,
+                expires_at__gte=timezone.now(),
+            ).order_by('-created_at').first()
+
+            if pending_payment and not _payment_intent_matches_doc_ids(pending_payment, doc_ids_list):
+                pending_payment = None
+
             context.update({
                 'customer_id': customer_id,
                 'documents': documents_data,
@@ -1579,6 +1617,7 @@ def payment(request):
                 'doc_ids_json': json.dumps(doc_ids_list),
                 'stars': stars,
                 'payment_config': gateway_context,
+                'pending_payment_json': json.dumps(_serialize_payment_intent(pending_payment, gateway_context=gateway_context)) if pending_payment else 'null',
             })
             
             return render(request, 'payment.html', context)
@@ -1742,6 +1781,52 @@ def payment(request):
                             status=PaymentIntent.STATUS_PENDING,
                         )
                     )
+
+                    reusable_intent = next(
+                        (
+                            pending_intent for pending_intent in existing_intents
+                            if not pending_intent.is_expired
+                            and _payment_intent_matches_doc_ids(pending_intent, documents_ids)
+                            and pending_intent.payer_number == phone_number
+                            and Decimal(pending_intent.expected_amount) == balance_due
+                            and str(pending_intent.voucher_credit_code or '') == voucher_credit_code
+                            and Decimal(pending_intent.credit_applied or Decimal('0.00')) == credit_applied
+                        ),
+                        None,
+                    )
+
+                    if reusable_intent:
+                        for pending_intent in existing_intents:
+                            if pending_intent.pk == reusable_intent.pk:
+                                continue
+                            _refund_reserved_voucher(pending_intent)
+                            pending_intent.status = PaymentIntent.STATUS_CANCELLED
+                            pending_intent.save(update_fields=['status', 'updated_at'])
+
+                        for payment_obj in Payment.objects.filter(doc__doc_id__in=documents_ids):
+                            payment_obj.payment_method = 'gcash_listener'
+                            payment_obj.phone_number = phone_number
+                            payment_obj.save(update_fields=['payment_method', 'phone_number'])
+
+                        request.session['pending_payment_cid'] = customer_id
+                        request.session['pending_payment_doc_ids'] = documents_ids
+
+                        return JsonResponse({
+                            'success': True,
+                            'mode': 'payment',
+                            'message': 'Resuming your existing payment attempt.',
+                            'payment_intent_id': str(reusable_intent.intent_id),
+                            'amount': float(balance_due),
+                            'original_total': float(total_price),
+                            'credit_applied': float(credit_applied),
+                            'recipient_name': reusable_intent.recipient_name or gateway_context['recipient_name'],
+                            'recipient_number': reusable_intent.recipient_number or gateway_context['recipient_number'],
+                            'recipient_qr_url': gateway_context['recipient_qr_url'],
+                            'payment_expiry_minutes': gateway_context['payment_expiry_minutes'],
+                            'expires_at': reusable_intent.expires_at.isoformat(),
+                            'open_url': 'gcash://',
+                        })
+
                     for pending_intent in existing_intents:
                         _refund_reserved_voucher(pending_intent)
                         pending_intent.status = PaymentIntent.STATUS_CANCELLED
@@ -1814,10 +1899,16 @@ def payment(request):
             elif action == 'verify':
                 _expire_stale_payment_intents(customer_id=customer_id)
 
-                payment_intent = PaymentIntent.objects.filter(
+                payment_intent_id = str(data.get('payment_intent_id', '') or '').strip()
+
+                payment_intent_qs = PaymentIntent.objects.filter(
                     customer_id=customer_id,
                     status=PaymentIntent.STATUS_PENDING,
-                ).order_by('created_at').first()
+                )
+                if payment_intent_id:
+                    payment_intent_qs = payment_intent_qs.filter(intent_id=payment_intent_id)
+
+                payment_intent = payment_intent_qs.order_by('-created_at').first()
 
                 if not payment_intent:
                     already_paid = Payment.objects.filter(
