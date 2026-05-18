@@ -3270,6 +3270,8 @@ document.addEventListener('input', function(e) {
     const PAYMENT = window.PAYMENT_DATA;
     const GCASH_WEBSITE_URL = 'https://www.gcash.com/';
     const GCASH_APP_URL = 'gcash://';
+    const GCASH_ANDROID_PACKAGE = 'com.globe.gcash.android';
+    const GCASH_ANDROID_INTENT_URL = 'intent://open/#Intent;scheme=gcash;package=com.globe.gcash.android;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.globe.gcash.android;end';
     let pollInterval = null;
     let pollAttempts = 0;
     let maxPollAttempts = Math.ceil(((PAYMENT.paymentConfig?.paymentExpiryMinutes || 10) * 60) / 5);
@@ -3942,9 +3944,22 @@ document.addEventListener('input', function(e) {
         }
     }
 
+    function openUrlViaAnchor(targetUrl) {
+        const anchor = document.createElement('a');
+        anchor.href = targetUrl;
+        anchor.style.display = 'none';
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+    }
+
     window.openGCashApp = function () {
         if (isAndroidDevice()) {
-            launchGcashDirect(paymentOpenUrl || GCASH_APP_URL);
+            try {
+                openUrlViaAnchor(GCASH_ANDROID_INTENT_URL);
+            } catch (error) {
+                launchGcashDirect('intent://open/#Intent;scheme=gcash;package=' + GCASH_ANDROID_PACKAGE + ';action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end');
+            }
             return;
         }
 
