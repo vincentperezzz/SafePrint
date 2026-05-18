@@ -146,24 +146,70 @@ SafePrint - Payment
             </div>
             <div class="payment-step-actions">
                 <button type="button" id="open-gcash-btn" class="card-redirect-btn payment-gcash-btn" onclick="openGCashApp()">
-                    Copy Number &amp; Open GCash
+                    Open GCash App
                 </button>
             </div>
             <button type="button" id="payment-help-btn" class="card-cancel-btn" onclick="togglePaymentHelp()">
-                Need Help? Sent the wrong amount?
+                Payment Issue?
             </button>
             <div id="payment-help-panel" class="card-payment-details" style="display: none; margin-top: 12px; border-style: dashed;">
-                <h3 style="margin-bottom: 10px;">Payment Help</h3>
+                <h3 style="margin-bottom: 10px;">Create a Payment Ticket</h3>
                 <p class="payment-fineprint" style="margin-bottom: 10px;">
-                    Auto-check only matches the exact amount shown above. If you sent more or less than the expected amount,
-                    keep your GCash receipt and reference number for manual review.
+                    If you sent the wrong amount or the payment was not detected, submit a ticket here. SafePrint personnel can review it and contact you using the details below.
                 </p>
-                <p class="payment-fineprint" style="margin-bottom: 14px;">
-                    Use Customer ID <strong>#{{ customer_id }}</strong> when asking for help. Do not cancel this page unless staff tells you to start over.
-                </p>
-                <div class="payment-step-actions">
+                <div class="card-payment-form" style="gap: 12px;">
+                    <div>
+                        <label class="card-label" for="payment-ticket-issue">Issue Type</label>
+                        <select id="payment-ticket-issue" class="card-input">
+                            <option value="wrong-amount">I sent the wrong amount</option>
+                            <option value="wrong-recipient">I sent it to the wrong GCash number</option>
+                            <option value="not-detected">I paid but SafePrint did not detect it</option>
+                            <option value="gcash-launch">The Open GCash button did not open the app correctly</option>
+                            <option value="other">Other payment concern</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-name">Your Name</label>
+                        <input id="payment-ticket-name" type="text" class="card-input" placeholder="Enter your name">
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-email">Email Address</label>
+                        <input id="payment-ticket-email" type="email" class="card-input" placeholder="Enter your email address">
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-phone">Contact Number</label>
+                        <input id="payment-ticket-phone" type="tel" class="card-input phone-input" inputmode="numeric" maxlength="11" placeholder="09XXXXXXXXX">
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-gcash-number">Your GCash Number</label>
+                        <input id="payment-ticket-gcash-number" type="tel" class="card-input phone-input" inputmode="numeric" maxlength="11" placeholder="09XXXXXXXXX">
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-receipt-code">Receipt Reference Code</label>
+                        <input id="payment-ticket-receipt-code" type="text" class="card-input" placeholder="Enter the code from your GCash receipt">
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-receipt-screenshot">Receipt Screenshot</label>
+                        <div class="receipt-upload-area">
+                            <input id="payment-ticket-receipt-screenshot" type="file" accept="image/*" style="display:none;">
+                            <button type="button" class="browse-btn receipt-browse-btn" onclick="document.getElementById('payment-ticket-receipt-screenshot').click()">
+                                Browse Image
+                            </button>
+                            <span class="receipt-file-name" id="payment-ticket-receipt-file-name">No file chosen</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="card-label" for="payment-ticket-notes">What happened?</label>
+                        <textarea id="payment-ticket-notes" class="card-input card-textarea" rows="5" placeholder="Example: I sent 18 pesos instead of 16 pesos. Please contact me before I send again."></textarea>
+                    </div>
+                </div>
+                <p id="payment-ticket-status" class="payment-fineprint" style="display: none; margin-top: 14px;"></p>
+                <div class="payment-step-actions" style="margin-top: 14px;">
                     <button type="button" class="card-redirect-btn payment-copy-btn payment-gcash-btn" onclick="copyPaymentHelpDetails()">
-                        Copy Help Details
+                        Copy Payment Details
+                    </button>
+                    <button type="button" id="payment-ticket-submit-btn" class="card-pay-btn payment-success-btn" onclick="submitPaymentIssueTicket()">
+                        Create Ticket
                     </button>
                 </div>
             </div>
@@ -182,6 +228,14 @@ SafePrint - Payment
     window.PAYMENT_DATA = {
         customerId: '{{ customer_id }}',
         docIds: {{ doc_ids_json|safe|default:"[]" }},
+        documents: [
+            {% for doc in documents %}
+            {
+                docId: '{{ doc.doc_id|escapejs }}',
+                name: '{{ doc.name|escapejs }}'
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ],
         totalPrice: {{ total_price|default:0 }},
         paymentConfig: {
             recipientName: '{{ payment_config.recipient_name|escapejs }}',

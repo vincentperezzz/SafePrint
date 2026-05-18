@@ -225,9 +225,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // Track xhr and paused state per file
     const uploadXhrs = {};
     const uploadPaused = {};
+    const cancelledUploads = {};
+
+    function deleteUploadedFileFromServer(filePath) {
+        if (!filePath) return Promise.resolve(false);
+
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+            document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+
+        if (csrfToken) {
+            headers['X-CSRFToken'] = csrfToken;
+        }
+
+        return fetch('/api/delete-file/', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                file_path: filePath,
+            }),
+        })
+            .then(response => response.json())
+            .then(data => !!data.success)
+            .catch(() => false);
+    }
 
     function uploadFile(file, retryFileId = null) {
         const fileId = retryFileId || (Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+        delete cancelledUploads[fileId];
         // If this is a retry, remove any previous failed record
         if (retryFileId && failedUploads[retryFileId]) {
             delete failedUploads[retryFileId];
@@ -308,6 +336,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (xhr.status === 200) {
                 try {
                     const response = JSON.parse(xhr.responseText);
+                    if (cancelledUploads[fileId]) {
+                        delete cancelledUploads[fileId];
+                        if (response.success && response.file_path) {
+                            void deleteUploadedFileFromServer(response.file_path);
+                        }
+                        return;
+                    }
                     if (response.success) {
                         // Upload and scan successful
                         updateFileStatus(fileId, 'completed', file.name, formatFileSize(file.size));
@@ -339,6 +374,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         xhr.addEventListener('error', function () {
+            if (cancelledUploads[fileId]) {
+                delete cancelledUploads[fileId];
+                isScanning = false;
+                updateProceedButton();
+                delete uploadXhrs[fileId];
+                delete uploadPaused[fileId];
+                return;
+            }
             updateFileStatus(fileId, 'error', file.name);
             failedUploads[fileId] = file;
             isScanning = false;
@@ -475,32 +518,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const fileToRemove = uploadedFiles.find(file => file.id === fileId);
 
             if (fileToRemove && fileToRemove.serverPath) {
-                // Get CSRF token
-                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-                    document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-
-                const headers = {
-                    'Content-Type': 'application/json',
-                };
-
-                if (csrfToken) {
-                    headers['X-CSRFToken'] = csrfToken;
-                }
-
-                // Call backend to delete the file from server
-                fetch('/api/delete-file/', {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify({
-                        file_path: fileToRemove.serverPath
-                    })
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
+                deleteUploadedFileFromServer(fileToRemove.serverPath)
+                    .then(deleted => {
+                        if (deleted) {
                             console.log('File deleted from server successfully');
                         } else {
-                            console.error('Failed to delete file from server:', data.error);
+                            console.error('Failed to delete file from server');
                         }
                     })
                     .catch(error => {
@@ -529,11 +552,18 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.cancelUpload = function (fileId) {
-        // Cancel ongoing upload
+        cancelledUploads[fileId] = true;
+        if (uploadXhrs[fileId]) {
+            uploadXhrs[fileId].abort();
+        }
         const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
         if (fileElement) {
             fileElement.remove();
         }
+        delete failedUploads[fileId];
+        delete uploadPaused[fileId];
+        isScanning = false;
+        updateProceedButton();
     };
 
     // Handle proceed button click
@@ -3165,6 +3195,12 @@ document.addEventListener('change', function(e) {
             label.textContent = e.target.files.length > 0 ? e.target.files[0].name : 'No file chosen';
         }
     }
+    if (e.target && e.target.id === 'payment-ticket-receipt-screenshot') {
+        const label = document.getElementById('payment-ticket-receipt-file-name');
+        if (label) {
+            label.textContent = e.target.files.length > 0 ? e.target.files[0].name : 'No file chosen';
+        }
+    }
     // Proof photos file input: show count and thumbnail previews
     if (e.target && e.target.id === 'ticket-proof-photos') {
         const label = document.getElementById('proof-photos-name');
@@ -3232,6 +3268,8 @@ document.addEventListener('input', function(e) {
     if (!window.PAYMENT_DATA) return;
 
     const PAYMENT = window.PAYMENT_DATA;
+    const GCASH_WEBSITE_URL = 'https://www.gcash.com/';
+    const GCASH_APP_URL = 'gcash://';
     let pollInterval = null;
     let pollAttempts = 0;
     let maxPollAttempts = Math.ceil(((PAYMENT.paymentConfig?.paymentExpiryMinutes || 10) * 60) / 5);
@@ -3249,6 +3287,145 @@ document.addEventListener('input', function(e) {
     function hideOverlay() {
         const overlay = document.getElementById('loading-overlay');
         if (overlay) overlay.style.display = 'none';
+    }
+
+    function isAndroidDevice() {
+        return /Android/i.test(navigator.userAgent || '');
+    }
+
+    async function copyTextWithFallback(text) {
+        if (!text) {
+            return false;
+        }
+
+        if (navigator.clipboard && window.isSecureContext) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (error) {
+                // Fall through to textarea-based copy.
+            }
+        }
+
+        try {
+            const helper = document.createElement('textarea');
+            helper.value = text;
+            helper.setAttribute('readonly', 'readonly');
+            helper.style.position = 'fixed';
+            helper.style.opacity = '0';
+            helper.style.pointerEvents = 'none';
+            document.body.appendChild(helper);
+            helper.focus();
+            helper.select();
+            helper.setSelectionRange(0, helper.value.length);
+            const copied = document.execCommand('copy');
+            document.body.removeChild(helper);
+            return copied;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function getPaymentDocuments() {
+        if (Array.isArray(PAYMENT.documents) && PAYMENT.documents.length > 0) {
+            return PAYMENT.documents;
+        }
+
+        return (PAYMENT.docIds || []).map(function (docId) {
+            return {
+                docId: docId,
+                name: docId,
+            };
+        });
+    }
+
+    function getPaymentTicketSummary() {
+        const docs = getPaymentDocuments();
+        const recipientNumber = document.getElementById('payment-recipient-number')?.textContent?.trim() || PAYMENT.paymentConfig?.recipientNumber || '';
+        const expectedAmount = document.getElementById('payment-send-amount')?.textContent?.trim() || ('₱' + Number(Math.max(0, PAYMENT.totalPrice - appliedCreditAmount)).toFixed(2));
+        const payerNumber = document.getElementById('phone-number')?.value?.replace(/\D/g, '').trim() || '';
+        return {
+            docs: docs,
+            recipientNumber: recipientNumber,
+            expectedAmount: expectedAmount,
+            payerNumber: payerNumber,
+        };
+    }
+
+    function setPaymentTicketStatus(message, tone) {
+        const statusEl = document.getElementById('payment-ticket-status');
+        if (!statusEl) {
+            return;
+        }
+
+        if (!message) {
+            statusEl.style.display = 'none';
+            statusEl.textContent = '';
+            statusEl.style.color = '';
+            return;
+        }
+
+        statusEl.style.display = 'block';
+        statusEl.textContent = message;
+        statusEl.style.color = tone === 'success' ? '#166534' : '#b91c1c';
+    }
+
+    function populatePaymentTicketDefaults() {
+        const phoneInput = document.getElementById('phone-number');
+        const ticketPhone = document.getElementById('payment-ticket-phone');
+        const ticketGcash = document.getElementById('payment-ticket-gcash-number');
+        const normalizedPhone = phoneInput?.value?.replace(/\D/g, '').trim() || '';
+
+        if (ticketPhone && !ticketPhone.value.trim() && normalizedPhone) {
+            ticketPhone.value = normalizedPhone;
+        }
+
+        if (ticketGcash && !ticketGcash.value.trim() && normalizedPhone) {
+            ticketGcash.value = normalizedPhone;
+        }
+    }
+
+    function buildPaymentIssueDescription() {
+        const issueTypeEl = document.getElementById('payment-ticket-issue');
+        const notesEl = document.getElementById('payment-ticket-notes');
+        const ticketGcashEl = document.getElementById('payment-ticket-gcash-number');
+        const summary = getPaymentTicketSummary();
+        const issueLabels = {
+            'wrong-amount': 'Wrong amount sent',
+            'wrong-recipient': 'Sent to the wrong GCash number',
+            'not-detected': 'Payment not auto-detected',
+            'gcash-launch': 'Open GCash button did not open the app correctly',
+            'other': 'Other payment concern',
+        };
+        const issueValue = issueTypeEl?.value || 'other';
+        const noteValue = notesEl?.value?.trim() || '';
+        const payerGcashNumber = ticketGcashEl?.value?.replace(/\D/g, '').trim() || summary.payerNumber || 'Not provided';
+        const lines = [
+            'Payment issue reported from payment page.',
+            'Issue type: ' + (issueLabels[issueValue] || issueLabels.other),
+            'Customer ID: #' + PAYMENT.customerId,
+            'Document IDs: ' + summary.docs.map(function (doc) { return doc.docId; }).join(', '),
+            'Expected Amount: ' + summary.expectedAmount,
+            'Recipient Number: ' + (summary.recipientNumber || 'Not available'),
+            'Customer GCash Number: ' + payerGcashNumber,
+        ];
+
+        if (noteValue) {
+            lines.push('Customer note: ' + noteValue);
+        }
+
+        lines.push('Customer requested personnel follow-up from the payment page.');
+        return lines.join('\n');
+    }
+
+    function setPaymentTicketSubmitting(isSubmitting) {
+        const submitBtn = document.getElementById('payment-ticket-submit-btn');
+        if (!submitBtn) {
+            return;
+        }
+
+        submitBtn.disabled = isSubmitting;
+        submitBtn.textContent = isSubmitting ? 'Creating Ticket...' : 'Create Ticket';
     }
 
     /** Update the displayed charge amount and button text based on credit */
@@ -3544,7 +3721,7 @@ document.addEventListener('input', function(e) {
             } else {
                 if (data.status === 'pending' || data.status === 'expired') {
                     setPaymentHelpOpen(true);
-                    alert('Payment not yet detected. If you sent a different amount, tap Payment Help below and keep your receipt for manual review.');
+                        alert('Payment not yet detected. If you sent a different amount, tap Payment Issue? below and keep your receipt for manual review.');
                 } else {
                     alert(data.error || 'Verification failed.');
                 }
@@ -3612,8 +3789,13 @@ document.addEventListener('input', function(e) {
 
         panel.style.display = isOpen ? 'block' : 'none';
         btn.textContent = isOpen
-            ? 'Hide Payment Help'
-            : 'Need Help? Sent the wrong amount?';
+            ? 'Hide Payment Issue?'
+            : 'Payment Issue?';
+
+        if (isOpen) {
+            populatePaymentTicketDefaults();
+            setPaymentTicketStatus('', '');
+        }
     }
 
     window.togglePaymentHelp = function () {
@@ -3625,25 +3807,26 @@ document.addEventListener('input', function(e) {
     };
 
     window.copyPaymentHelpDetails = async function () {
-        const payerNumber = document.getElementById('phone-number')?.value?.trim() || 'Not provided';
-        const recipientNumber = document.getElementById('payment-recipient-number')?.textContent?.trim() || 'Not available';
-        const expectedAmount = document.getElementById('payment-send-amount')?.textContent?.trim() || 'Not available';
+        const summary = getPaymentTicketSummary();
         const helpText = [
-            'SafePrint Payment Help',
+            'SafePrint Payment Ticket Details',
             'Customer ID: #' + PAYMENT.customerId,
-            'Document IDs: ' + (PAYMENT.docIds || []).join(', '),
-            'Expected Amount: ' + expectedAmount,
-            'My GCash Number: ' + payerNumber,
-            'Recipient Number: ' + recipientNumber,
-            'Issue: Wrong amount sent / payment not auto-detected',
-            'Receipt needed: Please attach the GCash receipt screenshot and reference number for manual review.',
+            'Document IDs: ' + summary.docs.map(function (doc) { return doc.docId; }).join(', '),
+            'Expected Amount: ' + summary.expectedAmount,
+            'My GCash Number: ' + (summary.payerNumber || 'Not provided'),
+            'Recipient Number: ' + (summary.recipientNumber || 'Not available'),
+            'Use this together with your receipt screenshot and reference code.',
         ].join('\n');
 
         try {
-            await navigator.clipboard.writeText(helpText);
-            alert('Payment help details copied. Send them together with your receipt screenshot and GCash reference number for manual review.');
+            const copied = await copyTextWithFallback(helpText);
+            if (copied) {
+                alert('Payment details copied. You can paste them into your ticket notes if needed.');
+                return;
+            }
+            throw new Error('Copy unavailable');
         } catch (err) {
-            window.prompt('Copy these payment help details for manual review:', helpText);
+            window.prompt('Copy these payment details for your ticket:', helpText);
         }
     };
 
@@ -3655,6 +3838,7 @@ document.addEventListener('input', function(e) {
             return;
         }
         stopAutoPolling();
+        showOverlay();
         fetch('/payment/', {
             method: 'POST',
             headers: {
@@ -3664,48 +3848,225 @@ document.addEventListener('input', function(e) {
             body: JSON.stringify({
                 action: 'cancel',
                 customer_id: PAYMENT.customerId,
+                doc_ids: PAYMENT.docIds,
             }),
-        }).finally(() => {
-            // Clear all browser-side storage to prevent stale redirects
-            sessionStorage.clear();
-            try { localStorage.removeItem('pending_payment'); } catch (e) { /* ignore */ }
-            window.location.href = '/';
-        });
+        })
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (data) {
+                if (!data.success) {
+                    throw new Error(data.error || 'Could not cancel this payment attempt.');
+                }
+
+                sessionStorage.clear();
+                try { localStorage.removeItem('pending_payment'); } catch (e) { /* ignore */ }
+                window.location.href = '/';
+            })
+            .catch(function (error) {
+                hideOverlay();
+                alert(error.message || 'Could not cancel this payment attempt. Please try again.');
+            });
     };
 
     /**
      * Copy the recipient number so the user can paste it in GCash.
      */
-    window.copyPaymentNumber = async function () {
+    window.copyPaymentNumber = async function (suppressErrors) {
         const recipientNumber = document.getElementById('payment-recipient-number')?.textContent?.trim();
         if (!recipientNumber) {
-            alert('Recipient number is not available yet.');
+            if (!suppressErrors) {
+                alert('Recipient number is not available yet.');
+            }
             return false;
         }
 
         try {
-            await navigator.clipboard.writeText(recipientNumber);
+            const copied = await copyTextWithFallback(recipientNumber);
+            if (!copied) {
+                throw new Error('Copy unavailable');
+            }
             return true;
         } catch (err) {
-            alert('Could not copy the GCash number automatically. Please copy it manually.');
+            if (!suppressErrors) {
+                window.prompt('Copy the GCash number manually before sending payment:', recipientNumber);
+            }
             return false;
         }
     };
 
-    window.openGCashApp = async function () {
-        const copied = await window.copyPaymentNumber();
-        if (!copied) return;
+    function launchGcashWithFallback(targetUrl) {
+        let appLaunchDetected = false;
 
-        const targetUrl = paymentOpenUrl || 'gcash://';
+        function markAppLaunch() {
+            appLaunchDetected = true;
+        }
+
+        function handleVisibilityChange() {
+            if (document.visibilityState === 'hidden') {
+                markAppLaunch();
+            }
+        }
+
+        function cleanup() {
+            window.removeEventListener('blur', markAppLaunch);
+            window.removeEventListener('pagehide', markAppLaunch);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        }
+
+        window.addEventListener('blur', markAppLaunch);
+        window.addEventListener('pagehide', markAppLaunch);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
         try {
             window.location.href = targetUrl;
-            window.setTimeout(function () {
-                if (document.visibilityState === 'visible') {
-                    window.open('https://www.gcash.com/', '_blank');
-                }
-            }, 1200);
-        } catch (err) {
-            window.open('https://www.gcash.com/', '_blank');
+        } catch (error) {
+            cleanup();
+            window.location.href = GCASH_WEBSITE_URL;
+            return;
+        }
+
+        window.setTimeout(function () {
+            cleanup();
+            if (!appLaunchDetected && document.visibilityState === 'visible') {
+                window.location.href = GCASH_WEBSITE_URL;
+            }
+        }, 1500);
+    }
+
+    function launchGcashDirect(targetUrl) {
+        try {
+            window.location.href = targetUrl;
+        } catch (error) {
+            // Ignore here; Android should stay on the page if the app cannot be opened.
+        }
+    }
+
+    window.openGCashApp = function () {
+        if (isAndroidDevice()) {
+            launchGcashDirect(paymentOpenUrl || GCASH_APP_URL);
+            return;
+        }
+
+        window.copyPaymentNumber(false).then(function () {
+            launchGcashWithFallback(paymentOpenUrl || GCASH_APP_URL);
+        }).catch(function () {
+            launchGcashWithFallback(paymentOpenUrl || GCASH_APP_URL);
+        });
+    };
+
+    window.submitPaymentIssueTicket = async function () {
+        const nameEl = document.getElementById('payment-ticket-name');
+        const emailEl = document.getElementById('payment-ticket-email');
+        const phoneEl = document.getElementById('payment-ticket-phone');
+        const gcashEl = document.getElementById('payment-ticket-gcash-number');
+        const receiptCodeEl = document.getElementById('payment-ticket-receipt-code');
+        const receiptScreenshotEl = document.getElementById('payment-ticket-receipt-screenshot');
+        const notesEl = document.getElementById('payment-ticket-notes');
+        const docs = getPaymentDocuments();
+        const firstDoc = docs[0] || { docId: '', name: 'Payment concern' };
+        const customerName = nameEl?.value?.trim() || '';
+        const email = emailEl?.value?.trim() || '';
+        const phoneNumber = phoneEl?.value?.replace(/\D/g, '').trim() || '';
+        const gcashNumber = gcashEl?.value?.replace(/\D/g, '').trim() || '';
+        const receiptCode = receiptCodeEl?.value?.trim() || '';
+        const receiptScreenshot = receiptScreenshotEl?.files?.[0] || null;
+        const notesValue = notesEl?.value?.trim() || '';
+
+        if (!customerName) {
+            alert('Please enter your name so personnel can identify your ticket.');
+            nameEl?.focus();
+            return;
+        }
+
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            alert('Please enter a valid email address.');
+            emailEl?.focus();
+            return;
+        }
+
+        if (!/^09\d{9}$/.test(phoneNumber)) {
+            alert('Please enter a valid Philippine mobile number (e.g. 09171234567).');
+            phoneEl?.focus();
+            return;
+        }
+
+        if (gcashNumber && !/^09\d{9}$/.test(gcashNumber)) {
+            alert('Please enter a valid GCash mobile number (e.g. 09171234567).');
+            gcashEl?.focus();
+            return;
+        }
+
+        if (!receiptCode) {
+            alert('Please enter the receipt reference code from GCash.');
+            receiptCodeEl?.focus();
+            return;
+        }
+
+        if (!receiptScreenshot) {
+            alert('Please upload your GCash receipt screenshot so personnel can review the payment.');
+            receiptScreenshotEl?.focus();
+            return;
+        }
+
+        if (!notesValue) {
+            alert('Please describe what happened so personnel know how to help.');
+            notesEl?.focus();
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('customer_id', PAYMENT.customerId);
+        formData.append('document_id', firstDoc.docId || '');
+        formData.append('document_name', docs.length > 1 ? docs.length + ' payment-related documents' : (firstDoc.name || firstDoc.docId || 'Payment concern'));
+        formData.append('customer_name', customerName);
+        formData.append('email', email);
+        formData.append('phone_number', phoneNumber);
+        formData.append('problem_type', 'other');
+        formData.append('description', buildPaymentIssueDescription());
+        formData.append('page_range', 'all');
+        formData.append('specific_pages', '');
+        formData.append('reprinted', 'false');
+        formData.append('receipt_code', receiptCode);
+        formData.append('receipt_screenshot', receiptScreenshot);
+        formData.append('proof_photos', receiptScreenshot);
+        if (gcashNumber) {
+            formData.append('gcash_number', gcashNumber);
+        }
+        if (docs.length > 1) {
+            formData.append('documents', JSON.stringify(docs.map(function (doc) {
+                return {
+                    doc_id: doc.docId,
+                    doc_name: doc.name,
+                };
+            })));
+        }
+
+        setPaymentTicketSubmitting(true);
+        setPaymentTicketStatus('', '');
+
+        try {
+            const response = await fetch('/api/submit-ticket/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: formData,
+            });
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'Ticket creation failed.');
+            }
+
+            stopAutoPolling();
+            setPaymentTicketStatus('Ticket ' + (data.ticket_number || '') + ' created. SafePrint personnel can now review the payment and contact you.', 'success');
+            alert('Payment ticket created: ' + (data.ticket_number || 'Ticket submitted') + '. SafePrint personnel can now review your payment concern.');
+        } catch (error) {
+            setPaymentTicketStatus(error.message || 'Could not create the ticket right now.', 'error');
+            alert(error.message || 'Could not create the ticket right now.');
+        } finally {
+            setPaymentTicketSubmitting(false);
         }
     };
 

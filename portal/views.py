@@ -1955,10 +1955,19 @@ def payment(request):
                 })
 
             elif action == 'cancel':
-                # Cancel payment - delete unpaid payments and associated documents
+                # Cancel payment - delete the current unpaid print job and associated documents
                 customer_id = data.get('customer_id')
+                requested_doc_ids = data.get('doc_ids') or []
                 if not customer_id:
                     return JsonResponse({'success': False, 'error': 'Missing customer_id'})
+
+                if not isinstance(requested_doc_ids, list):
+                    requested_doc_ids = []
+
+                target_doc_ids = [str(doc_id).strip() for doc_id in requested_doc_ids if str(doc_id).strip()]
+                if not target_doc_ids:
+                    session_doc_ids = request.session.get('pending_payment_doc_ids') or []
+                    target_doc_ids = [str(doc_id).strip() for doc_id in session_doc_ids if str(doc_id).strip()]
 
                 pending_intents = list(
                     PaymentIntent.objects.filter(
@@ -1975,35 +1984,42 @@ def payment(request):
                         _refund_reserved_voucher(locked_intent)
                         locked_intent.status = PaymentIntent.STATUS_CANCELLED
                         locked_intent.save(update_fields=['status', 'updated_at'])
-                
-                # Delete unpaid payments and their documents
-                unpaid_payments = Payment.objects.filter(
-                    doc__customer_id=customer_id,
-                    payment_status='Unpaid'
+
+                document_filters = Q(customer_id=customer_id)
+                payment_filters = Q(payment_status='Unpaid') & (
+                    Q(doc__customer_id=customer_id) |
+                    Q(customer_id_snapshot=customer_id)
                 )
-                
-                for payment_obj in unpaid_payments:
-                    doc = payment_obj.doc
-                    # Delete the uploaded file
-                    if doc and doc.stored_name:
+
+                if target_doc_ids:
+                    document_filters &= Q(doc_id__in=target_doc_ids)
+                    payment_filters &= (
+                        Q(doc__doc_id__in=target_doc_ids) |
+                        Q(doc_id_snapshot__in=target_doc_ids)
+                    )
+
+                documents_to_delete = list(Document.objects.filter(document_filters))
+                for payment_obj in Payment.objects.filter(payment_filters):
+                    payment_obj.delete()
+
+                for doc in documents_to_delete:
+                    if doc.stored_name:
                         file_path = os.path.join(settings.MEDIA_ROOT, 'uploads', customer_id, doc.stored_name)
                         if os.path.exists(file_path):
                             os.remove(file_path)
-                    # Delete payment and document
-                    payment_obj.delete()
-                    if doc:
-                        doc.delete()
-                
-                # Clean up empty customer upload folder
-                customer_folder = os.path.join(settings.MEDIA_ROOT, 'uploads', customer_id)
-                if os.path.exists(customer_folder) and not os.listdir(customer_folder):
-                    os.rmdir(customer_folder)
+                    doc.delete()
+
+                _trigger_upload_folder_cleanup()
                 
                 # Clear session flags
                 request.session.pop('pending_payment_cid', None)
                 request.session.pop('pending_payment_doc_ids', None)
-                
-                return JsonResponse({'success': True, 'message': 'Payment cancelled successfully.'})
+
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Payment cancelled successfully.',
+                    'deleted_doc_ids': [doc.doc_id for doc in documents_to_delete],
+                })
 
             else:
                 return JsonResponse({
