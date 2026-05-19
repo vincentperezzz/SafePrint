@@ -24,7 +24,14 @@ from .models import AdminUser, Printer, Document, Payment, PaymentIntent, Notifi
 from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.decorators import login_required
-from portal.services.firebase_payment import FirebasePaymentError, claim_notification, list_matching_notifications, normalize_phone_number
+from portal.services.firebase_payment import (
+    FirebasePaymentError,
+    build_notification_reference,
+    claim_notification,
+    get_notification,
+    list_matching_notifications,
+    normalize_phone_number,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -874,6 +881,43 @@ def _build_pending_payment_retry_response(error_message=None):
     }
 
 
+def _ensure_payment_intent_notification_claimed(payment_intent):
+    if not payment_intent:
+        return False
+    if payment_intent.status != PaymentIntent.STATUS_MATCHED:
+        return False
+    if not payment_intent.matched_notification_id:
+        return False
+
+    notification_ref = build_notification_reference(payment_intent.matched_notification_id)
+    notification = get_notification(notification_ref=notification_ref)
+    if notification is None:
+        return False
+
+    payload = notification['payload']
+    claimed_by_cid = str(payload.get('claimed_by_cid') or '').strip()
+    claimed_by_intent_id = str(payload.get('claimed_by_intent_id') or '').strip()
+    expected_intent_id = str(payment_intent.intent_id)
+
+    if claimed_by_cid == payment_intent.customer_id and claimed_by_intent_id == expected_intent_id:
+        return True
+
+    if claimed_by_cid and claimed_by_cid != payment_intent.customer_id:
+        logger.warning(
+            'Matched payment intent %s points to Firebase notification %s already claimed by %s.',
+            payment_intent.intent_id,
+            payment_intent.matched_notification_id,
+            claimed_by_cid,
+        )
+        return False
+
+    return claim_notification(
+        notification_ref=notification_ref,
+        customer_id=payment_intent.customer_id,
+        intent_id=payment_intent.intent_id,
+    ) is not None
+
+
 def _attempt_match_pending_payment_intent(payment_intent):
     if not payment_intent:
         return {
@@ -891,6 +935,14 @@ def _attempt_match_pending_payment_intent(payment_intent):
         locked_intent = PaymentIntent.objects.select_for_update().get(pk=payment_intent.pk)
 
         if locked_intent.status != PaymentIntent.STATUS_PENDING:
+            if locked_intent.status == PaymentIntent.STATUS_MATCHED:
+                try:
+                    _ensure_payment_intent_notification_claimed(locked_intent)
+                except FirebasePaymentError:
+                    logger.warning(
+                        'Matched payment intent %s could not reconcile its Firebase claim state.',
+                        locked_intent.intent_id,
+                    )
             return {
                 'matched': locked_intent.status == PaymentIntent.STATUS_MATCHED,
                 'status': locked_intent.status,
@@ -2139,6 +2191,23 @@ def payment(request):
                 payment_intent = payment_intent_qs.order_by('-created_at').first()
 
                 if not payment_intent:
+                    matched_intent_qs = PaymentIntent.objects.filter(
+                        customer_id=customer_id,
+                        status=PaymentIntent.STATUS_MATCHED,
+                    )
+                    if payment_intent_id:
+                        matched_intent_qs = matched_intent_qs.filter(intent_id=payment_intent_id)
+
+                    matched_intent = matched_intent_qs.order_by('-matched_at', '-created_at').first()
+                    if matched_intent:
+                        try:
+                            _ensure_payment_intent_notification_claimed(matched_intent)
+                        except FirebasePaymentError:
+                            logger.warning(
+                                'Matched payment intent %s could not reconcile its Firebase claim state during verify.',
+                                matched_intent.intent_id,
+                            )
+
                     already_paid = Payment.objects.filter(
                         doc__customer_id=customer_id,
                         payment_status='Paid',
