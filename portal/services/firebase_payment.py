@@ -52,6 +52,14 @@ def _firestore_base_url(project_id):
     return f'https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents'
 
 
+def build_notification_reference(notification_id):
+    _, project_id = _get_firestore_session()
+    notification_key = str(notification_id or '').strip()
+    if not notification_key:
+        raise FirebasePaymentError('Firestore notification id is required.')
+    return f'projects/{project_id}/databases/(default)/documents/{settings.FIREBASE_GCASH_COLLECTION}/{notification_key}'
+
+
 def _firestore_document_id(document_name):
     return document_name.rsplit('/', 1)[-1]
 
@@ -101,6 +109,27 @@ def _parse_firestore_document(document):
         key: _firestore_value_to_python(value)
         for key, value in fields.items()
     }
+    return {
+        'doc_id': _firestore_document_id(document['name']),
+        'reference': document['name'],
+        'payload': payload,
+        'update_time': document.get('updateTime'),
+    }
+
+
+def get_notification(*, notification_ref=None, notification_id=None):
+    if not notification_ref:
+        notification_ref = build_notification_reference(notification_id)
+
+    try:
+        response = _firestore_request('GET', f'https://firestore.googleapis.com/v1/{notification_ref}')
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return _parse_firestore_document(response.json())
+    except (ValueError, KeyError, requests.RequestException) as exc:
+        logger.warning('Firestore notification fetch failed: %s', exc)
+        raise FirebasePaymentError('Firestore notification fetch failed.') from exc
     return {
         'doc_id': _firestore_document_id(document['name']),
         'reference': document['name'],
@@ -227,11 +256,9 @@ def list_matching_notifications(*, payer_number, expected_amount, earliest_at, l
 
 def claim_notification(*, notification_ref, customer_id, intent_id):
     try:
-        snapshot_response = _firestore_request('GET', f'https://firestore.googleapis.com/v1/{notification_ref}')
-        if snapshot_response.status_code == 404:
+        parsed_document = get_notification(notification_ref=notification_ref)
+        if parsed_document is None:
             return None
-        snapshot_response.raise_for_status()
-        parsed_document = _parse_firestore_document(snapshot_response.json())
         payload = parsed_document['payload']
         if payload.get('claimed_by_cid'):
             return None
@@ -256,6 +283,16 @@ def claim_notification(*, notification_ref, customer_id, intent_id):
         if patch_response.status_code in (409, 412):
             return None
         patch_response.raise_for_status()
+
+        patched_document = _parse_firestore_document(patch_response.json())
+        patched_payload = patched_document['payload']
+        if patched_payload.get('claimed_by_cid') != customer_id:
+            raise FirebasePaymentError('Firestore notification claim did not persist customer ownership.')
+        if str(patched_payload.get('claimed_by_intent_id') or '') != str(intent_id):
+            raise FirebasePaymentError('Firestore notification claim did not persist intent ownership.')
+        if not patched_payload.get('claimed_at'):
+            raise FirebasePaymentError('Firestore notification claim did not persist the claim timestamp.')
+
         return payload
     except (ValueError, KeyError, requests.RequestException) as exc:
         logger.warning('Firestore notification claim failed: %s', exc)

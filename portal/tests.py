@@ -14,6 +14,7 @@ from portal.models import Document, Payment, PaymentIntent, Printer, RerouteHist
 from portal.services import firebase_payment
 from portal.views import (
 	_attempt_match_pending_payment_intent,
+	_ensure_payment_intent_notification_claimed,
 	_calculate_unprinted_refund_amount,
 	_claim_next_queued_document_for_printer,
 	_cancel_document_with_auto_voucher,
@@ -754,6 +755,40 @@ class FirebasePaymentLookupTests(TestCase):
 			'number',
 		)
 
+	@patch('portal.services.firebase_payment._get_firestore_session', return_value=(object(), 'safeprint-test-project'))
+	@patch('portal.services.firebase_payment._firestore_request')
+	def test_claim_notification_requires_claim_fields_in_patch_response(self, request_mock, _session_mock):
+		class FakeResponse:
+			def __init__(self, payload, status_code=200):
+				self._payload = payload
+				self.status_code = status_code
+
+			def raise_for_status(self):
+				return None
+
+			def json(self):
+				return self._payload
+
+		snapshot_document = {
+			'name': 'projects/safeprint-test-project/databases/(default)/documents/gcash_notifications/firebase-doc-2',
+			'updateTime': '2026-05-19T15:00:00.000000Z',
+			'fields': {
+				'amount': {'stringValue': 'PHP 5.00'},
+				'number': {'stringValue': '09955523881'},
+			},
+		}
+		request_mock.side_effect = [
+			FakeResponse(snapshot_document),
+			FakeResponse(snapshot_document),
+		]
+
+		with self.assertRaises(firebase_payment.FirebasePaymentError):
+			firebase_payment.claim_notification(
+				notification_ref='projects/safeprint-test-project/databases/(default)/documents/gcash_notifications/firebase-doc-2',
+				customer_id='CID-1492',
+				intent_id='intent-1492',
+			)
+
 
 class PendingPaymentIntentMatcherTests(TestCase):
 	def _create_document(self, doc_id='DOC-PAYMENT-MATCH-1', customer_id='CID-PAYMENT-MATCH'):
@@ -861,6 +896,38 @@ class PendingPaymentIntentMatcherTests(TestCase):
 
 		attempt_mock.assert_called_once()
 		schedule_mock.assert_called_once_with(str(intent.intent_id))
+
+	@patch('portal.views.claim_notification')
+	@patch('portal.views.get_notification')
+	@patch('portal.views.build_notification_reference')
+	def test_ensure_payment_intent_notification_claimed_backfills_missing_claim_fields(self, build_ref_mock, get_mock, claim_mock):
+		document = self._create_document(doc_id='DOC-PAYMENT-MATCH-4', customer_id='CID-PAYMENT-MATCH-4')
+		intent = self._create_pending_intent(document)
+		intent.status = PaymentIntent.STATUS_MATCHED
+		intent.matched_notification_id = 'firebase-doc-4'
+		intent.verification_source = 'firestore'
+		intent.save(update_fields=['status', 'matched_notification_id', 'verification_source', 'updated_at'])
+
+		build_ref_mock.return_value = 'projects/safeprint-test-project/databases/(default)/documents/gcash_notifications/firebase-doc-4'
+		get_mock.return_value = {
+			'doc_id': 'firebase-doc-4',
+			'reference': build_ref_mock.return_value,
+			'payload': {
+				'amount': 'PHP 5.00',
+				'number': '09955523881',
+			},
+			'update_time': '2026-05-19T15:00:00.000000Z',
+		}
+		claim_mock.return_value = {'rawText': 'received'}
+
+		result = _ensure_payment_intent_notification_claimed(intent)
+
+		self.assertTrue(result)
+		claim_mock.assert_called_once_with(
+			notification_ref='projects/safeprint-test-project/databases/(default)/documents/gcash_notifications/firebase-doc-4',
+			customer_id='CID-PAYMENT-MATCH-4',
+			intent_id=intent.intent_id,
+		)
 
 
 class MultiCopyRerouteAndRefundTests(TestCase):
