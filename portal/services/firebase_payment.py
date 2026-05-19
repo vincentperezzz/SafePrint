@@ -260,7 +260,23 @@ def claim_notification(*, notification_ref, customer_id, intent_id):
         if parsed_document is None:
             return None
         payload = parsed_document['payload']
-        if payload.get('claimed_by_cid'):
+
+        existing_claimed_by_cid = str(payload.get('claimed_by_cid') or '').strip()
+        existing_claimed_by_intent_id = str(payload.get('claimed_by_intent_id') or '').strip()
+        existing_claimed_at = payload.get('claimed_at')
+        expected_intent_id = str(intent_id)
+
+        if (
+            existing_claimed_by_cid == customer_id
+            and existing_claimed_by_intent_id == expected_intent_id
+            and existing_claimed_at
+        ):
+            return payload
+
+        if existing_claimed_by_cid and existing_claimed_by_cid != customer_id:
+            return None
+
+        if existing_claimed_by_intent_id and existing_claimed_by_intent_id != expected_intent_id:
             return None
 
         query_string = urlencode([

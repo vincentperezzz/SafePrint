@@ -789,6 +789,90 @@ class FirebasePaymentLookupTests(TestCase):
 				intent_id='intent-1492',
 			)
 
+	@patch('portal.services.firebase_payment._get_firestore_session', return_value=(object(), 'safeprint-test-project'))
+	@patch('portal.services.firebase_payment._firestore_request')
+	def test_claim_notification_repairs_partial_claim_metadata_for_same_customer(self, request_mock, _session_mock):
+		class FakeResponse:
+			def __init__(self, payload, status_code=200):
+				self._payload = payload
+				self.status_code = status_code
+
+			def raise_for_status(self):
+				return None
+
+			def json(self):
+				return self._payload
+
+		snapshot_document = {
+			'name': 'projects/safeprint-test-project/databases/(default)/documents/gcash_notifications/firebase-doc-3',
+			'updateTime': '2026-05-19T15:00:00.000000Z',
+			'fields': {
+				'amount': {'stringValue': 'PHP 11.00'},
+				'number': {'stringValue': '09999999999'},
+				'claimed_by_cid': {'stringValue': 'CID-7505'},
+			},
+		}
+		patched_document = {
+			'name': 'projects/safeprint-test-project/databases/(default)/documents/gcash_notifications/firebase-doc-3',
+			'updateTime': '2026-05-19T15:01:00.000000Z',
+			'fields': {
+				'amount': {'stringValue': 'PHP 11.00'},
+				'number': {'stringValue': '09999999999'},
+				'claimed_by_cid': {'stringValue': 'CID-7505'},
+				'claimed_by_intent_id': {'stringValue': '04fa86ea-ac5b-46b9-b7a7-8cd9094410a5'},
+				'claimed_at': {'timestampValue': '2026-05-19T15:01:00.000000Z'},
+			},
+		}
+		request_mock.side_effect = [
+			FakeResponse(snapshot_document),
+			FakeResponse(patched_document),
+		]
+
+		payload = firebase_payment.claim_notification(
+			notification_ref='projects/safeprint-test-project/databases/(default)/documents/gcash_notifications/firebase-doc-3',
+			customer_id='CID-7505',
+			intent_id='04fa86ea-ac5b-46b9-b7a7-8cd9094410a5',
+		)
+
+		self.assertEqual(payload['claimed_by_cid'], 'CID-7505')
+		self.assertEqual(request_mock.call_args_list[1].args[0], 'PATCH')
+
+	@patch('portal.services.firebase_payment._get_firestore_session', return_value=(object(), 'safeprint-test-project'))
+	@patch('portal.services.firebase_payment._firestore_request')
+	def test_claim_notification_is_idempotent_when_claim_fields_already_match(self, request_mock, _session_mock):
+		class FakeResponse:
+			def __init__(self, payload, status_code=200):
+				self._payload = payload
+				self.status_code = status_code
+
+			def raise_for_status(self):
+				return None
+
+			def json(self):
+				return self._payload
+
+		snapshot_document = {
+			'name': 'projects/safeprint-test-project/databases/(default)/documents/gcash_notifications/firebase-doc-4',
+			'updateTime': '2026-05-19T15:00:00.000000Z',
+			'fields': {
+				'amount': {'stringValue': 'PHP 11.00'},
+				'number': {'stringValue': '09999999999'},
+				'claimed_by_cid': {'stringValue': 'CID-7505'},
+				'claimed_by_intent_id': {'stringValue': '04fa86ea-ac5b-46b9-b7a7-8cd9094410a5'},
+				'claimed_at': {'timestampValue': '2026-05-19T15:01:00.000000Z'},
+			},
+		}
+		request_mock.return_value = FakeResponse(snapshot_document)
+
+		payload = firebase_payment.claim_notification(
+			notification_ref='projects/safeprint-test-project/databases/(default)/documents/gcash_notifications/firebase-doc-4',
+			customer_id='CID-7505',
+			intent_id='04fa86ea-ac5b-46b9-b7a7-8cd9094410a5',
+		)
+
+		self.assertEqual(payload['claimed_by_cid'], 'CID-7505')
+		self.assertEqual(request_mock.call_count, 1)
+
 
 class PendingPaymentIntentMatcherTests(TestCase):
 	def _create_document(self, doc_id='DOC-PAYMENT-MATCH-1', customer_id='CID-PAYMENT-MATCH'):
