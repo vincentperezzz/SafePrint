@@ -10,9 +10,10 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from portal.models import Document, Payment, Printer, RerouteHistory, SupportTicket, TicketAuditLog, VoucherCredit
+from portal.models import Document, Payment, PaymentIntent, Printer, RerouteHistory, SupportTicket, TicketAuditLog, VoucherCredit
 from portal.services import firebase_payment
 from portal.views import (
+	_attempt_match_pending_payment_intent,
 	_calculate_unprinted_refund_amount,
 	_claim_next_queued_document_for_printer,
 	_cancel_document_with_auto_voucher,
@@ -26,6 +27,7 @@ from portal.views import (
 	print_page,
 	QueueResolutionError,
 	reroute_document_on_error,
+	_run_pending_payment_intent_check,
 	select_printer_for_document,
 )
 
@@ -751,6 +753,114 @@ class FirebasePaymentLookupTests(TestCase):
 			structured_query['where']['fieldFilter']['field']['fieldPath'],
 			'number',
 		)
+
+
+class PendingPaymentIntentMatcherTests(TestCase):
+	def _create_document(self, doc_id='DOC-PAYMENT-MATCH-1', customer_id='CID-PAYMENT-MATCH'):
+		return Document.objects.create(
+			doc_id=doc_id,
+			customer_id=customer_id,
+			filename='payment-match.pdf',
+			num_copies=1,
+			pages_num='1',
+			orientation='Portrait',
+			color_mode='Color',
+			paper_size='A4',
+			paper_quality='70',
+			original_name='payment-match.pdf',
+			stored_name='payment-match.pdf',
+			file_name='payment-match.pdf',
+			file_type='pdf',
+			file_size=16,
+			doc_status='Pending',
+			time_submitted=timezone.now(),
+		)
+
+	def _create_pending_intent(self, document):
+		return PaymentIntent.objects.create(
+			customer_id=document.customer_id,
+			doc_ids=[document.doc_id],
+			payer_number='09068443919',
+			expected_amount=Decimal('9.00'),
+			recipient_name='SafePrint',
+			recipient_number='09171234567',
+			expires_at=timezone.now() + timedelta(minutes=10),
+		)
+
+	@patch('portal.views.claim_notification')
+	@patch('portal.views.list_matching_notifications')
+	def test_attempt_match_pending_payment_intent_claims_listener_and_marks_paid(self, list_mock, claim_mock):
+		document = self._create_document()
+		payment = Payment.objects.create(
+			doc=document,
+			price=Decimal('9.00'),
+			payment_status='Unpaid',
+			payment_method='gcash_listener',
+			phone_number='09068443919',
+		)
+		intent = self._create_pending_intent(document)
+
+		list_mock.return_value = [{
+			'doc_id': 'firebase-doc-1',
+			'reference': 'projects/safeprint-test/databases/(default)/documents/gcash_notifications/firebase-doc-1',
+			'captured_at': timezone.now(),
+			'payload': {
+				'amount': '9.00',
+			},
+		}]
+		claim_mock.return_value = {
+			'rawText': 'Received PHP 9.00 from 09068443919',
+		}
+
+		result = _attempt_match_pending_payment_intent(intent)
+
+		self.assertTrue(result['matched'])
+		self.assertEqual(result['status'], 'matched')
+
+		payment.refresh_from_db()
+		document.refresh_from_db()
+		intent.refresh_from_db()
+
+		self.assertEqual(payment.payment_status, 'Paid')
+		self.assertEqual(payment.payment_method, 'gcash_listener')
+		self.assertEqual(payment.approved_by, 'GCash-Listener-Auto')
+		self.assertEqual(document.doc_status, 'Queued')
+		self.assertEqual(intent.status, PaymentIntent.STATUS_MATCHED)
+		self.assertEqual(intent.matched_notification_id, 'firebase-doc-1')
+		self.assertEqual(intent.verification_source, 'firestore')
+		claim_mock.assert_called_once_with(
+			notification_ref='projects/safeprint-test/databases/(default)/documents/gcash_notifications/firebase-doc-1',
+			customer_id=document.customer_id,
+			intent_id=intent.intent_id,
+		)
+
+	@patch('portal.views.claim_notification')
+	@patch('portal.views.list_matching_notifications')
+	def test_attempt_match_pending_payment_intent_skips_claim_without_unpaid_documents(self, list_mock, claim_mock):
+		document = self._create_document(doc_id='DOC-PAYMENT-MATCH-2', customer_id='CID-PAYMENT-MATCH-2')
+		intent = self._create_pending_intent(document)
+
+		result = _attempt_match_pending_payment_intent(intent)
+
+		self.assertFalse(result['matched'])
+		self.assertEqual(result['status'], 'missing_unpaid_documents')
+		list_mock.assert_not_called()
+		claim_mock.assert_not_called()
+
+	@patch('portal.views._schedule_pending_payment_intent_check')
+	@patch('portal.views._attempt_match_pending_payment_intent')
+	def test_run_pending_payment_intent_check_reschedules_pending_matches(self, attempt_mock, schedule_mock):
+		document = self._create_document(doc_id='DOC-PAYMENT-MATCH-3', customer_id='CID-PAYMENT-MATCH-3')
+		intent = self._create_pending_intent(document)
+		attempt_mock.return_value = {
+			'matched': False,
+			'status': 'pending',
+		}
+
+		_run_pending_payment_intent_check(str(intent.intent_id))
+
+		attempt_mock.assert_called_once()
+		schedule_mock.assert_called_once_with(str(intent.intent_id))
 
 
 class MultiCopyRerouteAndRefundTests(TestCase):

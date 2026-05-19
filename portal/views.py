@@ -31,6 +31,10 @@ logger = logging.getLogger(__name__)
 now = timezone.now()
 QUEUE_MONITOR_INTERVAL_SECONDS = 60.0
 QUEUE_MONITOR_RETRY_SECONDS = 5.0
+PAYMENT_INTENT_MONITOR_INTERVAL_SECONDS = 5.0
+
+_pending_payment_intent_timers = {}
+_pending_payment_intent_timers_lock = threading.Lock()
 
 
 def _trigger_upload_folder_cleanup():
@@ -827,6 +831,200 @@ def _mark_customer_documents_paid(payments, *, approved_by, payment_method):
 
     if queued_any:
         _schedule_queue_check(1.0)
+
+
+def _cancel_pending_payment_intent_check(intent_id):
+    intent_key = str(intent_id or '').strip()
+    if not intent_key:
+        return
+
+    with _pending_payment_intent_timers_lock:
+        timer = _pending_payment_intent_timers.pop(intent_key, None)
+
+    if timer and timer.is_alive():
+        timer.cancel()
+
+
+def _schedule_pending_payment_intent_check(intent_id, delay_seconds=PAYMENT_INTENT_MONITOR_INTERVAL_SECONDS):
+    if getattr(settings, 'TESTING', False):
+        return False
+
+    intent_key = str(intent_id or '').strip()
+    if not intent_key:
+        return False
+
+    with _pending_payment_intent_timers_lock:
+        existing_timer = _pending_payment_intent_timers.get(intent_key)
+        if existing_timer and existing_timer.is_alive():
+            return False
+
+        timer = threading.Timer(delay_seconds, _run_pending_payment_intent_check, args=[intent_key])
+        timer.daemon = True
+        _pending_payment_intent_timers[intent_key] = timer
+        timer.start()
+
+    return True
+
+
+def _build_pending_payment_retry_response(error_message=None):
+    return {
+        'matched': False,
+        'status': 'pending',
+        'error': error_message or 'Payment not yet confirmed. If auto-detection still fails, keep your receipt for manual review.',
+    }
+
+
+def _attempt_match_pending_payment_intent(payment_intent):
+    if not payment_intent:
+        return {
+            'matched': False,
+            'status': 'missing',
+            'error': 'No pending payment found for this customer.',
+        }
+
+    temporary_unavailable_error = (
+        'Automatic payment checking is temporarily unavailable. Please try again in a moment, '
+        'and keep your receipt for manual review if needed.'
+    )
+
+    with transaction.atomic():
+        locked_intent = PaymentIntent.objects.select_for_update().get(pk=payment_intent.pk)
+
+        if locked_intent.status != PaymentIntent.STATUS_PENDING:
+            return {
+                'matched': locked_intent.status == PaymentIntent.STATUS_MATCHED,
+                'status': locked_intent.status,
+            }
+
+        if locked_intent.is_expired:
+            _refund_reserved_voucher(locked_intent)
+            locked_intent.status = PaymentIntent.STATUS_EXPIRED
+            locked_intent.save(update_fields=['status', 'updated_at'])
+            _cancel_pending_payment_intent_check(locked_intent.intent_id)
+            return {
+                'matched': False,
+                'status': 'expired',
+                'error': 'This payment attempt expired. Please start a new payment attempt.',
+            }
+
+        older_pending_intent_exists = PaymentIntent.objects.filter(
+            status=PaymentIntent.STATUS_PENDING,
+            payer_number=locked_intent.payer_number,
+            expected_amount=locked_intent.expected_amount,
+            created_at__lt=locked_intent.created_at,
+            expires_at__gte=timezone.now(),
+        ).exclude(pk=locked_intent.pk).exists()
+
+        if older_pending_intent_exists:
+            return _build_pending_payment_retry_response(
+                'A previous payment attempt with the same number and amount is still waiting for confirmation.'
+            )
+
+        payments = list(
+            Payment.objects.select_related('doc').filter(
+                doc__customer_id=locked_intent.customer_id,
+                doc__doc_id__in=locked_intent.doc_ids,
+                payment_status='Unpaid',
+            )
+        )
+
+        if not payments:
+            already_paid = Payment.objects.filter(
+                doc__customer_id=locked_intent.customer_id,
+                doc__doc_id__in=locked_intent.doc_ids,
+                payment_status='Paid',
+            ).exists()
+
+            if already_paid:
+                _cancel_pending_payment_intent_check(locked_intent.intent_id)
+                return {
+                    'matched': True,
+                    'status': 'already_paid',
+                }
+
+            _cancel_pending_payment_intent_check(locked_intent.intent_id)
+            return {
+                'matched': False,
+                'status': 'missing_unpaid_documents',
+                'error': 'No unpaid documents were found for this payment attempt.',
+            }
+
+        try:
+            candidates = list_matching_notifications(
+                payer_number=locked_intent.payer_number,
+                expected_amount=Decimal(locked_intent.expected_amount),
+                earliest_at=locked_intent.created_at,
+                latest_at=locked_intent.expires_at,
+            )
+        except FirebasePaymentError:
+            return _build_pending_payment_retry_response(temporary_unavailable_error)
+
+        for candidate in candidates:
+            try:
+                claimed_payload = claim_notification(
+                    notification_ref=candidate['reference'],
+                    customer_id=locked_intent.customer_id,
+                    intent_id=locked_intent.intent_id,
+                )
+            except FirebasePaymentError:
+                return _build_pending_payment_retry_response(temporary_unavailable_error)
+
+            if claimed_payload is None:
+                continue
+
+            locked_intent.status = PaymentIntent.STATUS_MATCHED
+            locked_intent.matched_notification_id = candidate['doc_id']
+            locked_intent.matched_raw_text = claimed_payload.get('rawText', '')
+            locked_intent.matched_at = timezone.now()
+            locked_intent.verification_source = 'firestore'
+            locked_intent.save(update_fields=['status', 'matched_notification_id', 'matched_raw_text', 'matched_at', 'verification_source', 'updated_at'])
+
+            if locked_intent.voucher_credit_code and Decimal(locked_intent.credit_applied) > Decimal('0'):
+                voucher = VoucherCredit.objects.filter(code=locked_intent.voucher_credit_code).first()
+                if voucher:
+                    _log_voucher_audit(
+                        voucher,
+                        action='redeemed',
+                        amount=Decimal(locked_intent.credit_applied),
+                        customer_id=locked_intent.customer_id,
+                        reference=str(locked_intent.intent_id),
+                        details='Reserved voucher credit finalized after successful GCash listener payment verification.',
+                    )
+
+            _mark_customer_documents_paid(
+                payments,
+                approved_by='GCash-Listener-Auto',
+                payment_method='gcash_listener',
+            )
+            _cancel_pending_payment_intent_check(locked_intent.intent_id)
+            return {
+                'matched': True,
+                'status': 'matched',
+                'notification_id': candidate['doc_id'],
+            }
+
+    return _build_pending_payment_retry_response()
+
+
+def _run_pending_payment_intent_check(intent_id):
+    intent_key = str(intent_id or '').strip()
+    result = None
+
+    try:
+        payment_intent = PaymentIntent.objects.filter(intent_id=intent_key).first()
+        if payment_intent:
+            result = _attempt_match_pending_payment_intent(payment_intent)
+    except Exception:
+        logger.exception('Automatic payment monitor failed for intent %s', intent_key)
+        result = _build_pending_payment_retry_response()
+    finally:
+        with _pending_payment_intent_timers_lock:
+            active_timer = _pending_payment_intent_timers.get(intent_key)
+            if active_timer is threading.current_thread():
+                _pending_payment_intent_timers.pop(intent_key, None)
+
+    if result and result.get('status') == 'pending':
+        _schedule_pending_payment_intent_check(intent_key)
 
 
 def _payment_gateway_context(site):
@@ -1635,6 +1833,9 @@ def payment(request):
             if pending_payment and not _payment_intent_matches_doc_ids(pending_payment, doc_ids_list):
                 pending_payment = None
 
+            if pending_payment:
+                _schedule_pending_payment_intent_check(pending_payment.intent_id)
+
             context.update({
                 'customer_id': customer_id,
                 'documents': documents_data,
@@ -1835,6 +2036,7 @@ def payment(request):
 
                         request.session['pending_payment_cid'] = customer_id
                         request.session['pending_payment_doc_ids'] = documents_ids
+                        _schedule_pending_payment_intent_check(reusable_intent.intent_id)
 
                         return JsonResponse({
                             'success': True,
@@ -1901,6 +2103,7 @@ def payment(request):
 
                 request.session['pending_payment_cid'] = customer_id
                 request.session['pending_payment_doc_ids'] = documents_ids
+                _schedule_pending_payment_intent_check(payment_intent.intent_id)
 
                 return JsonResponse({
                     'success': True,
@@ -1953,108 +2156,9 @@ def payment(request):
                         'error': 'No pending payment found for this customer.'
                     })
 
-                if payment_intent.is_expired:
-                    with transaction.atomic():
-                        locked_intent = PaymentIntent.objects.select_for_update().get(pk=payment_intent.pk)
-                        if locked_intent.status == PaymentIntent.STATUS_PENDING:
-                            _refund_reserved_voucher(locked_intent)
-                            locked_intent.status = PaymentIntent.STATUS_EXPIRED
-                            locked_intent.save(update_fields=['status', 'updated_at'])
-                    return JsonResponse({
-                        'success': False,
-                        'status': 'expired',
-                        'error': 'This payment attempt expired. Please start a new payment attempt.',
-                    })
+                match_result = _attempt_match_pending_payment_intent(payment_intent)
 
-                older_pending_intent_exists = PaymentIntent.objects.filter(
-                    status=PaymentIntent.STATUS_PENDING,
-                    payer_number=payment_intent.payer_number,
-                    expected_amount=payment_intent.expected_amount,
-                    created_at__lt=payment_intent.created_at,
-                    expires_at__gte=timezone.now(),
-                ).exclude(pk=payment_intent.pk).exists()
-
-                if older_pending_intent_exists:
-                    return JsonResponse({
-                        'success': False,
-                        'status': 'pending',
-                        'error': 'A previous payment attempt with the same number and amount is still waiting for confirmation.',
-                    })
-
-                try:
-                    candidates = list_matching_notifications(
-                        payer_number=payment_intent.payer_number,
-                        expected_amount=Decimal(payment_intent.expected_amount),
-                        earliest_at=payment_intent.created_at,
-                        latest_at=payment_intent.expires_at,
-                    )
-                except FirebasePaymentError:
-                    return JsonResponse({
-                        'success': False,
-                        'status': 'pending',
-                        'error': 'Automatic payment checking is temporarily unavailable. Please try again in a moment, and keep your receipt for manual review if needed.',
-                    })
-
-                for candidate in candidates:
-                    try:
-                        claimed_payload = claim_notification(
-                            notification_ref=candidate['reference'],
-                            customer_id=customer_id,
-                            intent_id=payment_intent.intent_id,
-                        )
-                    except FirebasePaymentError:
-                        return JsonResponse({
-                            'success': False,
-                            'status': 'pending',
-                            'error': 'Automatic payment checking is temporarily unavailable. Please try again in a moment, and keep your receipt for manual review if needed.',
-                        })
-                    if claimed_payload is None:
-                        continue
-
-                    payments = list(
-                        Payment.objects.select_related('doc').filter(
-                            doc__customer_id=customer_id,
-                            doc__doc_id__in=payment_intent.doc_ids,
-                            payment_status='Unpaid',
-                        )
-                    )
-
-                    if not payments:
-                        return JsonResponse({
-                            'success': False,
-                            'error': 'No unpaid documents were found for this payment attempt.',
-                        })
-
-                    with transaction.atomic():
-                        locked_intent = PaymentIntent.objects.select_for_update().get(pk=payment_intent.pk)
-                        if locked_intent.status != PaymentIntent.STATUS_PENDING:
-                            break
-
-                        locked_intent.status = PaymentIntent.STATUS_MATCHED
-                        locked_intent.matched_notification_id = candidate['doc_id']
-                        locked_intent.matched_raw_text = claimed_payload.get('rawText', '')
-                        locked_intent.matched_at = timezone.now()
-                        locked_intent.verification_source = 'firestore'
-                        locked_intent.save(update_fields=['status', 'matched_notification_id', 'matched_raw_text', 'matched_at', 'verification_source', 'updated_at'])
-
-                        if locked_intent.voucher_credit_code and Decimal(locked_intent.credit_applied) > Decimal('0'):
-                            voucher = VoucherCredit.objects.filter(code=locked_intent.voucher_credit_code).first()
-                            if voucher:
-                                _log_voucher_audit(
-                                    voucher,
-                                    action='redeemed',
-                                    amount=Decimal(locked_intent.credit_applied),
-                                    customer_id=locked_intent.customer_id,
-                                    reference=str(locked_intent.intent_id),
-                                    details='Reserved voucher credit finalized after successful GCash listener payment verification.',
-                                )
-
-                        _mark_customer_documents_paid(
-                            payments,
-                            approved_by='GCash-Listener-Auto',
-                            payment_method='gcash_listener',
-                        )
-
+                if match_result.get('matched'):
                     request.session.pop('pending_payment_cid', None)
                     request.session.pop('pending_payment_doc_ids', None)
 
@@ -2066,8 +2170,8 @@ def payment(request):
 
                 return JsonResponse({
                     'success': False,
-                    'error': 'Payment not yet confirmed. If auto-detection still fails, keep your receipt for manual review.',
-                    'status': 'pending'
+                    'error': match_result.get('error') or 'Payment not yet confirmed. If auto-detection still fails, keep your receipt for manual review.',
+                    'status': match_result.get('status', 'pending'),
                 })
 
             elif action == 'cancel':
@@ -2100,6 +2204,7 @@ def payment(request):
                         _refund_reserved_voucher(locked_intent)
                         locked_intent.status = PaymentIntent.STATUS_CANCELLED
                         locked_intent.save(update_fields=['status', 'updated_at'])
+                    _cancel_pending_payment_intent_check(intent.intent_id)
 
                 document_filters = Q(customer_id=customer_id)
                 payment_filters = Q(payment_status='Unpaid') & (
