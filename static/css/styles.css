@@ -5291,6 +5291,12 @@ input:focus::placeholder {
     padding: 10px 20px;
 }
 
+.printer-table-header > div,
+.printer-table-row > div,
+.printer-info {
+    min-width: 0;
+}
+
 .paper-refill-table .printer-table-header {
     grid-template-columns: 1.8fr 1fr 1fr 1fr 1fr 1.2fr 1.2fr auto;
 }
@@ -5887,11 +5893,17 @@ input:focus::placeholder {
 .printer-name{
     font-weight: 600;
     font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .printer-model{
     font-size: 14px;
     color: #6D6D6D;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .printer-edit-btn-container {
@@ -6060,6 +6072,52 @@ input:focus::placeholder {
 
 .printer-table .dropdown-arrow {
     background: none;
+}
+
+@media (max-width: 1420px) and (min-width: 1181px) {
+    .printer-table-header,
+    .printer-table-row {
+        grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.95fr) minmax(0, 1.05fr) minmax(0, 1fr) minmax(0, 0.75fr) minmax(0, 0.95fr) minmax(0, 1.05fr) 0.38fr;
+        column-gap: 10px;
+        padding: 10px 14px;
+    }
+
+    .printer-table-header {
+        font-size: 15px;
+    }
+
+    .printer-name {
+        font-size: 15px;
+    }
+
+    .printer-model {
+        font-size: 13px;
+    }
+
+    .printer-table .dropdown {
+        max-width: 126px;
+        margin-right: 10px;
+    }
+
+    .printer-table .dropdown-select {
+        font-size: 12px;
+        padding: 4px 20px 4px 8px;
+    }
+
+    .gsm .printer-availability-toggle {
+        flex-wrap: nowrap;
+        gap: 8px;
+    }
+
+    .printer-toggle-text {
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    .printer-table-row .paper-assigned,
+    .printer-table-row .gsm {
+        min-width: 0;
+    }
 }
 
 .status-dot {
