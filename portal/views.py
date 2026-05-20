@@ -23,7 +23,6 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import AdminUser, Printer, Document, Payment, PaymentIntent, NotificationSound, SupportTicket, SiteSetting, TicketAuditLog, VoucherCredit, VoucherCreditAuditLog
 from django.http import JsonResponse, StreamingHttpResponse
 from django.contrib.auth.hashers import make_password, check_password
-from django.contrib.auth.decorators import login_required
 from portal.services.firebase_payment import (
     FirebasePaymentError,
     build_notification_reference,
@@ -5396,12 +5395,15 @@ def get_ticket_audit_log(request):
         return JsonResponse({'success': False, 'error': str(e)})
 
 
-@login_required
 def get_printer_status_history(request):
     """
     Return printer status history with optional filters.
     Supports: printer_id, date_from, date_to, status_filter, page, page_size.
     """
+    user_id = request.session.get('admin_user_id')
+    if not user_id or not AdminUser.objects.filter(id=user_id).exists():
+        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=403)
+
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
@@ -5461,13 +5463,16 @@ def get_printer_status_history(request):
         return JsonResponse({'success': False, 'error': str(e)})
 
 
-@login_required
 def get_ticket_verification_data(request):
     """
     Return printer status and document lifecycle data around a ticket's creation time.
     Used by Activity Log modal to help admin verify refund claims.
     Accepts: ticket_id, time_window (optional override, in minutes)
     """
+    user_id = request.session.get('admin_user_id')
+    if not user_id or not AdminUser.objects.filter(id=user_id).exists():
+        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=403)
+
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
