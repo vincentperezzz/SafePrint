@@ -1,8 +1,14 @@
-# SafePrint
+<p align="center">
+  <img src="docs/images/safeprint-banner.png" alt="SafePrint — Privacy-Focused Printing Vendo System" width="600">
+</p>
 
-**Privacy-Focused Printing Vendo System**
+<p align="center">
+  <a href="deployment_guide.md">📦 Deployment Guide</a>
+</p>
 
-📦 [Deployment Guide](deployment_guide.md)
+<p align="center">
+  <img src="docs/images/homepage-screenshot.png" alt="SafePrint homepage — file upload, GCash payment, and help section" width="800">
+</p>
 
 ---
 
