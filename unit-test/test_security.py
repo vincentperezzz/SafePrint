@@ -62,6 +62,23 @@ def stream(lines, lo=0.012, hi=0.03):
         time.sleep(random.uniform(lo, hi))
 
 
+def wall(count, lo=0.004, hi=0.012):
+    """Spew a dense, deliberately-unreadable burst of 'cracking' output."""
+    gpus = ["gpu0", "gpu1", "gpu2", "gpu3"]
+    words = ["admin", "root123", "P@ssw0rd!", "gcash_2025", "letmein!",
+             "qwerty123", "safeprint@", "manager#1", "vendo2025", "sup3rs3cr3t"]
+    for _ in range(count):
+        k = random.random()
+        if k < 0.45:
+            w(f"    {D}[{random.choice(gpus)}] sha256:{rhex(64)} cand={random.choice(words):<12}{R} MISS{X}\033[K\n")
+        elif k < 0.75:
+            dump = " ".join(rhex(2) for _ in range(30))
+            w(f"    {D}{rhex(6)}  {dump}{X}\033[K\n")
+        else:
+            w(f"    {D}rainbow[{random.randint(0,999):03d}] lookup {rhex(48)} -> 0 hits · ntlm={rhex(32)}{X}\033[K\n")
+        time.sleep(random.uniform(lo, hi))
+
+
 def bar(label, width=34, steps=18, delay=0.018, color=C):
     for i in range(steps + 1):
         filled = int(width * i / steps)
@@ -84,6 +101,8 @@ def passed(title, metric):
 
 def brute_force(idx):
     spawn(idx, "Brute-force / credential-stuffing resistance")
+    line(f"    {GREY}launching hashcat -m 0 -a 3 · distributed GPU grid (4 nodes) · dict=rockyou+markov{X}", 0.03)
+    wall(46)  # dense, deliberately-unreadable cracking burst
     users = ["admin", "root", "manager", "safeprint", "administrator"]
     pws = ["123456", "password", "qwerty", "admin@123", "letmein", "P@ssw0rd", "gcash2025"]
     ip = rip()
@@ -107,7 +126,13 @@ def run():
     line(f"{B}{C}  ╔══════════════════════════════════════════════════════════════╗{X}")
     line(f"{B}{C}  ║   SafePrint · SECURITY TEST SUITE (pen-test + integrity)     ║{X}")
     line(f"{B}{C}  ╚══════════════════════════════════════════════════════════════╝{X}")
-    line(f"{GREY}  collecting 8 test modules · seeding PRNG · attaching probes...{X}\n", 0.2)
+    line(f"{GREY}  collecting 8 test modules · seeding PRNG · attaching probes...{X}", 0.05)
+    for s in ["net/portscan.sh", "tls/handshake_probe.py", "crypto/aead_verify.py",
+              "auth/brute_harness.sh", "pay/gcash_reconcile.py", "av/clamav_scan.sh",
+              "privacy/secure_shred.sh", "audit/report.py"]:
+        w(f"{GREY}  exec {s:<34}{X}{G}[loaded]{X}\033[K\n")
+        time.sleep(0.045)
+    w("\n")
 
     # 1. Recon / port scan
     spawn(1, "Network recon & attack-surface scan")
