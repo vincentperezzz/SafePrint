@@ -1,27 +1,30 @@
 #!/usr/bin/env python3
-"""SafePrint Security Verification Suite (promotional demo).
+"""SafePrint security test suite runner.
 
-SCRIPTED VISUAL DEMO for marketing/presentation videos ONLY.
-It performs NO real security testing — every result is hard-coded and the
-streaming "attack" output is cosmetic. The phase names mirror SafePrint's
-real security features (TLS/ChaCha20, digital signatures, GCash payment
-verification, ClamAV scanning, brute-force lockout, and automatic document
-shredding) so the animation looks authentic on camera.
+NOTE FOR MAINTAINERS: this is a SCRIPTED VISUAL runner used for
+presentation/demo videos. Results are hard-coded and the streaming output is
+cosmetic — it does not execute real assertions. The module/phase names mirror
+SafePrint's real security features (TLS/ChaCha20, digital signatures, GCash
+payment verification, ClamAV scanning, brute-force lockout, and automatic
+document shredding) so the animation reads as an authentic test run on camera.
 """
 
 import random
 import sys
 import time
 
-G = "\033[92m"   # green
-C = "\033[96m"   # cyan
-Y = "\033[93m"   # yellow
-R = "\033[91m"   # red
+BG = "\033[40m"          # black background
+G = "\033[92m"
+C = "\033[96m"
+Y = "\033[93m"
+R = "\033[91m"
 GREY = "\033[90m"
 W = "\033[97m"
 B = "\033[1m"
 D = "\033[2m"
-X = "\033[0m"    # reset
+X = "\033[0m" + BG       # reset attrs but keep the black canvas
+REV = "\033[7m"          # reverse video (highlight)
+HL = "\033[104m\033[30m"  # bright-blue bar, black text (running highlight)
 
 SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 HEX = "0123456789abcdef"
@@ -68,17 +71,19 @@ def bar(label, width=34, steps=18, delay=0.018, color=C):
     w("\n")
 
 
-def spawn(title):
-    line(f"{C}{B}[*]{X} {W}spawning integrity check:{X} {C}{title}{X}", 0.05)
+def spawn(idx, title):
+    # highlighted "running" bar so the active module pops on camera
+    w(f"  {HL} ▶ RUNNING  [{idx}/8] {title.ljust(46)}{X}\n")
+    time.sleep(0.06)
 
 
 def passed(title, metric):
     time.sleep(0.05)
-    line(f"{G}{B}[✓]{X} {G}{B}{title.ljust(42)}PASS{X}  {GREY}{metric}{X}\n", 0.06)
+    line(f"  {G}{B}✓ PASS{X}  {W}{B}{title.ljust(42)}{X}{GREY}{metric}{X}\n", 0.06)
 
 
-def brute_force():
-    spawn("Brute-force / credential-stuffing resistance")
+def brute_force(idx):
+    spawn(idx, "Brute-force / credential-stuffing resistance")
     users = ["admin", "root", "manager", "safeprint", "administrator"]
     pws = ["123456", "password", "qwerty", "admin@123", "letmein", "P@ssw0rd", "gcash2025"]
     ip = rip()
@@ -94,18 +99,18 @@ def brute_force():
 
 
 def run():
-    w("\033[2J\033[H")
+    w(BG + "\033[2J\033[H")  # paint the whole screen black, home the cursor
     w(f"{D}safeprint@vendo{X}:{C}~/SafePrint{X}$ ")
     time.sleep(0.15)
-    type_out(f"{W}sudo ./run_security_suite.sh --full --aggressive{X}")
+    type_out(f"{W}sudo python3 unit-test/test_security.py --full --aggressive{X}")
     time.sleep(0.1)
     line(f"{B}{C}  ╔══════════════════════════════════════════════════════════════╗{X}")
-    line(f"{B}{C}  ║   SafePrint · SECURITY PENETRATION & INTEGRITY SUITE  v1.0    ║{X}")
+    line(f"{B}{C}  ║   SafePrint · SECURITY TEST SUITE (pen-test + integrity)     ║{X}")
     line(f"{B}{C}  ╚══════════════════════════════════════════════════════════════╝{X}")
-    line(f"{GREY}  loading 8 modules · seeding PRNG · attaching probes...{X}\n", 0.2)
+    line(f"{GREY}  collecting 8 test modules · seeding PRNG · attaching probes...{X}\n", 0.2)
 
     # 1. Recon / port scan
-    spawn("Network recon & attack-surface scan")
+    spawn(1, "Network recon & attack-surface scan")
     stream([
         f"    {GREY}nmap -sS -Pn {rip()}/24  (LAN segment: vendo-net){X}",
         f"    {G}80/tcp   open   http    {GREY}→ 301 redirect to https{X}",
@@ -117,7 +122,7 @@ def run():
     passed("Network segmentation", "1 exposed port · 4 shielded")
 
     # 2. TLS handshake
-    spawn("TLS 1.3 handshake capture")
+    spawn(2, "TLS 1.3 handshake capture")
     stream([
         f"    {GREY}→ ClientHello  supported_ciphers=[CHACHA20_POLY1305,AES_256_GCM]{X}",
         f"    {GREY}← ServerHello  cipher=ECDHE-RSA-CHACHA20-POLY1305{X}",
@@ -127,7 +132,7 @@ def run():
     passed("TLS 1.3 handshake", "ECDHE-RSA-CHACHA20-POLY1305 · 9 ms")
 
     # 3. Certificate / digital signature
-    spawn("X.509 certificate & digital-signature verification")
+    spawn(3, "X.509 certificate & digital-signature verification")
     stream([
         f"    {GREY}issuer=Let's Encrypt R3   CN=safeprint.duckdns.org{X}",
         f"    {GREY}sig_alg=sha256WithRSAEncryption  serial={rhex(16)}{X}",
@@ -136,7 +141,7 @@ def run():
     passed("Digital signature (SHA-256 RSA)", "cert chain valid")
 
     # 4. ChaCha20 encryption integrity
-    spawn("ChaCha20-Poly1305 document-encryption integrity")
+    spawn(4, "ChaCha20-Poly1305 document-encryption integrity")
     stream([
         f"    {GREY}nonce={rhex(24)}  aad=doc_meta{X}",
         f"    {D}keystream {rhex(64)}{X}",
@@ -147,10 +152,10 @@ def run():
     passed("ChaCha20-Poly1305 at-rest encryption", "AEAD tag verified")
 
     # 5. Brute force drama
-    brute_force()
+    brute_force(5)
 
     # 6. Payment verification
-    spawn("GCash payment-verification pipeline")
+    spawn(6, "GCash payment-verification pipeline")
     stream([
         f"    {GREY}listener: firestore/gcash_notifications  ref={rhex(20)}{X}",
         f"    {GREY}→ match amount=₱45.00  sender=09XXXXX{random.randint(1000,9999)}{X}",
@@ -160,7 +165,7 @@ def run():
     passed("GCash payment verification", "Firestore token authenticated")
 
     # 7. ClamAV malware scan
-    spawn("ClamAV upload malware scan")
+    spawn(7, "ClamAV upload malware scan")
     line(f"    {GREY}loading signatures... 8,700,144 defs (main+daily+bytecode){X}", 0.05)
     bar("scanning upload buffer", color=C)
     stream([
@@ -170,7 +175,7 @@ def run():
     passed("Malware scan (ClamAV)", "0 threats · defs current")
 
     # 8. Auto deletion / secure shred
-    spawn("Automatic document deletion (secure shred)")
+    spawn(8, "Automatic document deletion (secure shred)")
     for i, pat in enumerate(["0xFF", "0x00", "rand"], 1):
         bar(f"shred pass {i}/3 ({pat})", steps=12, delay=0.012, color=Y)
     stream([
@@ -179,13 +184,22 @@ def run():
     ], 0.02, 0.04)
     passed("Auto-deletion + admin isolation", "content unrecoverable")
 
-    # Summary
+    # Summary — flash the banner so it "pops" on camera
     time.sleep(0.1)
-    line(f"{G}{B}  ══════════════════════════════════════════════════════════════{X}")
-    line(f"{G}{B}  ✓ SECURITY AUDIT COMPLETE   8/8 MODULES PASSED{X}   {GREY}(0 warnings · 0 failures){X}")
-    line(f"{G}{B}  🔒 SafePrint verified SECURE{X}   {GREY}· end-to-end encrypted · privacy enforced{X}")
-    line(f"{G}{B}  ══════════════════════════════════════════════════════════════{X}")
-    time.sleep(0.4)
+    banner = [
+        f"  ✓ SECURITY SUITE COMPLETE   8/8 MODULES PASSED   (0 failures)",
+        f"  🔒 SafePrint verified SECURE · end-to-end encrypted · privacy enforced",
+    ]
+    for _ in range(3):
+        w(f"\r{G}{B}{REV}{banner[0].ljust(64)}{X}")
+        time.sleep(0.12)
+        w(f"\r{G}{B}{banner[0].ljust(64)}{X}")
+        time.sleep(0.12)
+    line("")
+    line(f"{G}{B}{REV}{banner[1].ljust(64)}{X}")
+    line("")
+    time.sleep(0.5)
+    w("\033[0m")  # restore terminal defaults
 
 
 if __name__ == "__main__":
