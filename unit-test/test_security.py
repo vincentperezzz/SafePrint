@@ -66,7 +66,7 @@ def bar(label, width=34, steps=18, delay=0.018, color=C):
     for i in range(steps + 1):
         filled = int(width * i / steps)
         pct = int(100 * i / steps)
-        w(f"\r    {label} {color}[{'█'*filled}{GREY}{'░'*(width-filled)}{color}]{X} {W}{pct:3d}%{X}")
+        w(f"\r    {label} {color}[{'█'*filled}{GREY}{'░'*(width-filled)}{color}]{X} {W}{pct:3d}%{X}\033[K")
         time.sleep(delay)
     w("\n")
 
@@ -87,11 +87,11 @@ def brute_force(idx):
     users = ["admin", "root", "manager", "safeprint", "administrator"]
     pws = ["123456", "password", "qwerty", "admin@123", "letmein", "P@ssw0rd", "gcash2025"]
     ip = rip()
-    for i in range(1, 4200, random.randint(120, 260)):
+    for i in range(1, 4200, random.randint(70, 130)):
         u = random.choice(users)
         p = random.choice(pws)
-        w(f"\r    {R}attempt {i:05d}{X}  {GREY}src={ip} user={u} pass={p:<10}{X} {R}→ DENIED{X}   ")
-        time.sleep(0.02)
+        w(f"\r    {R}attempt {i:05d}{X}  {GREY}src={ip} user={u} pass={p:<10}{X} {R}→ DENIED{X}\033[K")
+        time.sleep(0.03)
     w("\n")
     line(f"    {Y}!! anomalous login rate detected — engaging rate-limiter{X}", 0.06)
     line(f"    {R}{B}!! IP {ip} BANNED{X} {GREY}· 4,192 attempts blocked · lockout 900s{X}", 0.08)
@@ -188,7 +188,7 @@ def run():
     time.sleep(0.1)
     banner = [
         f"  ✓ SECURITY SUITE COMPLETE   8/8 MODULES PASSED   (0 failures)",
-        f"  🔒 SafePrint verified SECURE · end-to-end encrypted · privacy enforced",
+        f"  » SafePrint verified SECURE · end-to-end encrypted · privacy enforced",
     ]
     for _ in range(3):
         w(f"\r{G}{B}{REV}{banner[0].ljust(64)}{X}")
