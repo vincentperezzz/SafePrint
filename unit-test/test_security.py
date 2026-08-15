@@ -209,22 +209,15 @@ def run():
     ], 0.02, 0.04)
     passed("Auto-deletion + admin isolation", "content unrecoverable")
 
-    # Summary — flash the banner so it "pops" on camera
-    time.sleep(0.1)
-    banner = [
-        f"  ✓ SECURITY SUITE COMPLETE   8/8 MODULES PASSED   (0 failures)",
-        f"  » SafePrint verified SECURE · end-to-end encrypted · privacy enforced",
-    ]
-    for _ in range(3):
-        w(f"\r{G}{B}{REV}{banner[0].ljust(64)}{X}")
-        time.sleep(0.12)
-        w(f"\r{G}{B}{banner[0].ljust(64)}{X}")
-        time.sleep(0.12)
-    line("")
-    line(f"{G}{B}{REV}{banner[1].ljust(64)}{X}")
-    line("")
-    time.sleep(0.5)
-    w("\033[0m")  # restore terminal defaults
+    # Summary — bold, stable green banner that holds cleanly on camera
+    time.sleep(0.15)
+    w("\n")
+    b0 = "  ✓ SECURITY SUITE COMPLETE   8/8 MODULES PASSED   (0 failures)"
+    b1 = "  » SafePrint verified SECURE · end-to-end encrypted · privacy enforced"
+    line(f"{G}{B}{REV}{b0.ljust(74)}{X}")
+    line(f"{G}{B}{REV}{b1.ljust(74)}{X}")
+    w("\n")
+    time.sleep(0.9)
 
 
 if __name__ == "__main__":
