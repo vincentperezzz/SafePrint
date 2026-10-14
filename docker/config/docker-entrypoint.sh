@@ -40,7 +40,7 @@ done
 # Create database and user if not exists
 mysql -u root <<-EOF
     CREATE DATABASE IF NOT EXISTS SAFEPRINT_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
-    CREATE USER IF NOT EXISTS 'SAFEPRINT_ADMIN'@'localhost' IDENTIFIED BY '***REMOVED_DB_PASSWORD***';
+    CREATE USER IF NOT EXISTS 'SAFEPRINT_ADMIN'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
     GRANT ALL PRIVILEGES ON SAFEPRINT_DB.* TO 'SAFEPRINT_ADMIN'@'localhost';
     FLUSH PRIVILEGES;
 EOF
@@ -52,10 +52,10 @@ echo "MySQL initialized and database created."
 # ========================================
 if [ -f "/home/safeprint/dev/SafePrint/docker/data/database_dump.sql" ]; then
     # Only import if database is empty (no tables yet)
-    TABLE_COUNT=$(mysql -u SAFEPRINT_ADMIN -p'***REMOVED_DB_PASSWORD***' -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='SAFEPRINT_DB';" 2>/dev/null || echo "0")
+    TABLE_COUNT=$(mysql -u SAFEPRINT_ADMIN -p'${DB_PASSWORD}' -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='SAFEPRINT_DB';" 2>/dev/null || echo "0")
     if [ "$TABLE_COUNT" -eq 0 ] || [ "$TABLE_COUNT" = "0" ]; then
         echo "[2/6] Importing database dump..."
-        mysql -u SAFEPRINT_ADMIN -p'***REMOVED_DB_PASSWORD***' SAFEPRINT_DB < /home/safeprint/dev/SafePrint/docker/data/database_dump.sql
+        mysql -u SAFEPRINT_ADMIN -p'${DB_PASSWORD}' SAFEPRINT_DB < /home/safeprint/dev/SafePrint/docker/data/database_dump.sql
         echo "Database imported successfully."
         
         # Run migrations after import to create any new tables
@@ -102,11 +102,11 @@ echo "[3/6] Setting up environment variables..."
 mkdir -p "$VENV_PATH"
 
 if [ ! -f "$VENV_PATH/.env" ]; then
-    cat > "$VENV_PATH/.env" << 'ENVFILE'
+    cat > "$VENV_PATH/.env" << ENVFILE
 DJANGO_SECRET_KEY=your-secret-key-change-for-production
 DB_NAME=SAFEPRINT_DB
 DB_USER=SAFEPRINT_ADMIN
-DB_PASSWORD=***REMOVED_DB_PASSWORD***
+DB_PASSWORD=${DB_PASSWORD}
 DB_HOST=localhost
 DB_PORT=3306
 ENVFILE

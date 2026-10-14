@@ -33,3 +33,10 @@ env/
 # Ignore everything in logs except the folder itself
 /logs/*
 !/logs/
+# secrets & dumps
+.env*
+!.env.example
+*.sql
+backups/
+*.backup
+*.rsc

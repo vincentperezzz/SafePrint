@@ -21,7 +21,7 @@ mkdir -p "$DATA_DIR"
 # Database credentials (modify if different)
 DB_NAME="${DB_NAME:-SAFEPRINT_DB}"
 DB_USER="${DB_USER:-SAFEPRINT_ADMIN}"
-DB_PASSWORD="${DB_PASSWORD:-***REMOVED_DB_PASSWORD***}"
+DB_PASSWORD="${DB_PASSWORD:?Set DB_PASSWORD}"
 DB_HOST="${DB_HOST:-localhost}"
 
 echo "Exporting database: $DB_NAME"

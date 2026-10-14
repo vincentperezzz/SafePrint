@@ -27,7 +27,7 @@ services:
       - DJANGO_SECRET_KEY=your-secret-key-change-for-production
       - DB_NAME=SAFEPRINT_DB
       - DB_USER=SAFEPRINT_ADMIN
-      - DB_PASSWORD=***REMOVED_DB_PASSWORD***
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_HOST=localhost
       - DB_PORT=3306
       - DEBUG=True

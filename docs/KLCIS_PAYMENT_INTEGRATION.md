@@ -250,7 +250,7 @@ All endpoints on `https://s2.klinternetservices.com`:
 ```
 Username: Safeprint2025
 Password: @Safeprint2025
-API Key:  ***REMOVED_KLCIS_KEY***
+API Key:  <your KLCiS API key (set KLCIS_API_KEY env var)>
 ```
 
 Configured in `venv/.env`, read via `python-decouple`.

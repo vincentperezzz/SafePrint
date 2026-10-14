@@ -410,7 +410,7 @@ If you use the DNS challenge for Let's Encrypt (for example, if you cannot open 
 ### Steps to Obtain DuckDNS Token and Set TXT Record
 
 1. Go to https://www.duckdns.org and log in with your account.
-2. Find your DuckDNS token on your dashboard (it looks like: `***REMOVED_DUCKDNS_TOKEN***`).
+2. Find your DuckDNS token on your dashboard (it looks like: `<your-duckdns-token>`).
 3. When Certbot asks for a TXT record, use the following format to set it:
    ```
    https://www.duckdns.org/update?domains=nanoprint&token=YOUR_TOKEN&txt=YOUR_TXT_VALUE&verbose=true&clear=false

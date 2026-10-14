@@ -107,13 +107,13 @@ supervisorctl restart nginx
 ### Database Operations
 ```bash
 # Access MySQL inside container
-docker exec -it safeprint-app mysql -u SAFEPRINT_ADMIN -p'***REMOVED_DB_PASSWORD***' SAFEPRINT_DB
+docker exec -it safeprint-app mysql -u SAFEPRINT_ADMIN -p"$DB_PASSWORD" SAFEPRINT_DB
 
 # Export database from container
-docker exec safeprint-app mysqldump -u SAFEPRINT_ADMIN -p'***REMOVED_DB_PASSWORD***' SAFEPRINT_DB > backup.sql
+docker exec safeprint-app mysqldump -u SAFEPRINT_ADMIN -p"$DB_PASSWORD" SAFEPRINT_DB > backup.sql
 
 # Import database to container
-docker exec -i safeprint-app mysql -u SAFEPRINT_ADMIN -p'***REMOVED_DB_PASSWORD***' SAFEPRINT_DB < backup.sql
+docker exec -i safeprint-app mysql -u SAFEPRINT_ADMIN -p"$DB_PASSWORD" SAFEPRINT_DB < backup.sql
 ```
 
 ## 🔄 For the Source Server (Exporting Data)
@@ -165,7 +165,7 @@ The following environment variables are configured in the container:
 | `DJANGO_SECRET_KEY` | `your-secret-key` | Django secret key |
 | `DB_NAME` | `SAFEPRINT_DB` | MySQL database name |
 | `DB_USER` | `SAFEPRINT_ADMIN` | MySQL user |
-| `DB_PASSWORD` | `***REMOVED_DB_PASSWORD***` | MySQL password |
+| `DB_PASSWORD` | (set via env) | MySQL password |
 | `DB_HOST` | `localhost` | Database host (inside container) |
 | `DB_PORT` | `3306` | Database port |
 | `DEBUG` | `True` | Django debug mode |

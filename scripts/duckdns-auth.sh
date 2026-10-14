@@ -2,7 +2,7 @@
 # Usage: duckdns-auth.sh DOMAIN TOKEN
 
 DOMAIN="safeprint"
-TOKEN="***REMOVED_DUCKDNS_TOKEN***"
+TOKEN="${DUCKDNS_TOKEN:?Set DUCKDNS_TOKEN env var}"
 TXT_VALUE="$CERTBOT_VALIDATION"
 
 curl "https://www.duckdns.org/update?domains=${DOMAIN}&token=${TOKEN}&txt=${TXT_VALUE}&verbose=true&clear=false"

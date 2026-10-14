@@ -27,6 +27,7 @@ Customer-facing shop URL (not used in direct flow):
     https://s2.klinternetservices.com/shop/v1?key={API_KEY}
 """
 
+import os
 import re
 import time
 import logging
@@ -37,7 +38,7 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 # KLCiS API Key (from dashboard)
-KLCIS_API_KEY = '***REMOVED_KLCIS_KEY***'
+KLCIS_API_KEY = os.environ.get('KLCIS_API_KEY', '')
 
 # KLCiS Dashboard URL paths
 LOGIN_PATH = '/login'
